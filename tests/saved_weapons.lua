@@ -5,7 +5,7 @@ Vector3={new=function(x,y,z)return typed("Vector3",{X=x,Y=y,Z=z})end}
 Color3={new=function(r,g,b)return typed("Color3",{R=r,G=g,B=b})end}
 local function frame(x,y,z,...)
     local r={...};if #r==0 then r={1,0,0,0,1,0,0,0,1} end
-    local f=typed("CFrame",{X=x or 0,Y=y or 0,Z=z or 0,r=r})
+    local f=typed("CFrame",{X=x or 0,Y=y or 0,Z=z or 0,r=r,Position=Vector3.new(x or 0,y or 0,z or 0)})
     function f:GetComponents()return self.X,self.Y,self.Z,table.unpack(self.r) end
     function f:ToObjectSpace(other)
         local r=self.r
@@ -188,3 +188,45 @@ assert(mountReport:find("Build: native knife mount diagnostics V13",1,true),"mou
 assert(mountReport:find("Native knife attachment owner=LocalPlayer",1,true) and mountReport:find("local=0.25,-0.5,1",1,true),"report records native attachment transforms without guessing")
 assert(mountReport:find("Attachment1=NativeHipAttachment",1,true),"report identifies the native body attachment used by the knife joint")
 print("Native knife attachment and joint diagnostics passed.")
+
+-- The editor and live weapon must use exactly the same native placement.
+function methods:Clone()
+    local clone=node(self.ClassName,self.Name)
+    for k,v in pairs(self.props)do if k~='Parent' and k~='ChildAdded' and k~='DescendantAdded' and k~='AncestryChanged' then clone[k]=v end end
+    for _,item in ipairs(self:GetChildren())do local child=item:Clone();child.Parent=clone end
+    return clone
+end
+function methods:IsDescendantOf(parent)local p=self.Parent;while p do if p==parent then return true end;p=p.Parent end;return false end
+CFrame.Angles=function(x,y,z)
+    local cx,sx,cy,sy,cz,sz=math.cos(x),math.sin(x),math.cos(y),math.sin(y),math.cos(z),math.sin(z)
+    return frame(0,0,0,cy*cz,-cy*sz,sy,cx*sz+sx*sy*cz,cx*cz-sx*sy*sz,-sx*cy,sx*sz-cx*sy*cz,sx*cz+cx*sy*sz,cx*cy)
+end
+local editorBackend=dofile('mm2.lua')(game,function()return{}end,library)
+editorBackend.preview(savedGunId,'Gun')
+local function liveSavedGun()for _,item in ipairs(workspace:GetChildren())do if item.Name=='HoneyBunSavedGun' and not item.destroyed then return item end end end
+local before=liveSavedGun()
+localPlayer.Character.Archivable=false
+local gunScene=editorBackend.getWeaponEditorScene(savedGunId,'Holster')
+assert(localPlayer.Character.Archivable==false,'Editor cloning restores Archivable')
+assert(gunScene.weapon.CFrame.X==before.CFrame.X and gunScene.weapon.CFrame.Y==before.CFrame.Y,'Avatar preview uses real holster placement and clearance')
+assert(gunScene.weapon:FindFirstChildOfClass('SpecialMesh').TextureId==before:FindFirstChildOfClass('SpecialMesh').TextureId,'Editor preserves surface texture')
+local rawBefore=screen:GetAttribute('HoneyBunCosmeticGuns')
+editorBackend.setSavedWeaponAdjustment(savedGunId,'Holster',{Position={X=1,Y=.5,Z=0},Rotation={X=0,Y=0,Z=90},Scale={X=1.2,Y=1,Z=1}},false)
+local adjusted=liveSavedGun();local previewAdjusted=gunScene.update()
+assert(screen:GetAttribute('HoneyBunCosmeticGuns')==rawBefore,'Live dragging does not write saved documents')
+assert(math.abs(adjusted.CFrame.X-before.CFrame.X-1)<.0001 and math.abs(adjusted.CFrame.Y-before.CFrame.Y-.5)<.0001,'Position follows body axes')
+assert(previewAdjusted.CFrame.X==adjusted.CFrame.X and previewAdjusted.CFrame.r[1]==adjusted.CFrame.r[1],'Live and editor rotations match')
+assert(math.abs(previewAdjusted.Size.X-before.Size.X*1.2)<.0001,'Editor scales selected weapon')
+assert(previewAdjusted:FindFirstChild('SavedWeaponDetail_1'),'Multipart meshes remain in editor')
+local knifeScene=editorBackend.getWeaponEditorScene(knifeId,'Holster')
+assert(knifeScene.weapon and knifeScene.weapon.CFrame.Z>localTorso.CFrame.Z,'Knife editor uses native back positioning')
+local heldTool=node('Tool','Gun',localPlayer.Character)
+local heldHandle=node('Part','Handle',heldTool);heldHandle.CFrame=frame(100,4,2);heldHandle.Size=Vector3.new(1,1,1);heldHandle.Color=Color3.new(1,1,1)
+editorBackend.preview(savedGunId,'Gun',heldTool)
+editorBackend.setSavedWeaponAdjustment(savedGunId,'Held',{Position={X=0,Y=.25,Z=0},Rotation={X=45,Y=0,Z=0},Scale={X=1,Y=1.5,Z=1}},false)
+local heldLive=heldHandle:FindFirstChild('HoneyBunCosmeticVisual').Value;local heldScene=editorBackend.getWeaponEditorScene(savedGunId,'Held')
+assert(heldScene.weapon.CFrame.Y==heldLive.CFrame.Y and heldScene.weapon.CFrame.r[5]==heldLive.CFrame.r[5],'Holding editor matches live hand placement and rotation')
+assert(library.list('Gun')[1].adjustments.Holster.Position.X==1,'Held adjustments preserve holster settings')
+heldScene.character:Destroy()
+gunScene.character:Destroy();knifeScene.character:Destroy();editorBackend.destroy()
+print('Shared avatar editor and live placement, rotation, scale, textures, knife mounts and transient updates passed.')

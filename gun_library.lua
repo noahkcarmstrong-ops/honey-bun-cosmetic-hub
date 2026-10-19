@@ -304,6 +304,40 @@ return function(game,gui)
     local function holdingRotation(value)
         return validHoldingRotation(value) and {X=value.X,Y=value.Y,Z=value.Z} or {X=0,Y=0,Z=0}
     end
+    local AXES={"X","Y","Z"}
+    local function validAdjustment(value)
+        if type(value)~="table" then return false end
+        local function vectorInRange(v,low,high)
+            if type(v)~="table" then return false end
+            for _,axis in ipairs(AXES) do
+                if not finite(v[axis]) or v[axis]<low or v[axis]>high then return false end
+            end
+            return true
+        end
+        return vectorInRange(value.Position,-3,3) and vectorInRange(value.Rotation,-180,180) and vectorInRange(value.Scale,.25,2)
+    end
+    local function defaultAdjustment(value)
+        local out={Position={X=0,Y=0,Z=0},Rotation={X=0,Y=0,Z=0},Scale={X=1,Y=1,Z=1}}
+        if type(value)=="table" then
+            for _,name in ipairs({"Position","Rotation","Scale"}) do
+                if type(value[name])=="table" then for _,axis in ipairs(AXES) do if finite(value[name][axis]) then out[name][axis]=value[name][axis] end end end
+            end
+        end
+        return out
+    end
+    local function copyAdjustment(value)
+        local out=defaultAdjustment();for _,name in ipairs({"Position","Rotation","Scale"}) do for _,axis in ipairs(AXES) do out[name][axis]=value[name][axis] end end;return out
+    end
+    local function unpackAdjustment(value)
+        if value==nil then return defaultAdjustment(),true end
+        if type(value)~="table" then return nil,false end
+        for key in pairs(value) do if key~="Position" and key~="Rotation" and key~="Scale" then return nil,false end end
+        if not validAdjustment(value) then return nil,false end
+        return copyAdjustment(value),true
+    end
+    local function packAdjustment(value)
+        return copyAdjustment(value)
+    end
     local entries,selected,selectedKnife={},nil,nil
     local aliases={}
     local function resolveId(id)
@@ -340,7 +374,23 @@ return function(game,gui)
                             if mountsValid and presentationValid then effective=withMetadata(definition,mounts,presentation) end
                         end
                         local previewOffset=validPreviewOffset(record.previewOffset) and record.previewOffset or 0
-                        entries[#entries+1]={id=record.id,name=record.name,customName=record.customName==true,kind=kind,baseDefinition=definition,definition=effective,revision=0,catalog=catalogInfo(record.catalog),previewOffset=previewOffset,holdingRotation=holdingRotation(record.holdingRotation)}
+                        local adjustments={Holster=defaultAdjustment(),Held=defaultAdjustment()}
+                        local adjustmentsValid=true
+                        if record.adjustments~=nil then
+                            if type(record.adjustments)~="table" then adjustmentsValid=false else
+                                for mode,value in pairs(record.adjustments) do
+                                    if mode~="Holster" and mode~="Held" then adjustmentsValid=false;break end
+                                    local decoded,valid=unpackAdjustment(value);if not valid then adjustmentsValid=false;break end
+                                    adjustments[mode]=decoded
+                                end
+                            end
+                        end
+                        if not adjustmentsValid then adjustments={Holster=defaultAdjustment(),Held=defaultAdjustment()};needsMigration=true end
+                        -- Migrate the original held-only rotation into the new transform metadata.
+                        if record.holdingRotation~=nil and validHoldingRotation(record.holdingRotation) and record.adjustments==nil then
+                            adjustments.Held.Rotation=holdingRotation(record.holdingRotation);needsMigration=true
+                        end
+                        entries[#entries+1]={id=record.id,name=record.name,customName=record.customName==true,kind=kind,baseDefinition=definition,definition=effective,revision=0,catalog=catalogInfo(record.catalog),previewOffset=previewOffset,holdingRotation=copyAdjustment(adjustments.Held).Rotation,adjustments={Holster=copyAdjustment(adjustments.Holster),Held=copyAdjustment(adjustments.Held)}}
                     end
                 end
             end
@@ -380,7 +430,7 @@ return function(game,gui)
         local records={};for _,entry in ipairs(entries)do
             local base=entry.baseDefinition or entry.definition
             local rotation=holdingRotation(entry.holdingRotation)
-            local record={id=entry.id,name=entry.name,customName=entry.customName==true,definition=pack(base),catalog=entry.catalog,previewOffset=validPreviewOffset(entry.previewOffset) and entry.previewOffset or 0,holdingRotation=rotation}
+            local record={id=entry.id,name=entry.name,customName=entry.customName==true,definition=pack(base),catalog=entry.catalog,previewOffset=validPreviewOffset(entry.previewOffset) and entry.previewOffset or 0,holdingRotation=rotation,adjustments={Holster=packAdjustment((entry.adjustments and entry.adjustments.Holster) or defaultAdjustment()),Held=packAdjustment((entry.adjustments and entry.adjustments.Held) or defaultAdjustment())}}
             local overrides={}
             if entry.definition.Mounts and canonical(entry.definition.Mounts)~=canonical(base.Mounts) then overrides.Mounts=packMounts(entry.definition.Mounts) end
             if entry.definition.Presentation and canonical(entry.definition.Presentation)~=canonical(base.Presentation) then overrides.Presentation=packPresentation(entry.definition.Presentation) end
@@ -514,7 +564,7 @@ return function(game,gui)
             end
         end
         assert(#entries<MAX_ENTRIES,"Saved gun library is full.")
-        local entry={id=id,name=kind.." from "..playerName,kind=kind,baseDefinition=definition,definition=definition,revision=0,previewOffset=0,holdingRotation={X=0,Y=0,Z=0}}
+        local entry={id=id,name=kind.." from "..playerName,kind=kind,baseDefinition=definition,definition=definition,revision=0,previewOffset=0,holdingRotation={X=0,Y=0,Z=0},adjustments={Holster=defaultAdjustment(),Held=defaultAdjustment()}}
         entries[#entries+1]=entry
         local ok,err=pcall(save);if not ok then table.remove(entries);error(err)end
         return entry
@@ -568,13 +618,42 @@ return function(game,gui)
         id=resolveId(id)
         for _,entry in ipairs(entries) do if entry.id==id then
             local previous=entry.holdingRotation
+            local previousAdjustment=entry.adjustments and copyAdjustment(entry.adjustments.Held) or defaultAdjustment()
             entry.holdingRotation=holdingRotation(value)
+            entry.adjustments=entry.adjustments or {Holster=defaultAdjustment(),Held=defaultAdjustment()}
+            entry.adjustments.Held.Rotation=copyAdjustment({Position=entry.adjustments.Held.Position,Rotation=entry.holdingRotation,Scale=entry.adjustments.Held.Scale}).Rotation
             entry.revision=(entry.revision or 0)+1
             local ok,err=pcall(save)
-            if not ok then entry.holdingRotation=previous;entry.revision=entry.revision-1;error(err) end
+            if not ok then entry.holdingRotation=previous;entry.adjustments.Held=previousAdjustment;entry.revision=entry.revision-1;error(err) end
             return entry.holdingRotation
         end end
         error("Saved weapon was not found.")
+    end
+    function api.setWeaponAdjustment(id,mode,transform,persist)
+        assert(mode=="Holster" or mode=="Held","Weapon adjustment mode must be Holster or Held.")
+        assert(type(transform)=="table","Weapon adjustment must be a table.")
+        for key in pairs(transform) do assert(key=="Position" or key=="Rotation" or key=="Scale","Weapon adjustment has an unsupported field.") end
+        id=resolveId(id);local target
+        for _,entry in ipairs(entries) do if entry.id==id then target=entry;break end end
+        assert(target,"Saved weapon was not found.")
+        local previous=target.adjustments and target.adjustments[mode] or defaultAdjustment()
+        local merged=defaultAdjustment(previous)
+        for _,name in ipairs({"Position","Rotation","Scale"}) do
+            if transform[name]~=nil then
+                assert(type(transform[name])=="table","Weapon adjustment vectors are malformed.")
+                for axis in pairs(transform[name]) do assert(axis=="X" or axis=="Y" or axis=="Z","Weapon adjustment vectors have an unsupported axis.") end
+                for _,axis in ipairs(AXES) do if transform[name][axis]~=nil then merged[name][axis]=transform[name][axis] end end
+            end
+        end
+        assert(validAdjustment(merged),"Weapon adjustment is out of range or contains a non-finite value.")
+        target.adjustments=target.adjustments or {Holster=defaultAdjustment(),Held=defaultAdjustment()}
+        target.adjustments[mode]=merged;target.holdingRotation=copyAdjustment(target.adjustments.Held).Rotation
+        target.revision=(target.revision or 0)+1
+        if persist~=false then
+            local ok,err=pcall(save)
+            if not ok then target.adjustments[mode]=previous;target.holdingRotation=copyAdjustment(target.adjustments.Held).Rotation;target.revision=target.revision-1;error(err) end
+        end
+        return copyAdjustment(merged)
     end
     function api.getSelected(kind)if kind=="Knife"then return selectedKnife end;return selected end
     function api.select(id,kind)

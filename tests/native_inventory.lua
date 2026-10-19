@@ -399,13 +399,8 @@ savedCatalog.remove=function(id)
     for i,e in ipairs(savedDefs) do if e.id==id then table.remove(savedDefs,i);return 'Deleted saved weapon'end end
     error('Saved weapon missing')
 end
-savedCatalog.setPreviewOffset=function(id,value)
-    for _,entry in ipairs(savedDefs)do if entry.id==id then entry.previewOffset=value;return 'Preview saved' end end
-end
-savedCatalog.setHoldingRotation=function(id,value)
-    for _,entry in ipairs(savedDefs)do if entry.id==id then entry.holdingRotation={X=value.X,Y=value.Y,Z=value.Z};return 'Holding saved' end end
-end
-Vector2={new=function(x,y)return {X=x,Y=y}end}
+local editorRequests={}
+savedCatalog.openEditor=function(entry,mode)editorRequests[#editorRequests+1]={entry=entry,mode=mode}end
 nestedApi.disable();nestedApi.enable();flush()
 rebuiltPane=descNamed(inventory,'HoneyBunLocal_SavedPane')
 local deleteCard
@@ -415,25 +410,11 @@ local options=deleteCard:FindFirstChild('HoneyBunSavedOptionsMenu')
 assert(cog and not options.Visible and not deleteCard:FindFirstChild('HoneyBunDeleteSaved'),'Cog replaces the always-visible Delete button')
 cog.Activated:Fire();assert(options.Visible,'Cog opens saved item actions')
 options:FindFirstChild('HoneyBunAdjustPreview').Activated:Fire()
-local adjustment=deleteCard:FindFirstChild('HoneyBunPreviewAdjustment')
-assert(adjustment.Visible and not options.Visible,'Adjust preview opens slider controls')
-adjustment:FindFirstChild('HoneyBunPreviewRight').Activated:Fire()
-local adjustedEntry;for _,entry in ipairs(savedDefs)do if entry.id=='holiday-saved' then adjustedEntry=entry end end
-assert(adjustedEntry.previewOffset==0.05,'Right arrow saves a per-weapon horizontal offset')
-adjustment:FindFirstChild('HoneyBunPreviewReset').Activated:Fire()
-assert(adjustedEntry.previewOffset==0,'Reset restores the original preview position')
-adjustment:FindFirstChild('HoneyBunPreviewDone').Activated:Fire()
-assert(not adjustment.Visible,'Done closes the adjustment controls')
+assert(not options.Visible and editorRequests[1].mode=='Holster','Placement opens the full avatar editor in holster mode')
+assert(not deleteCard:FindFirstChild('HoneyBunPreviewAdjustment'),'The small card preview panel is removed')
 cog.Activated:Fire()
 options:FindFirstChild('HoneyBunAdjustHolding').Activated:Fire()
-local holdingControls=deleteCard:FindFirstChild('HoneyBunHoldingAdjustment')
-assert(holdingControls.Visible,'Holding controls open from cog')
-holdingControls:FindFirstChild('HoneyBunHoldingUp').Activated:Fire()
-assert(adjustedEntry.holdingRotation.X==-5,'Tilt immediately saves held rotation')
-holdingControls:FindFirstChild('HoneyBunHoldingReset').Activated:Fire()
-assert(adjustedEntry.holdingRotation.X==0,'Holding Reset restores all axes')
-holdingControls:FindFirstChild('HoneyBunHoldingDone').Activated:Fire()
-assert(not holdingControls.Visible,'Done closes holding controls')
+assert(editorRequests[2].mode=='Held' and editorRequests[2].entry.id==editorRequests[1].entry.id,'Holding opens the same avatar editor for this weapon')
 cog.Activated:Fire()
 local deleteButton=options:FindFirstChild('HoneyBunDeleteSaved')
 assert(deleteButton,'Saved inventory cards offer deletion')

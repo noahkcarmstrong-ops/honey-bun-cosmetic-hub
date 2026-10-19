@@ -44,6 +44,7 @@ end
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
 local mm2API,mm2NativeAPI,mm2SavedNativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
+local mm2WeaponEditorAPI
 local mm2GunLibraryAPI
 local accessorySoundsAPI
 local mm2Enabled=false
@@ -516,7 +517,21 @@ local function savedNativeMM2()
     local backend=mm2()
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/native_inventory.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
-    local savedCatalog={list=backend.savedInventory,equip=backend.equip,getEquipped=backend.getEquipped,remove=backend.removeSavedWeapon,rename=backend.renameSavedWeapon,setPreviewOffset=backend.setSavedPreviewOffset,setHoldingRotation=backend.setSavedHoldingRotation}
+    local function openWeaponEditor(entry,mode)
+        if not mm2WeaponEditorAPI then
+            local editorSource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/weapon_editor.lua",false)
+            local editorChunk,editorError=loadstring(editorSource);assert(editorChunk,editorError)
+            mm2WeaponEditorAPI=editorChunk()(playerGui,{
+                getEditorScene=backend.getWeaponEditorScene,
+                setWeaponAdjustment=backend.setSavedWeaponAdjustment
+            },function(message)if alive and statusLabel then statusLabel.Text=message end end)
+        end
+        for _,saved in ipairs(backend.savedInventory(entry.kind)) do
+            if saved.id==entry.id then entry=saved;break end
+        end
+        mm2WeaponEditorAPI.open(entry,mode)
+    end
+    local savedCatalog={list=backend.savedInventory,equip=backend.equip,getEquipped=backend.getEquipped,remove=backend.removeSavedWeapon,rename=backend.renameSavedWeapon,openEditor=openWeaponEditor}
     mm2SavedNativeAPI=chunk()(playerGui,savedCatalog,function(message)
         if alive and statusLabel then statusLabel.Text=message end
     end,"saved")
@@ -1085,6 +1100,7 @@ gui.Destroying:Connect(function()
     if mm2EffectsNativeAPI then mm2EffectsNativeAPI.destroy() end
     if mm2EffectsAPI then mm2EffectsAPI.destroy() end
     if mm2EffectsLibraryAPI then mm2EffectsLibraryAPI.destroy() end
+    if mm2WeaponEditorAPI then mm2WeaponEditorAPI.destroy() end
     if mm2SavedNativeAPI then mm2SavedNativeAPI.destroy() end
     if mm2NativeAPI then mm2NativeAPI.destroy() end
     if mm2API then mm2API.destroy() end

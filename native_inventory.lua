@@ -759,18 +759,7 @@ return function(playerGui,catalog,onStatus,mode)
                         end
                         local image=entry.image or entry.previewImage;if type(image)=="number" or (type(image)=="string" and image:match("^%d+$")) then image="rbxassetid://"..tostring(image) end
                         local targetIcon=icon(card);if targetIcon then targetIcon.Image=type(image)=="string" and image or "" end
-                        local modelIcon=savedModelIcon(card,targetIcon,entry)
-                        local iconPosition=targetIcon and read(targetIcon,"Position")
-                        local function positionPreview(value)
-                            if not iconPosition then return end
-                            local position=UDim2.new(iconPosition.X.Scale+value*0.3,iconPosition.X.Offset,iconPosition.Y.Scale,iconPosition.Y.Offset)
-                            targetIcon.Position=position
-                            if modelIcon then modelIcon.Position=position end
-                        end
-                        if not effects then
-                            card.ClipsDescendants=true
-                            pcall(positionPreview,entry.previewOffset or 0)
-                        end
+                        savedModelIcon(card,targetIcon,entry)
                         if not entry.image and entry.previewImage then
                             local label=Instance.new("TextLabel");label.Name="HoneyBunParticlePreview";label.Text="Particle preview"
                             label.BackgroundTransparency=1;label.TextColor3=Color3.fromRGB(220,220,220);label.TextScaled=true
@@ -793,101 +782,17 @@ return function(playerGui,catalog,onStatus,mode)
                                 o.Size=UDim2.fromScale(0.9,0.2);o.Position=UDim2.fromScale(0.05,y);o.BackgroundTransparency=1
                                 o.TextColor3=Color3.fromRGB(245,245,250);o.ZIndex=click.ZIndex+2;o.Parent=menu;return o
                             end
-                            if not effects and catalog.setPreviewOffset then
-                                local adjust=option("HoneyBunAdjustPreview","Adjust preview",0.08)
-                                local controls=Instance.new("Frame");controls.Parent=card
-                                controls.Name="HoneyBunPreviewAdjustment";controls.Visible=false
-                                controls.Position=UDim2.fromScale(0,0.58);controls.Size=UDim2.fromScale(1,0.42)
-                                controls.BackgroundColor3=Color3.fromRGB(25,25,30);controls.ZIndex=click.ZIndex+4
-                                local value=entry.previewOffset or 0
-                                local function control(name,label,x,width,y)
-                                    local b=Instance.new("TextButton");b.Parent=controls;b.Name=name;b.Text=label;b.TextScaled=true
-                                    b.Position=UDim2.fromScale(x,y);b.Size=UDim2.fromScale(width,0.4)
-                                    b.ZIndex=controls.ZIndex+1;b.TextColor3=Color3.fromRGB(255,255,255)
-                                    b.BackgroundColor3=Color3.fromRGB(60,60,65);return b
-                                end
-                                local left=control("HoneyBunPreviewLeft","<",0,0.15,0.05)
-                                local right=control("HoneyBunPreviewRight",">",0.85,0.15,0.05)
-                                local track=control("HoneyBunPreviewTrack","",0.2,0.6,0.05)
-                                local thumb=Instance.new("Frame");thumb.Parent=track;thumb.Name="Thumb"
-                                thumb.Size=UDim2.fromScale(0.08,1);thumb.AnchorPoint=Vector2.new(0.5,0)
-                                thumb.BackgroundColor3=Color3.fromRGB(138,43,226);thumb.ZIndex=track.ZIndex+1
-                                local reset=control("HoneyBunPreviewReset","Reset",0.02,0.46,0.55)
-                                local done=control("HoneyBunPreviewDone","Done",0.52,0.46,0.55)
-                                local function update(nextValue)
-                                    value=math.max(-1,math.min(1,nextValue))
-                                    thumb.Position=UDim2.fromScale((value+1)/2,0)
-                                    pcall(positionPreview,value)
-                                end
-                                local function commit()
-                                    local good,result=pcall(catalog.setPreviewOffset,entry.id,value)
-                                    if good then entry.previewOffset=value else update(entry.previewOffset or 0) end
-                                    status(good and (result or "Preview position saved.") or tostring(result))
-                                end
-                                bind(adjust,function()menu.Visible=false;openOptions=controls;controls.Visible=true;update(entry.previewOffset or 0)end)
-                                bind(left,function()update(value-0.05);commit()end)
-                                bind(right,function()update(value+0.05);commit()end)
-                                bind(reset,function()update(0);commit()end)
-                                bind(done,function()commit();controls.Visible=false;openOptions=nil end)
-                                local inputService
-                                pcall(function()inputService=game:GetService("UserInputService")end)
-                                local dragging
-                                local function drag(input)
-                                    local width=track.AbsoluteSize.X
-                                    if width>0 then update((input.Position.X-track.AbsolutePosition.X)/width*2-1) end
-                                end
-                                local began=read(track,"InputBegan")
-                                if began then savedCardConnections[id][#savedCardConnections[id]+1]=began:Connect(function(input)
-                                    if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=input;drag(input) end
-                                end) end
-                                if inputService then
-                                    savedCardConnections[id][#savedCardConnections[id]+1]=inputService.InputChanged:Connect(function(input)
-                                        if dragging and controls.Visible and (input==dragging or input.UserInputType==Enum.UserInputType.MouseMovement) then drag(input) end
-                                    end)
-                                    savedCardConnections[id][#savedCardConnections[id]+1]=inputService.InputEnded:Connect(function(input)
-                                        if dragging and (input==dragging or input.UserInputType==Enum.UserInputType.MouseButton1) then dragging=nil;if controls.Visible then commit() end end
+                            local adjustmentButtons={}
+                            if not effects and catalog.openEditor then
+                                for _,action in ipairs({{"HoneyBunAdjustPreview","Adjust placement","Holster",0.06},{"HoneyBunAdjustHolding","Adjust holding","Held",0.28}}) do
+                                    local button=option(action[1],action[2],action[4]);adjustmentButtons[#adjustmentButtons+1]=button
+                                    local editMode=action[3]
+                                    bind(button,function()
+                                        menu.Visible=false;openOptions=nil
+                                        local good,result=pcall(catalog.openEditor,entry,editMode)
+                                        if not good then status("Could not open weapon editor: "..tostring(result)) end
                                     end)
                                 end
-                                update(value)
-                            end
-                            if not effects and catalog.setHoldingRotation then
-                                local holdingButton=option("HoneyBunAdjustHolding","Adjust holding",0.30)
-                                local controls=Instance.new("Frame");controls.Parent=card
-                                controls.Name="HoneyBunHoldingAdjustment";controls.Visible=false
-                                controls.Position=UDim2.fromScale(0,0.48);controls.Size=UDim2.fromScale(1,0.52)
-                                controls.BackgroundColor3=Color3.fromRGB(25,25,30);controls.ZIndex=click.ZIndex+4
-                                local current=entry.holdingRotation or {X=0,Y=0,Z=0}
-                                local value={X=current.X or 0,Y=current.Y or 0,Z=current.Z or 0}
-                                local function control(name,label,x,width,y)
-                                    local b=Instance.new("TextButton");b.Parent=controls;b.Name=name;b.Text=label;b.TextScaled=true
-                                    b.Position=UDim2.fromScale(x,y);b.Size=UDim2.fromScale(width,0.24)
-                                    b.ZIndex=controls.ZIndex+1;b.TextColor3=Color3.fromRGB(255,255,255);b.BackgroundColor3=Color3.fromRGB(60,60,65);return b
-                                end
-                                local function commit()
-                                    local good,result=pcall(catalog.setHoldingRotation,entry.id,value)
-                                    if good then entry.holdingRotation={X=value.X,Y=value.Y,Z=value.Z} end
-                                    status(good and (result or "Held rotation saved.") or tostring(result))
-                                end
-                                local function adjust(axis,delta)
-                                    value[axis]=math.max(-180,math.min(180,value[axis]+delta));commit()
-                                end
-                                local up=control("HoneyBunHoldingUp","Tilt up",0,0.3,0.03)
-                                local down=control("HoneyBunHoldingDown","Tilt down",0.35,0.3,0.03)
-                                local left=control("HoneyBunHoldingLeft","Turn left",0,0.3,0.29)
-                                local right=control("HoneyBunHoldingRight","Turn right",0.35,0.3,0.29)
-                                local forward=control("HoneyBunHoldingForward","Roll forward",0,0.3,0.55)
-                                local back=control("HoneyBunHoldingBack","Roll back",0.35,0.3,0.55)
-                                bind(up,function()adjust("X",-5)end)
-                                bind(down,function()adjust("X",5)end)
-                                bind(left,function()adjust("Y",-5)end)
-                                bind(right,function()adjust("Y",5)end)
-                                bind(forward,function()adjust("Z",-5)end)
-                                bind(back,function()adjust("Z",5)end)
-                                local reset=control("HoneyBunHoldingReset","Reset",0.02,0.46,0.80)
-                                local done=control("HoneyBunHoldingDone","Done",0.52,0.46,0.80)
-                                bind(reset,function()value={X=0,Y=0,Z=0};commit()end)
-                                bind(done,function()commit();controls.Visible=false;openOptions=nil end)
-                                bind(holdingButton,function()menu.Visible=false;openOptions=controls;controls.Visible=true;local r=entry.holdingRotation or {};value={X=r.X or 0,Y=r.Y or 0,Z=r.Z or 0}end)
                             end
                             local rename=option("HoneyBunRenameSaved","Rename",0.48)
                             local remove=option("HoneyBunDeleteSaved","Delete",0.68)
@@ -899,10 +804,12 @@ return function(playerGui,catalog,onStatus,mode)
                             local cancel=option("HoneyBunCancelSaved","Cancel",0.77)
                             local function reset()
                                 rename.Visible=catalog.rename~=nil;remove.Visible=true;remove.Text="Delete"
+                                for _,button in ipairs(adjustmentButtons) do button.Visible=true end
                                 field.Visible=false;save.Visible=false;cancel.Visible=false;field.Text=entry.name
                             end
                             bind(rename,function()
                                 rename.Visible=false;remove.Visible=false;field.Visible=true;save.Visible=true;cancel.Visible=true
+                                for _,button in ipairs(adjustmentButtons) do button.Visible=false end
                                 pcall(function()field:CaptureFocus()end)
                             end)
                             bind(save,function()
@@ -912,7 +819,7 @@ return function(playerGui,catalog,onStatus,mode)
                             end)
                             bind(cancel,function()reset();menu.Visible=false;openOptions=nil end)
                             bind(remove,function()
-                                if remove.Text~="Confirm delete" then remove.Text="Confirm delete";rename.Visible=false;cancel.Visible=true;return end
+                                if remove.Text~="Confirm delete" then remove.Text="Confirm delete";rename.Visible=false;cancel.Visible=true;for _,button in ipairs(adjustmentButtons) do button.Visible=false end;return end
                                 local good,result=pcall(catalog.remove,entry.id)
                                 if good then openOptions=nil;renderSaved() else reset() end
                                 status(good and (result or "Saved item deleted.") or ("Could not delete: "..tostring(result)))

@@ -107,7 +107,7 @@ return function(game, injectedRequire, gunLibrary)
         return {id=e.id,name=e.customName and e.name or (e.catalog and e.catalog.Name or e.name),kind=e.kind,rarity=rarity,
             image=field(def,"Image") or field(def,"ImageId") or field(def,"ImageID"),
             visual=field(e.definition,"PortableGun") and e.definition or nil,previewOffset=e.previewOffset or 0,
-            holdingRotation=e.holdingRotation or {X=0,Y=0,Z=0},
+            holdingRotation=e.holdingRotation or {X=0,Y=0,Z=0},adjustments=e.adjustments,
             category=categoryName,year=year,event=event,rarityColor=rarityColor,rarityOrder=rarityOrder,
             season=field(def,"Season"),sortOrder=sortOrder,chroma=chroma==true or (type(chroma)=="string" and lower(chroma)~="" and lower(chroma)~="false")}
     end
@@ -423,15 +423,24 @@ return function(game, injectedRequire, gunLibrary)
             end
         end
     end
-    local function applySavedGun(handle,e,held,tool)
+    local function weaponAdjustment(entry,held)
+        local source=entry.adjustments and entry.adjustments[held and "Held" or "Holster"]
+        local function axis(vector,name,fallback)
+            local value=vector and vector[name]
+            return type(value)=="number" and value or fallback
+        end
+        return {
+            Position=Vector3.new(axis(source and source.Position,"X",0),axis(source and source.Position,"Y",0),axis(source and source.Position,"Z",0)),
+            Rotation=Vector3.new(axis(source and source.Rotation,"X",0),axis(source and source.Rotation,"Y",0),axis(source and source.Rotation,"Z",0)),
+            Scale=Vector3.new(axis(source and source.Scale,"X",1),axis(source and source.Scale,"Y",1),axis(source and source.Scale,"Z",1))
+        }
+    end
+    local function scaledVector(value,scale)
+        return Vector3.new(value.X*scale.X,value.Y*scale.Y,value.Z*scale.Z)
+    end
+    local function resolveSavedPlacement(handle,e,held,tool,character)
         local kind=e.kind or "Gun"
-        assert(handle,"Your "..kind:lower().." display has not loaded yet.")
-        local old=snapshots[handle]
-        if old and old.overlay and old.overlayId==e.id and old.overlayRevision==(e.revision or 0) and read(old.overlay,"Parent") then return end
-        if old then restoreHandle(old);snapshots[handle]=nil end
         local def=e.definition
-        local p=read(service("Players"),"LocalPlayer")
-        local character=read(p,"Character")
         local mount=def.Mounts and def.Mounts[held and "Held" or "Holster"]
         if kind=="Knife" and not held and knifeSide then
             local lowerTorso=child(character,"LowerTorso") or child(character,"Torso")
@@ -526,53 +535,83 @@ return function(game, injectedRequire, gunLibrary)
                 anchor=torso;offset=mount.Offset
             end
         end
+        return anchor,offset,mount
+    end
+    local function applySavedGun(handle,e,held,tool,previewCharacter)
+        local kind=e.kind or "Gun"
+        assert(handle,"Your "..kind:lower().." display has not loaded yet.")
+        local old=not previewCharacter and snapshots[handle]
+        if old and old.overlay and old.overlayId==e.id and old.overlayRevision==(e.revision or 0) and read(old.overlay,"Parent") then return end
+        if old then restoreHandle(old);snapshots[handle]=nil end
+        local p=read(service("Players"),"LocalPlayer")
+        local character=previewCharacter or read(p,"Character")
+        local def=e.definition
+        local anchor,offset,mount=resolveSavedPlacement(handle,e,held,tool,character)
         local overlay=Instance.new("Part")
         local ok,message=pcall(function()
             overlay.Name=kind=="Gun" and "HoneyBunSavedGun" or "HoneyBunSavedKnife"
-            overlay.Size=def.Size or Vector3.new(1,1,1)
+            local adjustment=weaponAdjustment(e,held)
+            overlay.Size=scaledVector(def.Size or Vector3.new(1,1,1),adjustment.Scale)
             local baseCFrame=offset and anchor.CFrame*offset or handle.CFrame
-            local rotation=held and e.holdingRotation
-            if rotation and ((rotation.X or 0)~=0 or (rotation.Y or 0)~=0 or (rotation.Z or 0)~=0) then
-                baseCFrame=baseCFrame*CFrame.Angles(math.rad(rotation.X or 0),math.rad(rotation.Y or 0),math.rad(rotation.Z or 0))
-            end
+            -- Position is expressed in the anchor's local axes, followed by local rotation.
+            if adjustment.Position.X~=0 or adjustment.Position.Y~=0 or adjustment.Position.Z~=0 then baseCFrame=anchor.CFrame*CFrame.new(adjustment.Position.X,adjustment.Position.Y,adjustment.Position.Z)*anchor.CFrame:ToObjectSpace(baseCFrame) end
+            if adjustment.Rotation.X~=0 or adjustment.Rotation.Y~=0 or adjustment.Rotation.Z~=0 then baseCFrame=baseCFrame*CFrame.Angles(math.rad(adjustment.Rotation.X),math.rad(adjustment.Rotation.Y),math.rad(adjustment.Rotation.Z)) end
             overlay.CFrame=baseCFrame
             overlay.Anchored=false;overlay.Massless=true
             overlay.CanCollide=false;overlay.CanTouch=false;overlay.CanQuery=false
             overlay.Color=def.Color or handle.Color
             overlay.Material=def.Material or handle.Material
-            overlay.Transparency=def.Transparency or read(handle,"Transparency") or 0
+            overlay.Transparency=def.Transparency or (not previewCharacter and read(handle,"Transparency")) or 0
             overlay.LocalTransparencyModifier=read(handle,"LocalTransparencyModifier") or 0
             local mesh=Instance.new("SpecialMesh")
             mesh.MeshType=Enum.MeshType.FileMesh
             -- Portable Part meshes use the original surface color map as their diffuse texture.
             mesh.MeshId=def.MeshId;mesh.TextureId=(def.SurfaceAppearance and def.SurfaceAppearance.ColorMap) or def.TextureId or ""
-            mesh.Scale=def.Scale or Vector3.new(1,1,1)
-            mesh.Offset=def.Offset or Vector3.new(0,0,0)
+            mesh.Scale=scaledVector(def.Scale or Vector3.new(1,1,1),adjustment.Scale)
+            mesh.Offset=scaledVector(def.Offset or Vector3.new(0,0,0),adjustment.Scale)
             if def.VertexColor then mesh.VertexColor=def.VertexColor end
             mesh.Parent=overlay
             local weld=Instance.new("WeldConstraint")
             weld.Part0=anchor;weld.Part1=overlay;weld.Parent=overlay
-            old={handle=handle,kind=kind,mount=mount,color=read(handle,"Color"),material=read(handle,"Material"),size=read(handle,"Size"),localTransparency=read(handle,"LocalTransparencyModifier") or 0,overlay=overlay,overlayId=e.id,overlayRevision=e.revision or 0,hidden={}}
-            snapshots[handle]=old
+            old={handle=handle,kind=kind,mount=mount,held=held,tool=tool,color=read(handle,"Color"),material=read(handle,"Material"),size=read(handle,"Size"),localTransparency=read(handle,"LocalTransparencyModifier") or 0,overlay=overlay,overlayId=e.id,overlayRevision=e.revision or 0,hidden={}}
+            if not previewCharacter then snapshots[handle]=old end
             local chromaParts={}
             if def.Chroma then chromaParts[#chromaParts+1]=overlay end
             for index,visual in ipairs(def.Parts or {}) do
                 local part=Instance.new("Part")
                 -- Parent immediately so failure/restore destroys the entire assembly.
                 part.Name="SavedWeaponDetail_"..index;part.Parent=overlay
-                part.Size=visual.Size;part.Color=visual.Color;part.Material=visual.Material or overlay.Material
+                part.Size=scaledVector(visual.Size,adjustment.Scale);part.Color=visual.Color;part.Material=visual.Material or overlay.Material
                 part.Transparency=visual.Transparency or 0
                 part.LocalTransparencyModifier=overlay.LocalTransparencyModifier
-                part.CFrame=overlay.CFrame*visual.RelativeCFrame
+                local relative=visual.RelativeCFrame or CFrame.new()
+                local relativePosition=relative.Position or Vector3.new(0,0,0)
+                local sameScale=adjustment.Scale.X==1 and adjustment.Scale.Y==1 and adjustment.Scale.Z==1
+                if sameScale then
+                    part.CFrame=overlay.CFrame*relative
+                else
+                    local components={relative:GetComponents()}
+                    local pos=scaledVector(relativePosition,adjustment.Scale)
+                    part.CFrame=overlay.CFrame*CFrame.new(pos.X,pos.Y,pos.Z,table.unpack(components,4,12))
+                end
                 part.Anchored=false;part.Massless=true
                 part.CanCollide=false;part.CanTouch=false;part.CanQuery=false
                 local detail=Instance.new("SpecialMesh",part)
                 detail.MeshType=Enum.MeshType.FileMesh;detail.MeshId=visual.MeshId
                 detail.TextureId=(visual.SurfaceAppearance and visual.SurfaceAppearance.ColorMap) or visual.TextureId or ""
-                detail.Scale=visual.Scale;detail.Offset=visual.Offset;detail.VertexColor=visual.VertexColor
+                detail.Scale=scaledVector(visual.Scale or Vector3.new(1,1,1),adjustment.Scale);detail.Offset=scaledVector(visual.Offset or Vector3.new(0,0,0),adjustment.Scale);detail.VertexColor=visual.VertexColor
                 local joint=Instance.new("WeldConstraint",part)
                 joint.Part0=overlay;joint.Part1=part
                 if visual.Chroma then chromaParts[#chromaParts+1]=part end
+            end
+            if previewCharacter then
+                overlay.Parent=previewCharacter;overlay.Anchored=true;overlay.LocalTransparencyModifier=0
+                if type(read(Color3,"fromHSV"))=="function" then for _,part in ipairs(chromaParts) do part.Color=Color3.fromHSV(0,1,1) end end
+                for _,object in ipairs(descendants(overlay)) do
+                    if isA(object,"WeldConstraint") then object:Destroy()
+                    elseif isA(object,"BasePart") then object.Anchored=true;object.LocalTransparencyModifier=0 end
+                end
+                return overlay
             end
             if #chromaParts>0 then
                 local phase,elapsed=0,0
@@ -625,6 +664,7 @@ return function(game, injectedRequire, gunLibrary)
             if old and snapshots[handle]==old then restoreHandle(old);snapshots[handle]=nil else overlay:Destroy() end
             error("Could not show saved "..kind:lower()..": "..tostring(message))
         end
+        return overlay
     end
     function api.preview(id,category,selectedTool)
         assert(alive,"The MM2 cosmetic preview is closed."); local kind=category and tostring(category):sub(1,1):upper()..tostring(category):sub(2):lower(); if kind~="Emote" then kind=kind=="Gun" and "Gun" or "Knife" end
@@ -843,6 +883,56 @@ return function(game, injectedRequire, gunLibrary)
     end
     function api.savedWeapons(kind) return gunLibrary and gunLibrary.list(kind) or {} end
     function api.savedGuns() return api.savedWeapons("Gun") end
+    function api.getWeaponEditorScene(id,mode)
+        assert(alive and gunLibrary,"The saved weapon library is unavailable.")
+        assert(mode=="Holster" or mode=="Held","Weapon editor mode must be Holster or Held.")
+        local entry
+        for _,saved in ipairs(gunLibrary.list()) do if saved.id==id then entry=saved;break end end
+        assert(entry,"Saved weapon was not found.")
+        local player=read(service("Players"),"LocalPlayer");local live=read(player,"Character")
+        assert(live,"Your character is not available for preview.")
+        local archivable=live.Archivable;live.Archivable=true
+        local cloned,character=pcall(function()return live:Clone()end);live.Archivable=archivable
+        assert(cloned and character,"Your character could not be cloned for preview.")
+        local ok,result=pcall(function()
+            for _,object in ipairs(descendants(character)) do
+                local name=lower(read(object,"Name"))
+                if name:find("displayref",1,true) then
+                    local target=read(object,"Value")
+                    if target and type(read(target,"IsDescendantOf"))=="function" and target:IsDescendantOf(character) then target:Destroy() end
+                    object:Destroy()
+                elseif isA(object,"LuaSourceContainer") or isA(object,"Tool") or name=="honeybunsavedgun" or name=="honeybunsavedknife" then object:Destroy()
+                elseif isA(object,"BasePart") then object.Anchored=true;object.LocalTransparencyModifier=0 end
+            end
+            local torso=child(character,"UpperTorso") or child(character,"Torso") or child(character,"LowerTorso")
+            assert(torso,"Your avatar has no usable torso.")
+            local held=mode=="Held"
+            local function matchingTool(parent)
+                for _,candidate in ipairs(children(parent)) do if isA(candidate,"Tool") and toolKind(candidate)==entry.kind then return candidate end end
+            end
+            local drawnTool=matchingTool(live)
+            local tool=drawnTool or matchingTool(read(player,"Backpack"))
+            local native=held and tool and child(tool,"Handle")
+            if not native then local ref=child(live,"DisplayRef"..entry.kind);native=ref and read(ref,"Value") end
+            local handle=Instance.new("Part");handle.Name="HoneyBunEditorAnchor";handle.Transparency=1;handle.Anchored=true;handle.CanCollide=false
+            handle.Size=native and native.Size or Vector3.new(1,1,1)
+            handle.CFrame=native and native.CFrame or torso.CFrame
+            if held and not drawnTool then
+                local hand=child(character,"RightHand") or child(character,"Right Arm")
+                if hand then handle.CFrame=hand.CFrame end
+            end
+            handle.Parent=character
+            local weapon=applySavedGun(handle,entry,held,tool,character)
+            local focus=read(torso.CFrame,"Position") or Vector3.new(torso.CFrame.X,torso.CFrame.Y,torso.CFrame.Z)
+            return {character=character,weapon=weapon,focus=focus,update=function()
+                if weapon then weapon:Destroy() end
+                weapon=applySavedGun(handle,entry,held,tool,character)
+                return weapon
+            end}
+        end)
+        if not ok then character:Destroy();error(result) end
+        return result
+    end
     function api.setSavedPreviewOffset(id,value)
         assert(alive and gunLibrary,"The saved weapon library is unavailable.")
         gunLibrary.setPreviewOffset(id,value)
@@ -858,6 +948,16 @@ return function(game, injectedRequire, gunLibrary)
             end
         end
         return "Saved held rotation."
+    end
+    function api.setSavedWeaponAdjustment(id,mode,transform,persist)
+        assert(alive and gunLibrary,"The saved weapon library is unavailable.")
+        gunLibrary.setWeaponAdjustment(id,mode,transform,persist)
+        local entry
+        for _,saved in ipairs(gunLibrary.list()) do if saved.id==id then entry=saved;break end end
+        local targets={}
+        for handle,old in pairs(snapshots) do if old.overlayId==id then targets[#targets+1]={handle=handle,held=old.held,tool=old.tool} end end
+        for _,target in ipairs(targets) do pcall(applySavedGun,target.handle,entry,target.held,target.tool) end
+        return "Saved "..tostring(mode):lower().." weapon adjustment."
     end
     function api.renameSavedWeapon(id,name)
         assert(alive and gunLibrary,"The saved weapon library is unavailable.")
