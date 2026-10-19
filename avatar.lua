@@ -378,6 +378,21 @@ return function(player,onStatus)
         if not reapplying then settings.body=value;save() end
         return "Body package applied (visible to you)."
     end
+    local function restoreSkinAppearance(ctx)
+        if not snapshot or snapshot.character~=ctx.character then skin={};return false end
+        local colors=ctx.character:FindFirstChildOfClass("BodyColors")
+        if colors then
+            if snapshot.hadBodyColors then
+                for region,color in pairs(snapshot.bodyColors) do colors[region.."Color3"]=color end
+            else colors:Destroy() end
+        end
+        for name,color in pairs(snapshot.colors) do
+            local part=ctx.character:FindFirstChild(name)
+            if part and part:IsA("BasePart") then part.Color=color end
+        end
+        skin={}
+        return true
+    end
     local function restoreAppearance()
         local ctx=context()
         clearAdded()
@@ -393,18 +408,14 @@ return function(player,onStatus)
             end
             snapshot.bodyChanged=false
         end
-        local colors=ctx.character:FindFirstChildOfClass("BodyColors")
-        if colors then
-            if snapshot.hadBodyColors then
-                for region,color in pairs(snapshot.bodyColors) do colors[region.."Color3"]=color end
-            else colors:Destroy() end
-        end
-        for name,color in pairs(snapshot.colors) do
-            local part=ctx.character:FindFirstChild(name)
-            if part and part:IsA("BasePart") then part.Color=color end
-        end
-        skin={}
+        restoreSkinAppearance(ctx)
         return "Original appearance restored."
+    end
+    function api.restoreSkin()
+        local ctx=context()
+        restoreSkinAppearance(ctx)
+        settings.colors={};save()
+        return "Original skin restored."
     end
     function api.restore()
         local message=restoreAppearance()
@@ -413,7 +424,7 @@ return function(player,onStatus)
     end
     function api.getSettings() return copySettings() end
     local operations={}
-    for _,name in ipairs({"equipAccessory","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","applyBody","restore"}) do
+    for _,name in ipairs({"equipAccessory","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","applyBody","restoreSkin","restore"}) do
         local operation=api[name]
         operations[name]=operation
         api[name]=function(...)

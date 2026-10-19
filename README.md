@@ -30,6 +30,8 @@ Supports compatible rigid accessories, including hats, masks, and hair. Added ac
 
 Clothing and textured bodies can cover skin colors. R6 and R15 limb groups are supported.
 
+**Restore original skin** resets only your skin colors and clears saved color overrides. It keeps added hats, body packages, hidden original accessories, emotes, and movement animations.
+
 ## Body
 
 1. Open **BODY**.
@@ -61,7 +63,9 @@ The bundle changes its included walk, run, idle, jump, fall, climb, and swimming
 - Respawning or resetting automatically reapplies your body package, hidden original accessories, added accessories, and per-region colors after your new character finishes loading.
 - **Reapply saved cosmetics** retries saved items if an asset failed to load. Failed saved items are kept for retry.
 
-Selections and editor fields are saved on PlayerGui for the current game session, so they survive respawns, resets, Refresh, and re-running the launcher. Leaving Roblox clears them.
+Selections and editor fields survive respawns, resets, Refresh, and re-running the launcher. When your executor supports `readfile` and `writefile`, automatic saving also stores accessories, colors, body packages, emote slots, movement bundles, and editor fields in `HoneyBunCosmeticHub_<RobloxUserId>.json`, with a `.bak` backup. Run the hub again after rejoining to load them. The file belongs to your account on that executor/device and is shared across games; it does not follow you to a different device automatically.
+
+The menu displays **Auto-save: on**, **session only**, or a file-write failure. Without executor file access, saving lasts only for the current Roblox session. Refreshing into this version saves your existing selections automatically.
 
 Accessory, body, skin, and wheel assignment changes are local. They do not update your Roblox account avatar. Animation and emote playback uses the character's existing Animator: when that Animator was created by the server, Roblox normally shares the playback with other players. This depends on the game's character system and asset permissions; multiplayer visibility has not been verified in a live session. Asset permissions, custom game characters, and client API restrictions can prevent an item or package from loading; the menu shows an error. Layered clothing is not supported by the rigid accessory equipper.
 
@@ -72,6 +76,7 @@ npx --offline --package=fengari-node-cli fengari tests/avatar.lua
 npx --offline --package=fengari-node-cli fengari tests/menu.lua
 npx --offline --package=fengari-node-cli fengari tests/motion.lua
 npx --offline --package=fengari-node-cli fengari tests/animations.lua
+npx --offline --package=fengari-node-cli fengari tests/storage.lua
 ```
 
 These use Roblox stand-ins to check the editor logic; they do not prove that a game permits a particular asset.

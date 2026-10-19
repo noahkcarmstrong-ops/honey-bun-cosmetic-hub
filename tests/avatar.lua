@@ -80,4 +80,18 @@ while #task.queue>0 do local work=table.remove(task.queue,1);work() end
 assert(resumed.getSettings().accessories and #resumed.getSettings().accessories==1,"new editor reads prior session settings"); assert(freshHat.Parent==nil and not freshHat.destroyed,"saved hideOriginals hides fresh original accessories"); local replay=resumed.reapplySaved(); assert(type(replay)=="string" and #replay>0,"saved accessories/body/color replay on fresh character"); local count=#resumed.listAccessories(); resumed.reapplySaved(); assert(#resumed.listAccessories()==count,"manual replay does not duplicate cosmetics")
 mode="blocked"; local failed=pcall(function()resumed.reapplySaved()end); assert(failed,"blocked saved asset reports without throwing"); local failedMessage=resumed.reapplySaved(); assert(failedMessage:match("some could not load") and #resumed.getSettings().accessories==1,"failed saved accessory remains persisted")
 mode="normal"; resumed.restore(); local cleared=resumed.getSettings(); assert((not cleared.accessories or #cleared.accessories==0) and freshHat.Parent==fresh,"restore clears saved selections and restores original hat"); resumed.destroy()
+
+-- Skin-only restore keeps added hats, body changes, and hidden originals while clearing saved colors.
+player.Character=body
+local originalSkin=Color3.new(.8,.7,.6)
+player.Character:FindFirstChild("Head").Color=originalSkin
+local skinOnly=create(player); local hiddenHat=freshAccessory();hiddenHat.Name="Hidden Original Hat";hiddenHat.Parent=player.Character
+skinOnly.equipAccessory(123); skinOnly.equipAccessory(123); skinOnly.removeCurrentAccessories(); skinOnly.applyBody("https://www.roblox.com/bundles/555"); skinOnly.setSkin(Color3.new(.2,.3,.4),"All")
+local beforeSkinOnly=skinOnly.getSettings(); assert(beforeSkinOnly.hideOriginals and beforeSkinOnly.body and #skinOnly.listAccessories()==2,"skin-only setup keeps multiple cosmetics")
+local changedBodyHead=player.Character:FindFirstChild("Head")
+skinOnly.restoreSkin(); local afterSkinOnly=skinOnly.getSettings()
+assert(#skinOnly.listAccessories()==2 and hiddenHat.Parent==nil and not hiddenHat.destroyed,"skin-only restore preserves added hats and hidden originals")
+assert(afterSkinOnly.hideOriginals and afterSkinOnly.body and next(afterSkinOnly.colors)==nil,"skin-only restore clears saved colors only")
+assert(player.Character:FindFirstChild("Head")==changedBodyHead and changedBodyHead.Color==originalSkin,"skin-only restore returns actual original color without replacing body")
+skinOnly.destroy()
 print("Avatar backend fixture and lifecycle tests passed.")

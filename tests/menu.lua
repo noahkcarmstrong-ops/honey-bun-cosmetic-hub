@@ -75,6 +75,7 @@ local function createEditor()
         clearAccessories=function()return'Cleared'end,
         removeCurrentAccessories=function()calls.current=calls.current+1;return'Removed current accessories'end,
         setSkin=function(color,region)calls.skin=calls.skin+1;calls.color=color;calls.region=region;return'Color applied'end,
+        restoreSkin=function()calls.skinRestore=true;return'Original skin restored'end,
         applyBody=function(value)calls.body=calls.body+1;calls.package=value;return'Body applied'end,
         restore=function()calls.restore=calls.restore+1;return'Restored'end,
         reapplySaved=function()return'Saved cosmetics restored.'end,
@@ -90,6 +91,7 @@ function game:HttpGet(url)
     if url:find('/avatar.lua',1,true)then return'editor-module'end
     if url:find('/motion.lua',1,true)then return'motion-module'end
     if url:find('/animations.lua',1,true)then return'animations-module'end
+    if url:find('/storage.lua',1,true)then return'storage-module'end
     if url:find('/loader.lua',1,true)then return'loader'end
     error('Unexpected request '..url)
 end
@@ -97,6 +99,10 @@ loadstring=function(source)
     if source=='editor-module'then return function()return createEditor end end
     if source=='motion-module'then return function()return createMotion end end
     if source=='animations-module'then return function()return createAnimations end end
+    if source=='storage-module'then return function()return function()
+        calls.storageLoaded=true
+        return{status=function()return'Auto-save: on'end,destroy=function()calls.storageDestroyed=true end}
+    end end end
     if source=='loader'then return function()dofile('loader.lua')end end
     error('Unexpected source')
 end
@@ -126,6 +132,7 @@ assert(find(gui(),'TextButton','1. Hat 123  |  Remove') and find(gui(),'TextButt
 click('Add accessories');assert(calls.equip==3,'Empty input does not equip')
 click('Remove current Roblox accessories');assert(calls.current==1,'Original accessory button reaches backend')
 click('SKIN');click('Roblox colors  >')
+click('Restore original skin');assert(calls.skinRestore and calls.restore==0,'Skin-only restore does not restore all cosmetics')
 local swatches={}
 for _,o in ipairs(objects)do if not o.destroyed and o.Name:match('^Color_') then swatches[#swatches+1]=o end end
 assert(#swatches==30,'Reference palette contains all 30 colors')
@@ -151,6 +158,7 @@ click('Restore original appearance');assert(calls.restore==1 and calls.motionRes
 local old=gui();click('Refresh');assert(old.destroyed and calls.destroy==1 and gui()~=old,'Refresh cleans the old avatar editor')
 assert(calls.motionDestroy,'Refresh cleans motion editor')
 assert(calls.animationDestroy,'Refresh cleans animation bundle editor')
+assert(calls.storageLoaded and calls.storageDestroyed,'Persistent settings load and flush on Refresh')
 gui():Destroy()
 for _,c in ipairs(input.InputBegan.listeners)do assert(not c.Connected,'Input listeners disconnected')end
 print('Cosmetic tabs, accessory/body actions, color validation, separate repo, Refresh and cleanup passed.')

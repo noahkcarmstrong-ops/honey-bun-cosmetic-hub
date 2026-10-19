@@ -7,6 +7,22 @@ for _, name in ipairs({"HoneyBunCosmeticHub"}) do
     if old then old:Destroy() end
 end
 
+local moduleRevision,persistence,persistenceLabel
+local persistenceNotice="Auto-save: session only. Saved-settings support could not load."
+pcall(function()
+    local stamp=tostring(DateTime.now().UnixTimestampMillis)
+    local revision=game:GetService("HttpService"):JSONDecode(game:HttpGet(
+        "https://api.github.com/repos/noahkcarmstrong-ops/honey-bun-cosmetic-hub/commits/main?refresh="..stamp,false))
+    local sha=revision and revision.sha
+    assert(type(sha)=="string" and #sha==40 and sha:match("^%x+$"),"Could not find the latest cosmetic update.")
+    moduleRevision=sha
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..sha.."/storage.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    persistence=chunk()(playerGui,Players.LocalPlayer.UserId,function(message)
+        if persistenceLabel and persistenceLabel.Parent then persistenceLabel.Text=message end
+    end)
+end)
+
 local gui = Instance.new("ScreenGui")
 gui.Name = "HoneyBunCosmeticHub"
 gui.DisplayOrder = 100
@@ -87,7 +103,7 @@ content.Parent = panel
 local layout = Instance.new("UIListLayout", content)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
-local avatarAPI,motionAPI,animationAPI,moduleRevision
+local avatarAPI,motionAPI,animationAPI
 local refresh = Instance.new("TextButton")
 refresh.Position = UDim2.new(1, -126, 0, 62)
 refresh.Size = UDim2.fromOffset(98, 26)
@@ -147,7 +163,7 @@ local function uiSetting(key,default)
 end
 local alive, busy, activePage = true, false, uiSetting("page","Accessories")
 if activePage~="Accessories" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" then activePage="Accessories" end
-local statusText = "Local preview. Your selections save for this Roblox session."
+local statusText = "Local avatar editor. Saved selections reapply automatically."
 local statusLabel, render
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
 local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animationBundle","")
@@ -222,10 +238,13 @@ local function input(placeholder, value, changed)
 end
 local function api()
     if avatarAPI then return avatarAPI end
-    local stamp=tostring(DateTime.now().UnixTimestampMillis)
-    local revision=game:GetService("HttpService"):JSONDecode(game:HttpGet(
-        "https://api.github.com/repos/noahkcarmstrong-ops/honey-bun-cosmetic-hub/commits/main?refresh="..stamp,false))
-    local sha=revision and revision.sha
+    local sha=moduleRevision
+    if not sha then
+        local stamp=tostring(DateTime.now().UnixTimestampMillis)
+        local revision=game:GetService("HttpService"):JSONDecode(game:HttpGet(
+            "https://api.github.com/repos/noahkcarmstrong-ops/honey-bun-cosmetic-hub/commits/main?refresh="..stamp,false))
+        sha=revision and revision.sha
+    end
     assert(type(sha)=="string" and #sha==40 and sha:match("^%x+$"),"Could not find the latest cosmetic update.")
     moduleRevision=sha
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..sha.."/avatar.lua",false)
@@ -287,6 +306,7 @@ render=function()
     end
     statusLabel=caption(statusText,56)
     statusLabel.AutomaticSize=Enum.AutomaticSize.Y
+    persistenceLabel=caption(persistence and persistence.status() or persistenceNotice,44)
     if activePage=="Accessories" then
         caption("ACCESSORIES",24)
         caption("Wear several hats, masks, or hair items together. Paste links or IDs separated by spaces, commas, or new lines (20 items maximum).",60)
@@ -329,6 +349,7 @@ render=function()
         caption("Remove current Roblox accessories hides your original hats and accessories. Restore original appearance brings them back.",48)
     elseif activePage=="Skin" then
         caption("SKIN COLOR",24)
+        button("Restore original skin",function() action(function(editor) return editor.restoreSkin() end) end)
         button("Apply to: "..regionNames[regionIndex].."  >",function()
             if busy then return end
             regionIndex=regionIndex%#regions+1;saveUI();render()
@@ -497,6 +518,7 @@ gui.Destroying:Connect(function()
     if avatarAPI then avatarAPI.destroy() end
     if motionAPI then motionAPI.destroy() end
     if animationAPI then animationAPI.destroy() end
+    if persistence then persistence.destroy() end
 end)
 render()
 action(function(editor)
