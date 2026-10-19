@@ -41,6 +41,15 @@ return function(playerGui,catalog,onStatus,mode)
         local list=descendants(o);table.insert(list,1,o)
         return list
     end
+    local function itemNameLabel(object,card)
+        local current=object
+        while current and current~=card do
+            local name=normalize(current.Name)
+            if name=="itemname" or name=="displayname" or name=="title" then return true end
+            current=current.Parent
+        end
+        return false
+    end
     local function defaultKind(o)
         for _,v in ipairs(texts(o)) do
             if is(v,"TextLabel") or is(v,"TextButton") then
@@ -753,7 +762,7 @@ return function(playerGui,catalog,onStatus,mode)
                         end
                         card.Name="HoneyBunLocal_Saved_"..entry.kind.."_"..tostring(entry.id);card.Visible=true
                         for _,v in ipairs(texts(card)) do
-                            if (is(v,"TextLabel") or is(v,"TextButton")) and (v.Text=="Default Knife" or v.Text=="Default Gun" or normalize(v.Name)=="itemname") then
+                            if (is(v,"TextLabel") or is(v,"TextButton")) and (v.Text=="Default Knife" or v.Text=="Default Gun" or itemNameLabel(v,card)) then
                                 v.Text=effects and entry.name or ""
                                 if not effects then v.Visible=false end
                                 if rarityColor then
@@ -963,7 +972,7 @@ return function(playerGui,catalog,onStatus,mode)
                     card.Name="HoneyBunLocal_"..entry.kind.."_"..tostring(entry.id)
                     card.Visible=true;card.LayoutOrder=#cards
                     for _,v in ipairs(texts(card)) do
-                        if (is(v,"TextLabel") or is(v,"TextButton")) and (v.Text=="Default Knife" or v.Text=="Default Gun" or (effects and normalize(v.Name)=="itemname")) then
+                        if (is(v,"TextLabel") or is(v,"TextButton")) and (v.Text=="Default Knife" or v.Text=="Default Gun" or (effects and itemNameLabel(v,card))) then
                             v.Text=entry.name
                             if entry.rarityColor then v.TextColor3=entry.rarityColor end
                         end

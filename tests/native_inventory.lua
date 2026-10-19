@@ -528,7 +528,9 @@ local emotesItems=node('ScrollingFrame','Items',emotesPane)
 local emotesContainer=node('Frame','Container',emotesItems)
 node('UIGridLayout','Grid',emotesContainer)
 local nativeToy=node('Frame','Toy',emotesContainer)
-node('TextLabel','ItemName',nativeToy).Text='Native Toy'
+local nativeToyName=node('Frame','ItemName',nativeToy)
+node('TextLabel','Label',nativeToyName).Text='Witches Brew'
+node('TextLabel','Shadow',nativeToyName).Text='Witches Brew'
 node('ImageLabel','Icon',nativeToy).Image='native-toy'
 local previewCalls={}
 local emoteCatalog={list=function(kind)
@@ -538,7 +540,8 @@ end,preview=function(id,kind)previewCalls[#previewCalls+1]={id=id,kind=kind};ret
 local emotesApi=create(playerGui,emoteCatalog,nil,'emotes')
 assert(emotesApi.enable(),'Emotes mode detects the native Emotes pane');flush()
 local emoteCard=emotesContainer:FindFirstChild('HoneyBunLocal_Saved_Emote_wave')
-assert(emoteCard and emoteCard:FindFirstChild('ItemName').Text=='Wave','Emote card uses the catalog name')
+assert(emoteCard and emoteCard:FindFirstChild('ItemName'):FindFirstChild('Label').Text=='Wave','Emote card replaces nested native template name')
+assert(emoteCard:FindFirstChild('ItemName'):FindFirstChild('Shadow').Text=='Wave','Emote name shadow also uses the catalog name')
 assert(emoteCard:FindFirstChild('Icon').Image=='rbxassetid://999','Emote card uses the catalog icon')
 assert(emoteCard.Parent==emotesContainer and nativeToy.Parent==emotesContainer,'Emotes are additive to native toys')
 overlay(emoteCard).Activated:Fire()
