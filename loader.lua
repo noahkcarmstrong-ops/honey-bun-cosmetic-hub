@@ -618,7 +618,7 @@ local function nativeEmotesMM2()
 end
 render=function()
     if not alive then return end
-    local savedScroll=activePage=="Characters" and lastRenderedPage==activePage and content.CanvasPosition
+    local savedScroll=(activePage=="Characters" or activePage=="Atmosphere") and lastRenderedPage==activePage and content.CanvasPosition
     local pageChanged=lastRenderedPage~=activePage
     lastRenderedPage=activePage
     if pageChanged then
