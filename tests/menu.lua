@@ -15,7 +15,7 @@ local meta={__index=function(t,k)return methods[k] or t.props[k]end,__newindex=f
     if t.props.propertySignals and t.props.propertySignals[k] then t.props.propertySignals[k]:Fire() end
 end}
 Instance={new=function(class,parent)
-    local o=setmetatable({props={ClassName=class,Name=class,Parent=parent,Visible=true,Activated=signal(),FocusLost=signal(),Destroying=signal()}},meta)
+    local o=setmetatable({props={ClassName=class,Name=class,Parent=parent,Visible=true,Activated=signal(),FocusLost=signal(),Focused=signal(),MouseEnter=signal(),MouseLeave=signal(),MouseButton1Down=signal(),MouseButton1Up=signal(),Destroying=signal()}},meta)
     objects[#objects+1]=o;return o
 end}
 function methods:GetChildren()local list={};for _,o in ipairs(objects)do if o.Parent==self then list[#list+1]=o end end;return list end
@@ -43,6 +43,8 @@ Vector2={new=function(x,y)return{X=x,Y=y}end}
 UDim={new=function(s,o)return{Scale=s,Offset=o}end}
 UDim2={new=function(...)return{...}end,fromOffset=function(...)return{...}end}
 Color3={fromRGB=function(r,g,b)return{R=r,G=g,B=b}end}
+ColorSequence={new=function(...)return{...}end}
+TweenInfo={new=function(...)return{...}end}
 local function enum()return setmetatable({},{__index=function(t,k)local v=enum();rawset(t,k,v);return v end})end
 Enum=enum();DateTime={now=function()return{UnixTimestampMillis=123}end};task={spawn=function(fn)fn()end}
 local guiRoot=Instance.new('PlayerGui');local player=Instance.new('Player');guiRoot.Parent=player;player.CharacterAdded=signal()
@@ -113,7 +115,15 @@ end,JSONDecode=function(_,raw)
     if raw=='revision' then return{sha=string.rep('a',40)}end
     return assert(documents[raw],'Invalid fixture JSON')
 end}
-game={GetService=function(_,name)return({Players={LocalPlayer=player},UserInputService=input,HttpService=http})[name]end}
+local tweenService={Create=function(_,object,_,goal)
+    local tween={Completed=signal(),Cancel=function(self)self.cancelled=true end,Play=function(self)
+        if self.cancelled then return end
+        for key,value in pairs(goal)do object[key]=value end
+        self.Completed:Fire(Enum.PlaybackState.Completed)
+    end}
+    return tween
+end}
+game={GetService=function(_,name)return({Players={LocalPlayer=player},UserInputService=input,HttpService=http,TweenService=tweenService})[name]end}
 function game:HttpGet(url)
     assert(url:find('/honey-bun-cosmetic-hub/',1,true),'Only the separate cosmetic repo is contacted')
     if url:find('/commits/main',1,true)then return'revision'end
@@ -171,6 +181,28 @@ local function field(placeholder)
 end
 dofile('loader.lua')
 assert(not guiRoot:FindFirstChild('HoneyBunHub'),'Cosmetic menu never creates the original hub')
+local function findName(root,name)
+    if root.Name==name then return root end
+    for _,child in ipairs(root:GetChildren())do local found=findName(child,name);if found then return found end end
+end
+local header=assert(findName(gui(),'ClassicTitleBar'),'Classic title bar is present')
+assert(header.BackgroundColor3.R==0 and header.BackgroundColor3.G==112 and header.BackgroundColor3.B==192,'Classic title bar uses Roblox blue')
+local panel=header.Parent
+local hideButton=assert(find(gui(),'TextButton','−'),'Hide button is present')
+hideButton.Activated:Fire();assert(panel.Visible==false,'Hide animation ends with the panel hidden')
+input.InputBegan:Fire({KeyCode=Enum.KeyCode.RightShift});assert(panel.Visible==true,'Right Shift reopens the panel after hide animation')
+local addButton=assert(find(gui(),'TextButton','Add accessories'),'Animated action button is present')
+local baseColor=addButton.BackgroundColor3
+addButton.MouseEnter:Fire()
+assert(addButton.BackgroundColor3.R==207 and addButton.BackgroundColor3.G==224 and addButton.BackgroundColor3.B==240,'Button hover uses the pale classic highlight')
+addButton.MouseLeave:Fire()
+assert(addButton.BackgroundColor3==baseColor,'Button leave restores its base color')
+local addScale=assert(addButton:FindFirstChild('UIScale'),'Animated button has a press scale')
+addButton.MouseButton1Down:Fire();assert(addScale.Scale==0.98,'Button press scales down')
+addButton.MouseButton1Up:Fire();assert(addScale.Scale==1,'Button release restores scale')
+local accessoriesTab=assert(findName(gui(),'Accessories'),'Accessories tab exists')
+accessoriesTab.MouseEnter:Fire();assert(accessoriesTab.BackgroundColor3.R==0 and accessoriesTab.BackgroundColor3.G==133,'Selected tab hover stays blue')
+accessoriesTab.MouseLeave:Fire();assert(accessoriesTab.BackgroundColor3.R==0 and accessoriesTab.BackgroundColor3.G==112,'Selected tab leave stays blue')
 field('Paste accessory links or IDs here').Text='123, 456\nbad'
 click('Add accessories');assert(calls.equip==2 and calls.item=='456','Batch adds both hats')
 assert(field('Paste accessory links or IDs here').Text=='bad','Only failed entries remain for retry')
@@ -186,6 +218,10 @@ setclipboard=function(value)calls.accessoryReport=value end
 click('Copy accessory report');assert(calls.accessoryReport=='Fixture accessory report','Accessory report is copied for live troubleshooting')
 setclipboard=nil
 click('CLOTHES')
+local clothesTab=assert(findName(gui(),'Clothes'),'Clothes tab exists')
+assert(clothesTab.BackgroundColor3.R==0 and clothesTab.BackgroundColor3.G==112,'Selected tab turns blue after page switch')
+clothesTab.MouseEnter:Fire();assert(clothesTab.BackgroundColor3.R==0 and clothesTab.BackgroundColor3.G==133,'Selected tab hover remains blue after page switch')
+clothesTab.MouseLeave:Fire();assert(clothesTab.BackgroundColor3.R==0 and clothesTab.BackgroundColor3.G==112,'Selected tab leave remains blue after page switch')
 field('Classic shirt catalog link or ID').Text='https://www.roblox.com/catalog/123/Classic-Shirt';click('Equip shirt')
 field('Classic pants catalog link or ID').Text='456';click('Equip pants')
 assert(calls.shirt:find('/123/',1,true) and calls.pants=='456','Separate classic shirt and pants equip actions')

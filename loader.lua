@@ -1,6 +1,46 @@
 -- Larpblox: standalone cosmetic menu.
 local Players = game:GetService("Players")
 local Input = game:GetService("UserInputService")
+-- Classic Roblox chrome: blue title bar, pale panels, bordered controls.
+local theme={blue=Color3.fromRGB(0,112,192),blueHover=Color3.fromRGB(0,133,220),
+    paper=Color3.fromRGB(240,242,245),ink=Color3.fromRGB(42,48,56),muted=Color3.fromRGB(91,100,110),
+    button=Color3.fromRGB(224,229,235),hover=Color3.fromRGB(207,224,240),edge=Color3.fromRGB(166,178,190)}
+local TweenService
+pcall(function() TweenService=game:GetService("TweenService") end)
+local tweens=setmetatable({},{__mode="k"})
+local function smooth(object,properties,duration,done)
+    local previous=tweens[object]
+    if previous then previous:Cancel();tweens[object]=nil end
+    if not TweenService then
+        for key,value in pairs(properties) do object[key]=value end
+        if done then done() end
+        return
+    end
+    local tween=TweenService:Create(object,TweenInfo.new(duration or 0.14,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),properties)
+    tweens[object]=tween
+    tween.Completed:Connect(function(state)
+        if tweens[object]~=tween then return end
+        tweens[object]=nil
+        if done and state==Enum.PlaybackState.Completed then done() end
+    end)
+    tween:Play()
+end
+local buttonStates=setmetatable({},{__mode="k"})
+local function animateButton(item,base,hover)
+    local state={base=base or theme.button,hover=hover or theme.hover,over=false}
+    buttonStates[item]=state
+    item.AutoButtonColor=false
+    local scale=Instance.new("UIScale",item);scale.Scale=1
+    local function paint() smooth(item,{BackgroundColor3=state.over and state.hover or state.base}) end
+    if item.MouseEnter then item.MouseEnter:Connect(function()state.over=true;paint()end) end
+    if item.MouseLeave then item.MouseLeave:Connect(function()state.over=false;paint();smooth(scale,{Scale=1})end) end
+    if item.MouseButton1Down then item.MouseButton1Down:Connect(function()smooth(scale,{Scale=0.98},0.08)end) end
+    if item.MouseButton1Up then item.MouseButton1Up:Connect(function()smooth(scale,{Scale=1},0.12)end) end
+    item.Activated:Connect(function()smooth(scale,{Scale=1},0.12)end)
+    item.Destroying:Connect(function()
+        for _,object in ipairs({item,scale}) do if tweens[object] then tweens[object]:Cancel();tweens[object]=nil end end
+    end)
+end
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
 local mm2API,mm2NativeAPI,mm2SavedNativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
@@ -46,31 +86,39 @@ local panel = Instance.new("Frame")
 panel.AnchorPoint = Vector2.new(1, 0.5)
 panel.Position = UDim2.new(1, -24, 0.5, 0)
 panel.Size = UDim2.new(1, -48, 0.78, 0)
-panel.BackgroundColor3 = Color3.fromRGB(17, 17, 17)
+panel.BackgroundColor3 = theme.paper
 panel.BorderSizePixel = 0
 panel.Parent = gui
 local limits = Instance.new("UISizeConstraint", panel)
 limits.MaxSize = Vector2.new(520, 760)
-Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 3)
 local border = Instance.new("UIStroke", panel)
-border.Color = Color3.fromRGB(48, 48, 48)
+border.Color = Color3.fromRGB(55,80,105)
+local header=Instance.new("Frame",panel)
+header.Name="ClassicTitleBar";header.Size=UDim2.new(1,0,0,96)
+header.BackgroundColor3=theme.blue;header.BorderSizePixel=0
+local headerGradient=Instance.new("UIGradient",header)
+headerGradient.Color=ColorSequence.new(Color3.fromRGB(0,132,215),Color3.fromRGB(0,91,164))
+headerGradient.Rotation=90
+local panelScale=Instance.new("UIScale",panel);panelScale.Scale=1
 
 local function text(parent, value, position, size, fontSize, shade)
     local label = Instance.new("TextLabel")
     label.BackgroundTransparency = 1
     label.Position = position
     label.Size = size
-    label.Font = Enum.Font.Gotham
+    label.Font = Enum.Font.SourceSans
     label.Text = value
     label.TextSize = fontSize
-    label.TextColor3 = Color3.fromRGB(shade, shade, shade)
+    label.TextColor3 = theme.ink
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = parent
     return label
 end
 
 local brandFallback = text(panel, "LARPBLOX", UDim2.fromOffset(28, 26), UDim2.new(1, -100, 0, 48), 28, 240)
-brandFallback.Font = Enum.Font.GothamBold
+brandFallback.Font = Enum.Font.SourceSansBold
+brandFallback.TextColor3=Color3.fromRGB(255,255,255)
 local customAsset = getcustomasset or getsynasset
 if type(customAsset)=="function" and type(writefile)=="function" and moduleRevision then
     task.spawn(function()
@@ -98,14 +146,14 @@ hide.Size = UDim2.fromOffset(32, 32)
 hide.BackgroundTransparency = 1
 hide.Text = "−"
 hide.TextSize = 24
-hide.TextColor3 = Color3.fromRGB(160, 160, 160)
-hide.Font = Enum.Font.Gotham
+hide.TextColor3 = Color3.fromRGB(255,255,255)
+hide.Font = Enum.Font.SourceSans
 hide.Parent = panel
 
 local line = Instance.new("Frame", panel)
 line.Position = UDim2.fromOffset(28, 96)
 line.Size = UDim2.new(1, -56, 0, 1)
-line.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+line.BackgroundColor3 = theme.edge
 line.BorderSizePixel = 0
 local tabs = Instance.new("ScrollingFrame")
 tabs.Name = "Tabs"
@@ -139,14 +187,16 @@ local avatarAPI,motionAPI,animationAPI,clothesAPI,charactersAPI,previewsAPI
 local refresh = Instance.new("TextButton")
 refresh.Position = UDim2.new(1, -126, 0, 62)
 refresh.Size = UDim2.fromOffset(98, 26)
-refresh.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+refresh.BackgroundColor3 = Color3.fromRGB(0,88,160)
 refresh.BorderSizePixel = 0
 refresh.Text = "Refresh"
-refresh.TextColor3 = Color3.fromRGB(220, 220, 220)
+refresh.TextColor3 = Color3.fromRGB(255,255,255)
 refresh.TextSize = 12
-refresh.Font = Enum.Font.GothamMedium
+refresh.Font = Enum.Font.SourceSansSemibold
 refresh.Parent = panel
-Instance.new("UICorner", refresh).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", refresh).CornerRadius = UDim.new(0, 2)
+animateButton(refresh,Color3.fromRGB(0,88,160),theme.blueHover)
+animateButton(hide,theme.blue,theme.blueHover)
 
 local refreshing = false
 refresh.Activated:Connect(function()
@@ -181,11 +231,21 @@ text(panel, "RIGHT SHIFT", UDim2.new(0, 28, 1, -48), UDim2.fromOffset(110, 24), 
 local hint = text(panel, "Show / hide", UDim2.new(0, 140, 1, -48), UDim2.new(1, -168, 0, 24), 11, 105)
 hint.TextXAlignment = Enum.TextXAlignment.Right
 
-hide.Activated:Connect(function() panel.Visible = false end)
+local menuVisible=true
+local function showMenu(visible)
+    menuVisible=visible
+    if visible then
+        panel.Visible=true
+        smooth(panelScale,{Scale=1},0.2)
+    else
+        smooth(panelScale,{Scale=0.96},0.14,function() if not menuVisible then panel.Visible=false end end)
+    end
+end
+hide.Activated:Connect(function() showMenu(false) end)
 local connection = Input.InputBegan:Connect(function(key)
     if Input:GetFocusedTextBox() then return end
     if key.KeyCode == Enum.KeyCode.RightShift then
-        panel.Visible = not panel.Visible
+        showMenu(not menuVisible)
     end
 end)
 
@@ -251,22 +311,24 @@ local function row(class, height)
 end
 local function caption(value, height)
     local item=row("TextLabel",height or 36)
-    item.Font,item.TextSize,item.Text=Enum.Font.Gotham,12,value
-    item.TextColor3=Color3.fromRGB(170,170,170)
+    item.Font,item.TextSize,item.Text=Enum.Font.SourceSans,14,value
+    item.TextColor3=theme.muted
     item.TextWrapped=true
     item.TextXAlignment=Enum.TextXAlignment.Left
     return item
 end
 local function styleButton(item, value)
     item.BackgroundTransparency=0
-    item.BackgroundColor3=Color3.fromRGB(34,34,34)
+    item.BackgroundColor3=theme.button
     item.BorderSizePixel=0
-    item.Font,item.TextSize,item.Text=Enum.Font.GothamMedium,12,value
-    item.TextColor3=Color3.fromRGB(225,225,225)
-    Instance.new("UICorner",item).CornerRadius=UDim.new(0,6)
+    item.Font,item.TextSize,item.Text=Enum.Font.SourceSansSemibold,15,value
+    item.TextColor3=theme.ink
+    item.BorderSizePixel=1;item.BorderColor3=theme.edge
+    animateButton(item)
+    Instance.new("UICorner",item).CornerRadius=UDim.new(0,2)
 end
 local function button(value, callback)
-    local item=row("TextButton",34)
+    local item=row("TextButton",36)
     styleButton(item,value)
     item.Activated:Connect(callback)
     return item
@@ -274,15 +336,17 @@ end
 local function input(placeholder, value, changed)
     local item=row("TextBox",38)
     item.BackgroundTransparency=0
-    item.BackgroundColor3=Color3.fromRGB(28,28,28)
+    item.BackgroundColor3=Color3.fromRGB(255,255,255)
     item.BorderSizePixel=0
-    item.Font,item.TextSize=Enum.Font.Gotham,12
-    item.TextColor3=Color3.fromRGB(235,235,235)
-    item.PlaceholderColor3=Color3.fromRGB(130,130,130)
+    item.Font,item.TextSize=Enum.Font.SourceSans,15
+    item.TextColor3=theme.ink
+    item.PlaceholderColor3=theme.muted
     item.PlaceholderText,item.Text=placeholder,value
     item.ClearTextOnFocus=false
-    Instance.new("UICorner",item).CornerRadius=UDim.new(0,6)
-    item.FocusLost:Connect(function() changed(item.Text);saveUI() end)
+    Instance.new("UICorner",item).CornerRadius=UDim.new(0,2)
+    item.BorderSizePixel=1;item.BorderColor3=theme.edge
+    if item.Focused then item.Focused:Connect(function()smooth(item,{BorderColor3=theme.blue})end) end
+    item.FocusLost:Connect(function() smooth(item,{BorderColor3=theme.edge});changed(item.Text);saveUI() end)
     return item
 end
 local function api()
@@ -475,13 +539,22 @@ end
 render=function()
     if not alive then return end
     local savedScroll=activePage=="Characters" and lastRenderedPage==activePage and content.CanvasPosition
+    local pageChanged=lastRenderedPage~=activePage
     lastRenderedPage=activePage
+    if pageChanged then
+        content.Position=UDim2.fromOffset(28,166)
+        smooth(content,{Position=UDim2.fromOffset(28,160)},0.18)
+    end
     for _,item in ipairs(content:GetChildren()) do if item~=layout then item:Destroy() end end
     content.CanvasPosition=Vector2.new(0,0)
     order=0
     for name,item in pairs(tabButtons) do
-        item.BackgroundColor3=Color3.fromRGB(name==activePage and 235 or 30,name==activePage and 235 or 30,name==activePage and 235 or 30)
-        item.TextColor3=name==activePage and Color3.fromRGB(20,20,20) or Color3.fromRGB(200,200,200)
+        local selected=name==activePage
+        local state=buttonStates[item]
+        state.base=selected and theme.blue or theme.button
+        state.hover=selected and theme.blueHover or theme.hover
+        item.TextColor3=selected and Color3.fromRGB(255,255,255) or theme.ink
+        smooth(item,{BackgroundColor3=state.over and state.hover or state.base})
     end
     if activePage~="Characters" then limits.MaxSize=Vector2.new(520,760) end
     statusLabel,persistenceLabel=nil,nil
@@ -610,11 +683,11 @@ render=function()
         local toolbar=row("Frame",34)
         local search=Instance.new("TextBox",toolbar)
         search.Name="CharacterSearch";search.Size=UDim2.new(1,-176,1,0)
-        search.BackgroundColor3=Color3.fromRGB(35,37,44);search.BorderSizePixel=0
-        search.Font=Enum.Font.Gotham;search.TextSize=13;search.TextColor3=Color3.fromRGB(235,235,240)
-        search.PlaceholderText="Search by name...";search.PlaceholderColor3=Color3.fromRGB(180,183,195)
+        search.BackgroundColor3=Color3.fromRGB(255,255,255);search.BorderSizePixel=1;search.BorderColor3=theme.edge
+        search.Font=Enum.Font.SourceSans;search.TextSize=13;search.TextColor3=theme.ink
+        search.PlaceholderText="Search by name...";search.PlaceholderColor3=theme.muted
         search.Text=characterSearch;search.ClearTextOnFocus=false
-        Instance.new("UICorner",search).CornerRadius=UDim.new(0,7)
+        Instance.new("UICorner",search).CornerRadius=UDim.new(0,2)
         local create=Instance.new("TextButton",toolbar)
         create.Position=UDim2.new(1,-166,0,0);create.Size=UDim2.fromOffset(166,34)
         styleButton(create,"Create New Character")
@@ -671,8 +744,9 @@ render=function()
                 cards[#cards+1]={card=card,name=name}
                 local image=Instance.new("TextButton",card)
                 image.Name="EquipCharacter_"..id;image.Text="";image.BorderSizePixel=0
-                image.Size=UDim2.new(1,0,1,-38);image.BackgroundColor3=Color3.fromRGB(59,61,72)
-                Instance.new("UICorner",image).CornerRadius=UDim.new(0,8)
+                image.Size=UDim2.new(1,0,1,-38);image.BackgroundColor3=theme.button
+                animateButton(image)
+                Instance.new("UICorner",image).CornerRadius=UDim.new(0,2)
                 image.Activated:Connect(function() action(function() return equipCharacter(id) end) end)
                 local viewport=Instance.new("ViewportFrame",image)
                 viewport.Name="CharacterPreview_"..id;viewport.Position=UDim2.new(0.06,0,0.04,0);viewport.Size=UDim2.new(0.88,0,0.92,0)
@@ -687,11 +761,12 @@ render=function()
                     end
                 end)
                 local title=text(card,name,UDim2.new(0,0,1,-32),UDim2.new(1,-2,0,32),16,235)
-                title.Font=Enum.Font.BuilderSansBold;title.TextWrapped=true;title.TextTruncate=Enum.TextTruncate.AtEnd;title.TextYAlignment=Enum.TextYAlignment.Top
+                title.Font=Enum.Font.SourceSansBold;title.TextWrapped=true;title.TextTruncate=Enum.TextTruncate.AtEnd;title.TextYAlignment=Enum.TextYAlignment.Top
                 local cog=Instance.new("TextButton",image)
-                cog.Name="CharacterOptions_"..id;cog.Text="⚙";cog.Font=Enum.Font.Gotham;cog.TextSize=20
+                cog.Name="CharacterOptions_"..id;cog.Text="⚙";cog.Font=Enum.Font.SourceSans;cog.TextSize=20
                 cog.Size=UDim2.fromOffset(30,30);cog.Position=UDim2.new(1,-31,0,1)
-                cog.BackgroundTransparency=1;cog.TextColor3=Color3.fromRGB(205,208,218);cog.ZIndex=5
+                cog.BackgroundTransparency=1;cog.TextColor3=theme.ink
+                animateButton(cog);cog.ZIndex=5
                 cog.Activated:Connect(function()
                     if busy then return end
                     if characterMenu==id then characterMenu=nil else characterMenu=id end
@@ -700,12 +775,13 @@ render=function()
                 if characterMenu==id then
                     local menu=Instance.new("Frame",image)
                     menu.Name="CharacterMenu_"..id;menu.Size=UDim2.new(1,0,1,0)
-                    menu.Active=true;menu.BackgroundColor3=Color3.fromRGB(16,17,21);menu.BackgroundTransparency=0.12;menu.BorderSizePixel=0;menu.ZIndex=3
-                    Instance.new("UICorner",menu).CornerRadius=UDim.new(0,8)
+                    menu.Active=true;menu.BackgroundColor3=theme.paper;menu.BackgroundTransparency=0.04;menu.BorderSizePixel=0;menu.ZIndex=3
+                    Instance.new("UICorner",menu).CornerRadius=UDim.new(0,2)
                     local function option(label,position,callback)
                         local item=Instance.new("TextButton",menu)
-                        item.Text=label;item.Font=Enum.Font.GothamMedium;item.TextSize=12
-                        item.TextColor3=Color3.fromRGB(245,245,250);item.BackgroundTransparency=1
+                        item.Text=label;item.Font=Enum.Font.SourceSansSemibold;item.TextSize=12
+                        item.TextColor3=theme.ink;item.BackgroundTransparency=0
+                        item.BackgroundColor3=theme.button;animateButton(item)
                         item.Position=UDim2.new(0,0,position,0);item.Size=UDim2.new(1,0,0.20,0);item.ZIndex=4
                         item.Activated:Connect(callback)
                     end
@@ -994,6 +1070,7 @@ end)
 gui.Destroying:Connect(function()
     alive=false
     connection:Disconnect()
+    for object,tween in pairs(tweens) do tween:Cancel();tweens[object]=nil end
     respawn:Disconnect()
     if mm2EffectsNativeAPI then mm2EffectsNativeAPI.destroy() end
     if mm2EffectsAPI then mm2EffectsAPI.destroy() end
@@ -1009,6 +1086,8 @@ gui.Destroying:Connect(function()
     if clothesAPI then clothesAPI.destroy() end
     if previewsAPI and previewsAPI.destroy then previewsAPI.destroy() end
 end)
+panelScale.Scale=0.97
+smooth(panelScale,{Scale=1},0.22)
 render()
 action(function(editor)
     local soundsLoaded=pcall(hatSounds)
