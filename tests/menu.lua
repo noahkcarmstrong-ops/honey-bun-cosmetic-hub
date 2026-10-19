@@ -46,7 +46,7 @@ Color3={fromRGB=function(r,g,b)return{R=r,G=g,B=b}end}
 ColorSequence={new=function(...)return{...}end}
 TweenInfo={new=function(...)return{...}end}
 local function enum()return setmetatable({},{__index=function(t,k)local v=enum();rawset(t,k,v);return v end})end
-Enum=enum();DateTime={now=function()return{UnixTimestampMillis=123}end};task={spawn=function(fn)fn()end}
+Enum=enum();DateTime={now=function()return{UnixTimestampMillis=123}end};task={spawn=function(fn)fn()end,delay=function(_,fn)fn()end}
 local guiRoot=Instance.new('PlayerGui');local player=Instance.new('Player');guiRoot.Parent=player;player.CharacterAdded=signal()
 local input={InputBegan=signal(),GetFocusedTextBox=function()return nil end}
 local calls={equip=0,skin=0,body=0,destroy=0,restore=0,current=0}

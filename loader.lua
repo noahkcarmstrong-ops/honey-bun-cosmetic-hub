@@ -276,6 +276,7 @@ local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animationBundle
 local shirtInput,pantsInput=uiSetting("shirt",""),uiSetting("pants","")
 local characterName=uiSetting("characterName","")
 local deleteCharacter,characterMenu,characterDialog
+local characterMenuAction=0
 local characterSearch=""
 local bodyPartRegions={"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"}
 local bodyPartNames={"Head","Torso","Left arm","Right arm","Left leg","Right leg"}
@@ -790,12 +791,24 @@ render=function()
                 local cog=Instance.new("TextButton",image)
                 cog.Name="CharacterOptions_"..id;cog.Text="⚙";cog.Font=Enum.Font.SourceSans;cog.TextSize=20
                 cog.Size=UDim2.fromOffset(30,30);cog.Position=UDim2.new(1,-31,0,1)
-                cog.BackgroundTransparency=1;cog.TextColor3=theme.ink
+                cog.BackgroundTransparency=1;cog.TextColor3=theme.ink;cog.Rotation=0
                 animateButton(cog);cog.ZIndex=5
                 cog.Activated:Connect(function()
                     if busy then return end
                     if characterMenu==id then characterMenu=nil else characterMenu=id end
-                    deleteCharacter=nil;render()
+                    deleteCharacter=nil;characterMenuAction=characterMenuAction+1
+                    local actionId=characterMenuAction
+                    smooth(cog,{Rotation=90},0.26)
+                    local scale=cog:FindFirstChild("UIScale")
+                    if scale then
+                        smooth(scale,{Scale=0.84},0.08)
+                        task.delay(0.08,function()
+                            if alive and actionId==characterMenuAction then smooth(scale,{Scale=1},0.14) end
+                        end)
+                    end
+                    task.delay(0.26,function()
+                        if alive and not busy and actionId==characterMenuAction and cog.Parent then render() end
+                    end)
                 end)
                 if characterMenu==id then
                     local menu=Instance.new("Frame",image)

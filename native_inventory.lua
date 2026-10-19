@@ -730,13 +730,14 @@ return function(playerGui,catalog,onStatus,mode)
                         card.Name="HoneyBunLocal_Saved_"..entry.kind.."_"..tostring(entry.id);card.Visible=true
                         for _,v in ipairs(texts(card)) do
                             if (is(v,"TextLabel") or is(v,"TextButton")) and (v.Text=="Default Knife" or v.Text=="Default Gun" or normalize(v.Name)=="itemname") then
-                                v.Text=entry.name
+                                v.Text=effects and entry.name or ""
+                                if not effects then v.Visible=false end
                                 if rarityColor then
                                     pcall(function()v.BackgroundColor3=rarityColor;v.BackgroundTransparency=0 end)
                                     if not effects then
                                         v.BorderSizePixel=0;v.BorderColor3=rarityColor
                                         local bar=read(v,"Parent")
-                                        if bar~=card and is(bar,"GuiObject") then bar.BackgroundColor3=rarityColor;bar.BackgroundTransparency=0;bar.BorderColor3=rarityColor end
+                                        if bar~=card and is(bar,"GuiObject") then bar.BackgroundTransparency=1;bar.BorderColor3=rarityColor end
                                         for _,decoration in ipairs(descendants(v)) do if is(decoration,"UIGradient") then decoration.Enabled=false end end
                                     end
                                     pcall(function()v.TextColor3=Color3.fromRGB(255,255,255)end)
@@ -829,7 +830,20 @@ return function(playerGui,catalog,onStatus,mode)
                             cog.BackgroundTransparency=1;cog.TextColor3=Color3.fromRGB(205,208,218);cog.TextSize=20
                             pcall(function()cog.Font=Enum.Font.Gotham end)
                             cog.ZIndex=click.ZIndex+3;cog.Parent=card
+                            local cogScale=Instance.new("UIScale");cogScale.Scale=1;cogScale.Parent=cog
+                            local cogTween,scaleTween,tweenService
+                            pcall(function()tweenService=game:GetService("TweenService")end)
                             bind(cog,function()
+                                local rotation=(read(cog,"Rotation") or 0)+90
+                                if cogTween then cogTween:Cancel() end;if scaleTween then scaleTween:Cancel() end
+                                cogScale.Scale=0.84
+                                local animated=pcall(function()
+                                    assert(tweenService)
+                                    cogTween=tweenService:Create(cog,TweenInfo.new(0.26,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Rotation=rotation})
+                                    scaleTween=tweenService:Create(cogScale,TweenInfo.new(0.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1})
+                                    cogTween:Play();scaleTween:Play()
+                                end)
+                                if not animated then cog.Rotation=rotation;cogScale.Scale=1 end
                                 local show=not menu.Visible;if openOptions then openOptions.Visible=false end
                                 reset();menu.Visible=show;openOptions=show and menu or nil
                             end)
