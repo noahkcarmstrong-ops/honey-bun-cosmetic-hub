@@ -731,10 +731,6 @@ return function(playerGui,catalog,onStatus,mode)
                                     pcall(function()v.BackgroundColor3=rarityColor;v.BackgroundTransparency=0 end)
                                     if not effects then
                                         v.BorderSizePixel=0;v.BorderColor3=rarityColor
-                                        pcall(function()
-                                            v.Position=UDim2.new(0,0,v.Position.Y.Scale,v.Position.Y.Offset)
-                                            v.Size=UDim2.new(1,0,v.Size.Y.Scale,v.Size.Y.Offset)
-                                        end)
                                         local bar=read(v,"Parent")
                                         if bar~=card and is(bar,"GuiObject") then bar.BackgroundColor3=rarityColor;bar.BackgroundTransparency=0;bar.BorderColor3=rarityColor end
                                         for _,decoration in ipairs(descendants(v)) do if is(decoration,"UIGradient") then decoration.Enabled=false end end

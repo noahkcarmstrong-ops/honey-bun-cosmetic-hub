@@ -332,7 +332,8 @@ currentView.Activated:Connect(function()currentBranch.Visible=true;classicBranch
 classicView.Activated:Connect(function()currentBranch.Visible=false;classicBranch.Visible=true;holidayBranch.Visible=false end)
 holidayView.Activated:Connect(function()currentBranch.Visible=false;classicBranch.Visible=false;holidayBranch.Visible=true end)
 local function nestedCard(name,title)
-    local c=node('Frame',name,currentGrid);node('TextLabel','ItemName',c).Text=title
+    local c=node('Frame',name,currentGrid);local label=node('TextLabel','ItemName',c);label.Text=title
+    label.Position=UDim2.new(0.5,0,0.9,0);label.Size=UDim2.new(0.9,0,0.18,0);label.AnchorPoint={X=0.5,Y=0.5}
     node('ImageLabel','Icon',c).Image='native';local rarity=node('TextLabel','Rarity',c);rarity.Text='Native'
     node('TextLabel','Equipped',c).Visible=false
 end
@@ -355,6 +356,7 @@ assert(#savedCardsIn(savedGrid)==2,'All saved weapons share one cloned Saved pan
 for _,card in ipairs(savedCardsIn(savedGrid)) do
     local label=card:FindFirstChild('ItemName',true)
     assert(label.BackgroundColor3.R==138/255 and label.BackgroundColor3.G==43/255 and label.BackgroundColor3.B==226/255,'Every saved weapon uses Ancient purple regardless of catalog rarity')
+    assert(label.Position.X.Scale==0.5 and label.Size.X.Scale==0.9 and label.AnchorPoint.X==0.5,'Saved names retain native MM2 positioning, width and anchor instead of crossing card edges')
     assert(card.BorderColor3.R==138/255 and label.BorderSizePixel==0,'Saved card edges match purple without a gray name border')
     local rarity=card:FindFirstChild('Rarity',true)
     assert(not rarity or rarity.Visible==false and rarity.Text=='','Saved weapon cards do not display a rarity word')
