@@ -560,6 +560,11 @@ return function(playerGui,catalog,onStatus,mode)
         local tab,tabs=tabForSaved(inventory,"season1",detectedGrid)
         if not tab or not tabs then destroy(savedPane);savedPane=nil;savedGrid=nil;return false end
         savedTab=tab:Clone();savedTab.Name="HoneyBunLocal_SavedTab";savedTabText(savedTab)
+        -- Keep the native selected gray as the saved tab's resting color too.
+        savedTab.BackgroundColor3=Color3.fromRGB(48,48,48)
+        for _,o in ipairs(descendants(savedTab)) do
+            if is(o,"GuiButton") then o.BackgroundColor3=Color3.fromRGB(48,48,48) end
+        end
         for _,o in ipairs(texts(savedTab)) do if is(o,"LuaSourceContainer") then destroy(o) end end
         -- Fit four native-styled tabs into the space previously used by three.
         local nativeTabs={}
