@@ -1,4 +1,5 @@
 local create=dofile('native_inventory.lua')
+Vector2={new=function(x,y)return {X=x,Y=y}end}
 UDim={new=function(scale,offset)return {Scale=scale,Offset=offset}end}
 Color3={fromRGB=function(r,g,b)return {R=r/255,G=g/255,B=b/255}end}
 local function signal()
@@ -359,6 +360,8 @@ for _,card in ipairs(savedCardsIn(savedGrid)) do
     local label=card:FindFirstChild('ItemName',true)
     assert(label.BackgroundColor3.R==138/255 and label.BackgroundColor3.G==43/255 and label.BackgroundColor3.B==226/255,'Every saved weapon uses Ancient purple regardless of catalog rarity')
     assert(label.Text=='' and label.Visible==false,'Saved weapon cards stay image-only with no names')
+    assert(card.BackgroundTransparency==1 and card.ClipsDescendants,'Saved cards remove the gradient backing and clip leftover footer decoration')
+    assert(card:FindFirstChild('Icon',true).Size.y==1,'Weapon image fills the compact card without a reserved name-bar gap')
     assert(label.Position.X.Scale==0.5 and label.Size.X.Scale==0.9 and label.AnchorPoint.X==0.5,'Saved names retain native MM2 positioning, width and anchor instead of crossing card edges')
     assert(card.BorderColor3.R==138/255 and label.BorderSizePixel==0,'Saved card edges match purple without a gray name border')
     local rarity=card:FindFirstChild('Rarity',true)

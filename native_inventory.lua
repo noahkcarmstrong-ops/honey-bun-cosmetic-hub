@@ -447,6 +447,14 @@ return function(playerGui,catalog,onStatus,mode)
             layout=Instance.new("UIGridLayout");layout.Name="HoneyBunSavedGridLayout";layout.CellSize=template.Size;layout.CellPadding=UDim2.fromOffset(4,4);layout.Parent=target
             state.layout=layout;state.created=true
         end
+        if not effects then
+            local size=read(layout,"CellSize") or template.Size
+            if size and size.X and size.Y then
+                state.properties[layout]={CellSize=layout.CellSize,CellPadding=layout.CellPadding}
+                layout.CellSize=UDim2.new(size.X.Scale,size.X.Offset,size.Y.Scale*0.8,size.Y.Offset*0.8)
+                layout.CellPadding=UDim2.fromOffset(4,4)
+            end
+        end
         layout.SortOrder=Enum.SortOrder.LayoutOrder
         savedLayouts[target]=state
         local scrolling=target
@@ -760,6 +768,20 @@ return function(playerGui,catalog,onStatus,mode)
                         end
                         local image=entry.image or entry.previewImage;if type(image)=="number" or (type(image)=="string" and image:match("^%d+$")) then image="rbxassetid://"..tostring(image) end
                         local targetIcon=icon(card);if targetIcon then targetIcon.Image=type(image)=="string" and image or "" end
+                        if not effects then
+                            card.BackgroundTransparency=1;card.ClipsDescendants=true
+                            -- The native card reserves its bottom fifth for the old name bar.
+                            -- Expand the preview into our shorter cell and discard that footer.
+                            for _,object in ipairs(descendants(card)) do
+                                local name=normalize(object.Name)
+                                if is(object,"GuiObject") and (name:find("name",1,true) or name:find("rarity",1,true) or name:find("footer",1,true)) then object.Visible=false end
+                            end
+                            local preview=targetIcon
+                            while preview and preview~=card do
+                                preview.Size=UDim2.fromScale(1,1);preview.Position=UDim2.fromScale(0,0);preview.AnchorPoint=Vector2.new(0,0)
+                                preview=preview.Parent
+                            end
+                        end
                         savedModelIcon(card,targetIcon,entry)
                         if not entry.image and entry.previewImage then
                             local label=Instance.new("TextLabel");label.Name="HoneyBunParticlePreview";label.Text="Particle preview"
