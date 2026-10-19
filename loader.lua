@@ -44,7 +44,6 @@ end
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
 local mm2API,mm2NativeAPI,mm2SavedNativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
-local realisticLightingAPI
 local atmosphereAPI
 local mm2EmoteBarAPI
 local mm2EmotesNativeAPI
@@ -417,13 +416,6 @@ local function atmosphere()
     local chunk,message=loadstring(source);assert(chunk,message)
     atmosphereAPI=chunk()(game)
     return atmosphereAPI
-end
-local function realisticLighting()
-    if realisticLightingAPI then return realisticLightingAPI end
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/realistic_lighting.lua",false)
-    local chunk,message=loadstring(source);assert(chunk,message)
-    realisticLightingAPI=chunk()(game)
-    return realisticLightingAPI
 end
 local function motion()
     if motionAPI then return motionAPI end
@@ -1108,17 +1100,6 @@ render=function()
         caption("The standard wheel needs an R15 avatar and Roblox's emote menu enabled by the game. Some emotes may be restricted.",52)
     elseif activePage=="Atmosphere" then
         limits.MaxSize=Vector2.new(1050,850)
-        caption("SHADER",24)
-        local shaderOn=realisticLightingAPI and realisticLightingAPI.state()~=nil
-        button(shaderOn and "Shader: ON" or "Shader: OFF",function()action(function()
-            local lighting=realisticLighting()
-            if lighting.state() then
-                lighting.restore()
-                return "Shader off. Original lighting restored."
-            end
-            local ok,message=lighting.apply("High",1);assert(ok,message)
-            return "Shader on."
-        end)end)
         caption("CUSTOM SKYBOX",24)
         caption("Paste a Roblox skybox model link or asset ID. The model must contain a Sky; a single image ID is not a complete skybox.",64)
         local field=input("Roblox skybox model link or ID",skyboxInput,function(value)skyboxInput=value end)
@@ -1357,7 +1338,6 @@ gui.Destroying:Connect(function()
     connection:Disconnect()
     for object,tween in pairs(tweens) do tween:Cancel();tweens[object]=nil end
     respawn:Disconnect()
-    if realisticLightingAPI then realisticLightingAPI.destroy() end
     if atmosphereAPI then atmosphereAPI.destroy() end
     if mm2EmoteBarAPI then mm2EmoteBarAPI.destroy() end
     if mm2EmotesNativeAPI then mm2EmotesNativeAPI.destroy() end
