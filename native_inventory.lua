@@ -47,30 +47,7 @@ return function(playerGui,catalog,onStatus,mode)
             current=current.Parent
         end
     end
-    local function detect()
-        if effects then
-            for _,branch in ipairs(descendants(playerGui)) do
-                if normalize(branch.Name)=="effects" and is(branch,"GuiObject") and not is(branch,"GuiButton") then
-                    for _,layout in ipairs(descendants(branch)) do
-                        if is(layout,"UIGridLayout") then
-                            local container=layout.Parent
-                            local ancestor,excluded=container,false
-                            while ancestor and ancestor~=branch do
-                                local name=normalize(ancestor.Name)
-                                if name:find("equipped",1,true) or lower(ancestor.Name):sub(1,14)=="honeybunlocal_" then excluded=true;break end
-                                ancestor=ancestor.Parent
-                            end
-                            if not excluded then
-                                for _,card in ipairs(children(container)) do
-                                    if is(card,"GuiObject") and card:FindFirstChild("ItemName",true) then return branch,container,card end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-            return
-        end
+    local function detectWeapon()
         for _,label in ipairs(descendants(playerGui)) do
             if (is(label,"TextLabel") or is(label,"TextButton")) and (label.Text=="Default Knife" or label.Text=="Default Gun") then
                 local inventory=inventoryAncestor(label)
@@ -93,6 +70,35 @@ return function(playerGui,catalog,onStatus,mode)
                         card=container
                     end
                 end
+            end
+        end
+    end
+    local function detect()
+        if not effects then return detectWeapon() end
+        local _,_,weaponTemplate=detectWeapon()
+        for _,branch in ipairs(descendants(playerGui)) do
+            if normalize(branch.Name)=="effects" and is(branch,"GuiObject") and not is(branch,"GuiButton") and inventoryAncestor(branch) then
+                local fallback
+                for _,candidate in ipairs(descendants(branch)) do
+                    local container=is(candidate,"UIGridLayout") and candidate.Parent or candidate
+                    local ancestor,excluded=container,false
+                    while ancestor and ancestor~=branch do
+                        local name=normalize(ancestor.Name)
+                        if name:find("equipped",1,true) or lower(ancestor.Name):sub(1,14)=="honeybunlocal_" then excluded=true;break end
+                        ancestor=ancestor.Parent
+                    end
+                    if not excluded and is(container,"GuiObject") and not is(container,"GuiButton") then
+                        local structural=is(candidate,"UIGridLayout") or is(container,"ScrollingFrame")
+                        if structural then
+                            for _,card in ipairs(children(container)) do
+                                if is(card,"GuiObject") and card:FindFirstChild("ItemName",true) then return branch,container,card end
+                            end
+                            -- Prefer the inner grid when Items wraps a scrolling Container.
+                            if not fallback or is(candidate,"UIGridLayout") or container.Parent==fallback then fallback=container end
+                        end
+                    end
+                end
+                if fallback and weaponTemplate then return branch,fallback,weaponTemplate end
             end
         end
     end
@@ -509,7 +515,7 @@ return function(playerGui,catalog,onStatus,mode)
         return true,message
     end
     function api.report()
-        return "Native inventory build: weapons and effects V8\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nRender passes="..renderPasses.."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.." Effects="..tostring(categoryCounts.effects or 0).."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").." Effect="..(sideSlots.Effect and sideSlots.Effect:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")..(diagnosticDetails~="" and ("\nInventory diagnostics:\n"..diagnosticDetails) or "")
+        return "Native inventory build: weapons and effects V9\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nRender passes="..renderPasses.."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.." Effects="..tostring(categoryCounts.effects or 0).."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").." Effect="..(sideSlots.Effect and sideSlots.Effect:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")..(diagnosticDetails~="" and ("\nInventory diagnostics:\n"..diagnosticDetails) or "")
     end
     function api.destroy() if not dead then api.disable();dead=true end end
     return api

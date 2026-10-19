@@ -247,6 +247,22 @@ assert(effectsItems.Visible and effectSlot:FindFirstChild('ItemName').Text=='Non
 weaponOverlay.destroy();effectsOverlay.destroy()
 print('Independent native effects inventory, equip, search, side slot and restoration passed.')
 
+-- An unopened, empty Effects pane must not require an existing effect card or grid.
+none:Destroy()
+effectsItems:FindFirstChildOfClass('UIGridLayout'):Destroy()
+effectsPane.Visible=false
+effectsSearch.Text=''
+local emptyEffects=create(playerGui,effectCatalog,nil,'effects')
+assert(emptyEffects.enable(),'Empty unopened Effects pane borrows the native weapon card template');flush()
+local emptyCollection=effectsPane:FindFirstChild('HoneyBunLocal_Effects')
+assert(emptyCollection and emptyCollection:FindFirstChildOfClass('UIGridLayout'),'Empty Effects pane receives its own local card grid')
+local emptyCount=0
+for _,v in ipairs(emptyCollection:GetChildren())do if v.Name:find('HoneyBunLocal_Effect_',1,true)then emptyCount=emptyCount+1 end end
+assert(emptyCount==2 and knife.Parent==seasonPane,'All effects render without moving native weapon cards')
+emptyEffects.destroy();flush()
+assert(effectsItems.Visible and not effectsPane.Visible,'Empty Effects cleanup preserves original visibility')
+print('Empty unopened Effects pane fallback passed.')
+
 local notOpened=create(node('PlayerGui','NotOpened'),effectCatalog,nil,'effects')
 local opened,message=notOpened.enable()
 assert(not opened and message:find("Open MM2's Effects inventory",1,true),'Unopened effects panel gives a clear next step')
