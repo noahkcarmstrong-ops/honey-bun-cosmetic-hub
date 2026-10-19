@@ -907,6 +907,32 @@ return function(game, injectedRequire, gunLibrary)
             local torso=child(character,"UpperTorso") or child(character,"Torso") or child(character,"LowerTorso")
             assert(torso,"Your avatar has no usable torso.")
             local held=mode=="Held"
+            local hand=child(character,"RightHand") or child(character,"Right Arm")
+            if held then
+                -- Bake the stock ToolNone arm pose into the preview clone. The
+                -- avatar stays anchored, so an Animator cannot pull it out of pose.
+                local shoulder
+                for _,joint in ipairs(descendants(character)) do
+                    if isA(joint,"Motor6D") and (joint.Name=="RightShoulder" or joint.Name=="Right Shoulder") then shoulder=joint;break end
+                end
+                if shoulder and shoulder.Part0 and shoulder.Part1 then
+                    local r15=child(character,"RightUpperArm")~=nil
+                    local pose=r15 and CFrame.Angles(math.pi/2,0,0) or CFrame.Angles(0,0,math.pi/2)
+                    local joints=descendants(character)
+                    local visited={}
+                    local function poseBranch(joint,transform)
+                        local part=joint.Part1
+                        if not part or visited[part] then return end
+                        visited[part]=true
+                        part.CFrame=joint.Part0.CFrame*joint.C0*transform*joint.C1:Inverse()
+                        if isA(joint,"Motor6D") then joint.Transform=transform end
+                        for _,nextJoint in ipairs(joints) do
+                            if (isA(nextJoint,"Motor6D") or isA(nextJoint,"Weld")) and read(nextJoint,"Part0")==part then poseBranch(nextJoint,CFrame.new()) end
+                        end
+                    end
+                    poseBranch(shoulder,pose)
+                end
+            end
             local function matchingTool(parent)
                 for _,candidate in ipairs(children(parent)) do if isA(candidate,"Tool") and toolKind(candidate)==entry.kind then return candidate end end
             end
@@ -917,9 +943,15 @@ return function(game, injectedRequire, gunLibrary)
             local handle=Instance.new("Part");handle.Name="HoneyBunEditorAnchor";handle.Transparency=1;handle.Anchored=true;handle.CanCollide=false
             handle.Size=native and native.Size or Vector3.new(1,1,1)
             handle.CFrame=native and native.CFrame or torso.CFrame
-            if held and not drawnTool then
-                local hand=child(character,"RightHand") or child(character,"Right Arm")
-                if hand then handle.CFrame=hand.CFrame end
+            if held and hand then
+                local liveHand=child(live,"RightHand") or child(live,"Right Arm")
+                if drawnTool and native and liveHand then
+                    handle.CFrame=hand.CFrame*liveHand.CFrame:ToObjectSpace(native.CFrame)
+                else
+                    local attachment=child(hand,"RightGripAttachment")
+                    local grip=tool and read(tool,"Grip")
+                    handle.CFrame=hand.CFrame*(attachment and attachment.CFrame or CFrame.new())*(grip and grip:Inverse() or CFrame.new())
+                end
             end
             handle.Parent=character
             local weapon=applySavedGun(handle,entry,held,tool,character)

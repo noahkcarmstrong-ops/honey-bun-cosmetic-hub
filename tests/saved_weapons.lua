@@ -191,10 +191,16 @@ print("Native knife attachment and joint diagnostics passed.")
 
 -- The editor and live weapon must use exactly the same native placement.
 function methods:Clone()
-    local clone=node(self.ClassName,self.Name)
-    for k,v in pairs(self.props)do if k~='Parent' and k~='ChildAdded' and k~='DescendantAdded' and k~='AncestryChanged' then clone[k]=v end end
-    for _,item in ipairs(self:GetChildren())do local child=item:Clone();child.Parent=clone end
-    return clone
+    local mapping={}
+    local function duplicate(source)
+        local clone=node(source.ClassName,source.Name);mapping[source]=clone
+        for k,v in pairs(source.props)do if k~='Parent' and k~='ChildAdded' and k~='DescendantAdded' and k~='AncestryChanged' then clone[k]=v end end
+        for _,item in ipairs(source:GetChildren())do duplicate(item).Parent=clone end
+        return clone
+    end
+    local root=duplicate(self)
+    for source,clone in pairs(mapping)do for _,key in ipairs({'Part0','Part1','Value'})do if mapping[source[key]]then clone[key]=mapping[source[key]]end end end
+    return root
 end
 function methods:IsDescendantOf(parent)local p=self.Parent;while p do if p==parent then return true end;p=p.Parent end;return false end
 CFrame.Angles=function(x,y,z)
@@ -229,5 +235,22 @@ local heldLive=heldHandle:FindFirstChild('HoneyBunCosmeticVisual').Value;local h
 assert(heldScene.weapon.CFrame.Y==heldLive.CFrame.Y and heldScene.weapon.CFrame.r[5]==heldLive.CFrame.r[5],'Holding editor matches live hand placement and rotation')
 assert(library.list('Gun')[1].adjustments.Holster.Position.X==1,'Held adjustments preserve holster settings')
 heldScene.character:Destroy()
+-- A lowered live arm must become a raised holding arm in the clone only.
+local arm=node('Part','RightUpperArm',localPlayer.Character);arm.CFrame=frame(101,-1,0)
+local hand=node('Part','RightHand',localPlayer.Character);hand.CFrame=frame(101,-3,0)
+local shoulder=node('Motor6D','RightShoulder',localTorso);shoulder.Part0=localTorso;shoulder.Part1=arm;shoulder.C0=frame(1,0,0);shoulder.C1=frame(0,1,0)
+local wrist=node('Motor6D','RightWrist',arm);wrist.Part0=arm;wrist.Part1=hand;wrist.C0=frame(0,-2,0);wrist.C1=frame()
+-- CFrame inverse for the small host used by pose baking.
+local originalFrame=CFrame.new
+local function withInverse(f)function f:Inverse()return self:ToObjectSpace(originalFrame())end;return f end
+shoulder.C1=withInverse(shoulder.C1);wrist.C1=withInverse(wrist.C1)
+local posed=editorBackend.getWeaponEditorScene(savedGunId,'Held')
+local posedHand=posed.character:FindFirstChild('RightHand')
+assert(posedHand.CFrame.Z < localTorso.CFrame.Z-2,'Holding preview raises the arm forward rather than leaving it by the hip')
+assert(hand.CFrame.Y==-3 and hand.CFrame.Z==0,'Holding preview does not pose the real avatar')
+local resting=editorBackend.getWeaponEditorScene(savedGunId,'Holster')
+assert(resting.character:FindFirstChild('RightHand').CFrame.Y==-3,'Holster preview preserves the original pose')
+posed.character:Destroy();resting.character:Destroy()
+
 gunScene.character:Destroy();knifeScene.character:Destroy();editorBackend.destroy()
 print('Shared avatar editor and live placement, rotation, scale, textures, knife mounts and transient updates passed.')
