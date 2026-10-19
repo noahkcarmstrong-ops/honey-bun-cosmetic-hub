@@ -9,6 +9,10 @@ return function(playerGui, catalog, onStatus)
     local persist,sceneMode, cameraTarget, cameraYaw, cameraDistance, cameraPitch
     local orbitDragging,previousMouseBehavior
     local frozenCamera
+    local previewHover=false
+    local ContextActionService
+    local wheelAction="LarpbloxWeaponPreviewWheel_"..tostring({})
+    pcall(function()ContextActionService=game:GetService("ContextActionService")end)
     local workspaceService
     pcall(function()workspaceService=game:GetService("Workspace")end)
     local guides,axisLabels={},{}
@@ -57,23 +61,36 @@ return function(playerGui, catalog, onStatus)
         make("UICorner", b, {CornerRadius=UDim.new(0,4)})
         return b
     end
+    local function freezeGameCamera()
+        if frozenCamera then return end
+        local worldCamera=workspaceService and workspaceService.CurrentCamera
+        if worldCamera then
+            frozenCamera={camera=worldCamera,kind=worldCamera.CameraType,cframe=worldCamera.CFrame,focus=worldCamera.Focus}
+            worldCamera.CameraType=Enum.CameraType.Scriptable
+        end
+    end
+    local function releaseGameCamera()
+        if frozenCamera and not previewHover and not orbitDragging then
+            local saved=frozenCamera;frozenCamera=nil
+            pcall(function()
+                saved.camera.CFrame=saved.cframe;saved.camera.Focus=saved.focus
+                saved.camera.CameraType=saved.kind
+            end)
+        end
+    end
     local function stopOrbit()
         if orbitDragging then
             orbitDragging=false
             if previousMouseBehavior then UserInputService.MouseBehavior=previousMouseBehavior end
             previousMouseBehavior=nil
-            if frozenCamera then
-                local saved=frozenCamera;frozenCamera=nil
-                pcall(function()
-                    saved.camera.CFrame=saved.cframe;saved.camera.Focus=saved.focus
-                    saved.camera.CameraType=saved.kind
-                end)
-            end
             if projectAxes then pcall(projectAxes) end
         end
+        releaseGameCamera()
     end
     local function stopConnections()
+        previewHover=false
         stopOrbit()
+        if ContextActionService then ContextActionService:UnbindAction(wheelAction) end
         for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
         connections = {}; dragging = nil
     end
@@ -203,7 +220,7 @@ return function(playerGui, catalog, onStatus)
         local right=make("ScrollingFrame",panel,{Position=UDim2.new(.46,8,0,62),Size=UDim2.new(.54,-26,1,-116),CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=6})
         local layout=make("UIListLayout",right,{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder}); make("UIPadding",right,{PaddingLeft=UDim.new(0,6),PaddingRight=UDim.new(0,8)})
         local tabs=make("Frame",right,{Size=UDim2.new(1,0,0,34),BackgroundTransparency=1,LayoutOrder=0}); local holster=button(tabs,"Hip / Back",UDim2.new(.49,0,1,0)); local held=button(tabs,"Holding",UDim2.new(.49,0,1,0)); held.Position=UDim2.new(.51,0,0,0)
-        buildControls(right); statusLabel=label(viewport,"Left-click + drag to rotate and show axes. X: red · Y: green · Z: blue",UDim2.new(1,-20,0,42),Color3.fromRGB(215,225,240),12); statusLabel.Position=UDim2.fromOffset(10,8);statusLabel.TextWrapped=true;statusLabel.ZIndex=5
+        buildControls(right); statusLabel=label(viewport,"Left-drag to rotate · Scroll to zoom · X: red · Y: green · Z: blue",UDim2.new(1,-20,0,42),Color3.fromRGB(215,225,240),12); statusLabel.Position=UDim2.fromOffset(10,8);statusLabel.TextWrapped=true;statusLabel.ZIndex=5
         local orbitLeft=button(viewport,"◀",UDim2.fromOffset(30,28)); orbitLeft.Position=UDim2.new(0,8,1,-36)
         local orbitRight=button(viewport,"▶",UDim2.fromOffset(30,28)); orbitRight.Position=UDim2.new(0,42,1,-36)
         local zoomOut=button(viewport,"−",UDim2.fromOffset(30,28)); zoomOut.Position=UDim2.new(0,76,1,-36)
@@ -213,20 +230,28 @@ return function(playerGui, catalog, onStatus)
         connect(orbitLeft.Activated,function() orbit(-math.rad(15)) end); connect(orbitRight.Activated,function() orbit(math.rad(15)) end)
         connect(zoomOut.Activated,function() cameraDistance=math.min(14,cameraDistance+1); orbit(0) end); connect(zoomIn.Activated,function() cameraDistance=math.max(4,cameraDistance-1); orbit(0) end)
         local reset=button(panel,"Reset",UDim2.fromOffset(82,30)); reset.Position=UDim2.new(1,-307,1,-42); local cancel=button(panel,"Cancel",UDim2.fromOffset(82,30)); cancel.Position=UDim2.new(1,-215,1,-42); local done=button(panel,"Save / Done",UDim2.fromOffset(105,30)); done.Position=UDim2.new(1,-123,1,-42);done.Modal=true
+        connect(viewport.MouseEnter,function()previewHover=true;freezeGameCamera()end)
+        connect(viewport.MouseLeave,function()previewHover=false;releaseGameCamera()end)
+        if ContextActionService then
+            ContextActionService:BindActionAtPriority(wheelAction,function(_,state,input)
+                if not gui or not (previewHover or orbitDragging) then return Enum.ContextActionResult.Pass end
+                if state==Enum.UserInputState.Change then
+                    cameraDistance=math.clamp(cameraDistance-input.Position.Z*.7,4,14)
+                    updateCamera()
+                end
+                return Enum.ContextActionResult.Sink
+            end,false,3000,Enum.UserInputType.MouseWheel)
+        end
         connect(viewport.InputBegan,function(input)
             if input.UserInputType==Enum.UserInputType.MouseButton1 and not dragging and not orbitDragging then
                 previousMouseBehavior=UserInputService.MouseBehavior
                 orbitDragging=true
-                local worldCamera=workspaceService and workspaceService.CurrentCamera
-                if worldCamera then
-                    frozenCamera={camera=worldCamera,kind=worldCamera.CameraType,cframe=worldCamera.CFrame,focus=worldCamera.Focus}
-                    worldCamera.CameraType=Enum.CameraType.Scriptable
-                end
+                freezeGameCamera()
                 UserInputService.MouseBehavior=Enum.MouseBehavior.LockCurrentPosition
                 pcall(projectAxes)
             end
         end)
-        connect(UserInputService.WindowFocusReleased,stopOrbit)
+        connect(UserInputService.WindowFocusReleased,function()previewHover=false;stopOrbit()end)
         connect(UserInputService.InputChanged,function(input)
             if orbitDragging and input.UserInputType==Enum.UserInputType.MouseMovement then
                 cameraYaw=cameraYaw-input.Delta.X*0.008
