@@ -14,7 +14,7 @@ local guiClasses={Frame=true,ScrollingFrame=true,TextLabel=true,TextButton=true,
 local function ancestors(o,signalName,value)
     while o do o[signalName]:Fire(value);o=o.Parent end
 end
-local meta={__index=function(t,k)return methods[k] or t.props[k]end,__newindex=function(t,k,v)
+local meta={__index=function(t,k)if k=='LayoutOrder' and t.props.ClassName=='UIListLayout' then error('LayoutOrder is not a valid member of UIListLayout') end;return methods[k] or t.props[k]end,__newindex=function(t,k,v)
     if k=='Parent' then
         local old=t.props.Parent
         if old==v then return end
@@ -322,6 +322,7 @@ UDim2.new=function(xs,xo,ys,yo)return {X={Scale=xs,Offset=xo},Y={Scale=ys,Offset
 for index,tab in ipairs({tabCurrent,tabClassic,tabHoliday})do
     tab.Position=UDim2.new((index-1)*0.2,0,0,0);tab.Size=UDim2.new(0.2,0,1,0)
 end
+node('UIListLayout','TabLayout',tabsRoot)
 local originalCurrentSize=tabCurrent.Size
 node('LocalScript','NativeTabScript',tabCurrent)
 local nestedSearch=node('TextBox','Search',nestedInventory)
@@ -336,8 +337,10 @@ end
 nestedCard('NativeKnife','Default Knife');nestedCard('NativeGun','Default Gun')
 local tabCount=0
 local gameTab=node('TextButton','HolidayTab',nestedInventory);gameTab.Activated:Connect(function()tabCount=tabCount+1 end)
+local orphanSaved=node('Frame','HoneyBunLocal_Saved_Gun_legacy',holidayBranch)
 local nestedApi=create(playerGui,savedCatalog,nil,'saved')
 assert(nestedApi.enable(),'Nested native weapons structure is detected');flush()
+assert(orphanSaved.destroyed,'Legacy saved cards are removed from native categories')
 local function descNamed(root,name)for _,o in ipairs(root:GetDescendants())do if o.Name==name then return o end end end
 local savedPane=descNamed(nestedInventory,'HoneyBunLocal_SavedPane')
 local savedTab=descNamed(nestedInventory,'HoneyBunLocal_SavedTab')

@@ -113,7 +113,6 @@ return function(game, injectedRequire, gunLibrary)
     function api.list(category,search)
         local kind=category and tostring(category):sub(1,1):upper()..tostring(category):sub(2):lower() or nil; if kind~="Knife" and kind~="Gun" and kind~="Emote" then kind=nil end
         local source={}; if kind then for _,e in ipairs(catalog(kind)) do source[#source+1]=e end else for _,k in ipairs({"Knife","Gun","Emote"}) do for _,e in ipairs(catalog(k)) do source[#source+1]=e end end end
-        if gunLibrary and (not kind or kind=="Gun" or kind=="Knife") then for _,e in ipairs(gunLibrary.list(kind)) do source[#source+1]=e end end
         local query,out=lower(search),{}
         for _,e in ipairs(source) do
             local item=inventoryEntry(e)

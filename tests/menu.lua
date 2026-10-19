@@ -310,7 +310,7 @@ calls.nativeFail=true;click('Show all weapons: OFF');calls.nativeFail=false
 assert(find(gui(),'TextButton','Show all weapons: OFF'),'Detection failure leaves toggle off')
 click('Show all weapons: OFF')
 assert(calls.nativeEnabled and find(gui(),'TextButton','Show all weapons: ON'),'Optional inventory overlay toggles on')
-assert(not calls.savedNativeEnabled,'Full overlay temporarily disables additive saved cards')
+assert(calls.savedNativeEnabled,'Saved Weapons remains available with the full catalog enabled')
 click('Show all weapons: ON');assert(not calls.nativeEnabled and not calls.mm2Restored,'Hiding optional inventory does not clear saved weapon appearance')
 assert(calls.savedNativeEnabled,'Disabling full overlay restores saved native cards')
 click('Refresh saved effects in MM2 inventory');assert(calls.nativeEffectsEnabled and calls.effectsCollecting,'Saved effects inventory refreshes without a toggle')

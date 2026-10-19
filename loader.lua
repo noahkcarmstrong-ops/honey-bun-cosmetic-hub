@@ -480,7 +480,8 @@ render=function()
                 if mm2Enabled then
                     nativeMM2().disable()
                     local ok=nativeMM2().enable()
-                    if ok==false then mm2Enabled=false;savedNativeMM2().enable() end
+                    if ok==false then mm2Enabled=false end
+                    savedNativeMM2().enable();savedNativeMM2().refreshSaved()
                 else
                     savedNativeMM2().enable();savedNativeMM2().refreshSaved()
                 end
@@ -536,15 +537,14 @@ render=function()
                 button("Remove knife effect",function() action(function()return effectsMM2().restore()end) end)
             end
             caption("OPTIONAL MM2 INVENTORY DISPLAY",24)
-            caption("Show all weapons is optional. Leave it off to use your Saved Weapons tab.",48)
+            caption("Saved copies appear only in Saved Weapons. Show all weapons displays the separate game catalog.",48)
             button(mm2Enabled and "Show all weapons: ON" or "Show all weapons: OFF",function() action(function()
                 if mm2Enabled then
                     nativeMM2().disable();mm2Enabled=false;savedNativeMM2().enable()
                     return "Original inventory display restored. Your saved weapon appearance stays equipped."
                 end
-                savedNativeMM2().disable()
                 local ok,message=nativeMM2().enable()
-                if ok==false then savedNativeMM2().enable() end
+                savedNativeMM2().enable();savedNativeMM2().refreshSaved()
                 assert(ok~=false,message or "MM2 inventory could not be detected.")
                 mm2Enabled=true;return type(ok)=="string" and ok or message
             end) end)

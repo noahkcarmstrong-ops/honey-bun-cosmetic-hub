@@ -22,7 +22,7 @@ return function(playerGui,catalog,onStatus,mode)
     local lastReport="Native inventory has not been detected yet."
     local diagnosticDetails=""
     local tabBindings,categoryCounts={},{season1=0,classic=0,holiday=0}
-    local function read(o,k) local ok,v=pcall(function() return o[k] end);if ok then return v end end
+    local function read(o,k) local ok,v=pcall(function() return o[k] end);if ok then return v end;return nil end
     local function is(o,c) local ok,v=pcall(function() return o:IsA(c) end);return ok and v end
     local function children(o) return o and o:GetChildren() or {} end
     local function descendants(o) return o and o:GetDescendants() or {} end
@@ -562,7 +562,7 @@ return function(playerGui,catalog,onStatus,mode)
             end
         end)
         local maxOrder=0
-        for _,o in ipairs(children(tabs)) do if type(read(o,"LayoutOrder"))=="number" then maxOrder=math.max(maxOrder,o.LayoutOrder) end end
+        for _,o in ipairs(children(tabs)) do local order=read(o,"LayoutOrder");if type(order)=="number" then maxOrder=math.max(maxOrder,order) end end
         savedTab.LayoutOrder=maxOrder+1;savedTab.Parent=tabs;savedTabParent=tabs
         savedPane.Parent=nativeHost;savedPane.Visible=false
         for _,pane in ipairs(children(nativeHost)) do
@@ -598,12 +598,18 @@ return function(playerGui,catalog,onStatus,mode)
         if effects then inventory,detectedGrid,detectedTemplate=detect() else inventory,detectedGrid,detectedTemplate=detectWeapon() end
         if not inventory then status("Waiting for MM2 Weapons inventory to load.");return end
         if savedRoot and savedRoot~=inventory then
-            for _,connectionsForCard in pairs(savedCardConnections) do disconnect(connectionsForCard) end
-            savedCardConnections={};savedCards={};savedEntries={};savedMetadata={};savedLayouts={}
+            clearSaved()
+        end
+        if savedRoot~=inventory and savedOnly and not effects then
+            -- Remove cards left by an older hub before mounting the dedicated tab.
+            for _,object in ipairs(descendants(inventory)) do
+                if tostring(object.Name):sub(1,#"HoneyBunLocal_Saved_")=="HoneyBunLocal_Saved_" then destroy(object) end
+            end
         end
         savedRoot=inventory
         root=inventory
         if savedOnly and not effects and not mountSavedTab(inventory,detectedGrid,detectedTemplate) then
+            clearSaved()
             status("Waiting for MM2's weapon tabs. Saved cards will appear only in Saved Weapons.")
             return
         end
@@ -976,9 +982,9 @@ return function(playerGui,catalog,onStatus,mode)
     function api.report()
         if savedOnly then
             local count=0;for _,card in pairs(savedCards) do if alive(card) then count=count+1 end end
-            if savedTabMode then return "Native inventory build: saved weapons\n"..lastReport.."\nGenerated="..count.."\nSaved pane: "..(savedGrid and savedGrid:GetFullName() or "none") end
+            if savedTabMode then return "Native inventory build: saved weapons V2\n"..lastReport.."\nGenerated="..count.."\nSaved pane: "..(savedGrid and savedGrid:GetFullName() or "none") end
             local paths={};for _,key in ipairs({"season1","classic","holiday"}) do paths[#paths+1]=key.."="..(savedGrids[key] and savedGrids[key]:GetFullName() or "none") end
-            return "Native inventory build: saved weapons\n"..lastReport.."\nGenerated="..count.."\nCategory grids: "..table.concat(paths,"; ")
+            return "Native inventory build: saved weapons V2\n"..lastReport.."\nGenerated="..count.."\nCategory grids: "..table.concat(paths,"; ")
         end
         return "Native inventory build: weapons and effects V9\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nRender passes="..renderPasses.."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.." Effects="..tostring(categoryCounts.effects or 0).."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").." Effect="..(sideSlots.Effect and sideSlots.Effect:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")..(diagnosticDetails~="" and ("\nInventory diagnostics:\n"..diagnosticDetails) or "")
     end
