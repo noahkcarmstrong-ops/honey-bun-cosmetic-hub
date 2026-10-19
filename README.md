@@ -122,7 +122,7 @@ API references: [Accessories](https://create.roblox.com/docs/reference/engine/cl
 ## MM2 local cosmetics
 
 The sheriff crosshair accepts Roblox image IDs and decal IDs or links, including Creator Store links. Decals are resolved to their image texture before previewing and saving.
-Use **Apply crosshair size** to set its width and height from 8 to 128 pixels; the default is 24. The size saves with your other choices.
+Drag the **Crosshair Size** slider to set its width and height from 8 to 200 pixels; the default is 40. The size saves with your other choices.
 
 **Show all MM2 emotes** remembers ON or OFF across Refresh and rerunning the menu. With **Auto-save: on**, it also restores your choice when you run the menu after rejoining MM2, including the Game Emotes bar.
 

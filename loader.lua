@@ -273,8 +273,8 @@ local copyPlayerInput=uiSetting("copyPlayer","")
 mm2EmotesShown=uiSetting("mm2EmotesShown",false)
 local knifeSide=uiSetting("mm2KnifeSide",false)
 local crosshairImage=uiSetting("mm2Crosshair","")
-local crosshairSize=uiSetting("mm2CrosshairSize",24)
-if crosshairSize~=crosshairSize or crosshairSize<8 or crosshairSize>128 then crosshairSize=24 end
+local crosshairSize=uiSetting("mm2CrosshairSize",40)
+if crosshairSize~=crosshairSize or crosshairSize<8 or crosshairSize>200 then crosshairSize=40 end
 local crosshairInput=crosshairImage
 local alive, busy, activePage = true, false, uiSetting("page","Accessories")
 local actionRunning=false
@@ -747,14 +747,44 @@ render=function()
                 return "Custom crosshair saved. Hold your gun to see it."
             end,true) end)
             caption("CROSSHAIR SIZE",24)
-            local sizeBox=input("Size in pixels (8–128)",tostring(crosshairSize),function()end)
-            button("Apply crosshair size",function() action(function()
-                local size=tonumber(sizeBox.Text)
-                assert(size and size==size and size>=8 and size<=128,"Choose a size between 8 and 128 pixels.")
-                crosshairSize=math.floor(size+.5)
-                customCrosshair().setSize(crosshairSize);saveUI()
-                return "Crosshair size saved: "..crosshairSize.." pixels."
-            end,true) end)
+            local sizeRow=row("Frame",48)
+            local sizeLabel=text(sizeRow,"",UDim2.new(1,-66,0,8),UDim2.fromOffset(66,28),14)
+            local sizeTrack=Instance.new("TextButton",sizeRow)
+            sizeTrack.Name="CrosshairSizeSlider";sizeTrack.Text="";sizeTrack.AutoButtonColor=false
+            sizeTrack.Position=UDim2.fromOffset(0,8);sizeTrack.Size=UDim2.new(1,-80,0,28);sizeTrack.BackgroundTransparency=1
+            local rail=Instance.new("Frame",sizeTrack)
+            rail.Position=UDim2.new(0,0,.5,-3);rail.Size=UDim2.new(1,0,0,6);rail.BackgroundColor3=theme.edge;rail.BorderSizePixel=0
+            local fill=Instance.new("Frame",rail);fill.BackgroundColor3=theme.blue;fill.BorderSizePixel=0
+            local knob=Instance.new("Frame",rail)
+            knob.AnchorPoint=Vector2.new(.5,.5);knob.Size=UDim2.fromOffset(18,18);knob.BackgroundColor3=theme.blue;knob.BorderSizePixel=0
+            Instance.new("UICorner",knob).CornerRadius=UDim.new(1,0)
+            local function paintSize()
+                local ratio=(crosshairSize-8)/192
+                fill.Size=UDim2.new(ratio,0,1,0);knob.Position=UDim2.new(ratio,0,.5,0)
+                sizeLabel.Text=crosshairSize.." px"
+            end
+            local draggingSize
+            local function moveSize(event)
+                if sizeTrack.AbsoluteSize.X<=0 then return end
+                local ratio=math.clamp((event.Position.X-sizeTrack.AbsolutePosition.X)/sizeTrack.AbsoluteSize.X,0,1)
+                local value=math.floor(8+ratio*192+.5)
+                local ok=pcall(function()customCrosshair().setSize(value)end)
+                if ok then crosshairSize=value;paintSize() end
+            end
+            sizeTrack.InputBegan:Connect(function(event)
+                if busy then return end
+                if event.UserInputType==Enum.UserInputType.MouseButton1 or event.UserInputType==Enum.UserInputType.Touch then
+                    draggingSize=event;moveSize(event)
+                end
+            end)
+            local moveConnection=Input.InputChanged:Connect(function(event)
+                if draggingSize and (event==draggingSize or event.UserInputType==Enum.UserInputType.MouseMovement and draggingSize.UserInputType==Enum.UserInputType.MouseButton1) then moveSize(event) end
+            end)
+            local endConnection=Input.InputEnded:Connect(function(event)
+                if draggingSize and (event==draggingSize or event.UserInputType==Enum.UserInputType.MouseButton1 and draggingSize.UserInputType==Enum.UserInputType.MouseButton1) then draggingSize=nil;saveUI() end
+            end)
+            sizeRow.Destroying:Connect(function()moveConnection:Disconnect();endConnection:Disconnect();if draggingSize then saveUI() end end)
+            paintSize()
             button("Restore default crosshair",function() action(function()
                 if crosshairAPI then crosshairAPI.set("") end
                 crosshairImage="";saveUI()

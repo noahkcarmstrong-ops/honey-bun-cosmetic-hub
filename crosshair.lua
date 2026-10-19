@@ -14,7 +14,7 @@ return function(game)
     local connection
     local destroyed = false
     local savedMouseEnabled
-    local size = 24
+    local size = 40
     local gui = Instance.new("ScreenGui")
     gui.Name="HoneyBunCrosshair";gui.IgnoreGuiInset=true;gui.ResetOnSpawn=false;gui.DisplayOrder=1000
     gui.Parent=player:WaitForChild("PlayerGui")
@@ -106,7 +106,7 @@ return function(game)
     return {
         setSize = function(value)
             assert(not destroyed,"crosshair is destroyed")
-            assert(type(value)=="number" and value==value and value>=8 and value<=128,"Crosshair size must be between 8 and 128 pixels.")
+            assert(type(value)=="number" and value==value and value>=8 and value<=200,"Crosshair size must be between 8 and 200 pixels.")
             size=math.floor(value+.5)
             cursor.Size=UDim2.fromOffset(size,size)
         end,

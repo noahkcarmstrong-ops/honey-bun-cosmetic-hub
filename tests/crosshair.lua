@@ -52,11 +52,11 @@ player.Character = character
 api.set("rbxassetid://123")
 run.RenderStepped:Fire()
 assert(mouse.Icon == "rbxassetid://123", "equipped Gun overrides the icon")
-assert(created.ImageLabel.Visible and created.ImageLabel.Size.X==24 and not input.MouseIconEnabled,'Crosshair defaults to a small overlay and hides native pointer')
+assert(created.ImageLabel.Visible and created.ImageLabel.Size.X==40 and not input.MouseIconEnabled,'Crosshair defaults to a small overlay and hides native pointer')
 assert(created.ImageLabel.Position.X==300 and created.ImageLabel.Position.Y==200,'Crosshair follows mouse location')
 api.setSize(16)
 assert(created.ImageLabel.Size.X==16 and created.ImageLabel.Size.Y==16,'Crosshair can be resized')
-assert(not pcall(api.setSize,0) and not pcall(api.setSize,129),'Invalid sizes are rejected')
+assert(not pcall(api.setSize,0) and not pcall(api.setSize,201),'Invalid sizes are rejected')
 gun.Parent = nil
 local knife = character:Add(object("Tool", "Knife"))
 run.RenderStepped:Fire()

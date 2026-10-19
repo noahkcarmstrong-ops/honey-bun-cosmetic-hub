@@ -15,7 +15,7 @@ local meta={__index=function(t,k)return methods[k] or t.props[k]end,__newindex=f
     if t.props.propertySignals and t.props.propertySignals[k] then t.props.propertySignals[k]:Fire() end
 end}
 Instance={new=function(class,parent)
-    local o=setmetatable({props={ClassName=class,Name=class,Parent=parent,Visible=true,Activated=signal(),FocusLost=signal(),Focused=signal(),MouseEnter=signal(),MouseLeave=signal(),MouseButton1Down=signal(),MouseButton1Up=signal(),Destroying=signal()}},meta)
+    local o=setmetatable({props={ClassName=class,Name=class,Parent=parent,Visible=true,Activated=signal(),InputBegan=signal(),FocusLost=signal(),Focused=signal(),MouseEnter=signal(),MouseLeave=signal(),MouseButton1Down=signal(),MouseButton1Up=signal(),Destroying=signal()}},meta)
     objects[#objects+1]=o;return o
 end}
 function methods:GetChildren()local list={};for _,o in ipairs(objects)do if o.Parent==self then list[#list+1]=o end end;return list end
@@ -50,7 +50,8 @@ TweenInfo={new=function(...)return{...}end}
 local function enum()return setmetatable({},{__index=function(t,k)local v=enum();rawset(t,k,v);return v end})end
 Enum=enum();DateTime={now=function()return{UnixTimestampMillis=123}end};task={spawn=function(fn)fn()end,delay=function(_,fn)fn()end}
 local guiRoot=Instance.new('PlayerGui');local player=Instance.new('Player');guiRoot.Parent=player;player.CharacterAdded=signal()
-local input={InputBegan=signal(),GetFocusedTextBox=function()return nil end}
+math.clamp=function(v,a,b)return math.max(a,math.min(b,v))end
+local input={InputChanged=signal(),InputEnded=signal(),InputBegan=signal(),GetFocusedTextBox=function()return nil end}
 local calls={equip=0,skin=0,body=0,destroy=0,restore=0,current=0}
 local decalRoot
 local slots={}
@@ -360,11 +361,17 @@ assert(not calls.crosshair,'Invalid crosshair input is rejected')
 field('Roblox crosshair image ID').Text='https://www.roblox.com/library/12345/Crosshair';click('Apply crosshair')
 assert(calls.crosshair=='rbxassetid://12345' and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')==calls.crosshair,'Crosshair link applies and saves')
 assert(named(gui(),'CrosshairPreview').Image==calls.crosshair,'Applied crosshair shows a preview')
-assert(calls.crosshairSize==24,'Custom crosshair starts at a small default size')
-field('Size in pixels (8–128)').Text='16';click('Apply crosshair size')
-assert(calls.crosshairSize==16 and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2CrosshairSize')==16,'Custom crosshair size applies and saves')
-field('Size in pixels (8–128)').Text='999';click('Apply crosshair size')
-assert(calls.crosshairSize==16,'Invalid crosshair size preserves previous choice')
+assert(calls.crosshairSize==40,'Custom crosshair defaults to 40 pixels')
+local sizeSlider=named(gui(),'CrosshairSizeSlider')
+sizeSlider.AbsoluteSize={X=192};sizeSlider.AbsolutePosition={X=0}
+local sizeDown={UserInputType=Enum.UserInputType.MouseButton1,Position={X=100}}
+sizeSlider.InputBegan:Fire(sizeDown)
+assert(calls.crosshairSize==108,'Slider supports sizes past 100')
+input.InputChanged:Fire({UserInputType=Enum.UserInputType.MouseMovement,Position={X=999}})
+assert(calls.crosshairSize==200,'Slider clamps to 200 pixels')
+input.InputChanged:Fire({UserInputType=Enum.UserInputType.MouseMovement,Position={X=8}})
+input.InputEnded:Fire({UserInputType=Enum.UserInputType.MouseButton1})
+assert(calls.crosshairSize==16 and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2CrosshairSize')==16,'Releasing slider saves chosen size')
 local savedCrosshair=calls.crosshair
 field('Roblox crosshair image ID').Text='446366440';click('Apply crosshair')
 assert(calls.crosshair==savedCrosshair and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')==savedCrosshair,'Non-image asset IDs are rejected without replacing the saved crosshair')
