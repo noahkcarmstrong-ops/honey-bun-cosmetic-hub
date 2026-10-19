@@ -5,6 +5,9 @@ return function(playerGui,catalog,onStatus)
     local grid,template,root,ownedRoot,nativePane,nativeHost
     local panePath,gridPath
     local mounting,queued=false,false
+    local rendering,rerenderRequested=false,false
+    local renderGeneration,renderPasses=0,0
+    local renderedSeason,renderedQuery,catalogItems
     local cards,cardEntries,originals,connections,cardConnections={},{},{},{},{}
     local sideSlots,sideSnapshots,sideCandidates={},{},{}
     local query,season="","season1"
@@ -159,6 +162,7 @@ return function(playerGui,catalog,onStatus)
         return button
     end
     local function clearCards()
+        renderGeneration=renderGeneration+1;renderedSeason=nil;renderedQuery=nil
         disconnect(cardConnections);cardConnections={}
         for _,card in ipairs(cards) do destroy(card) end
         cards={};cardEntries={}
@@ -242,19 +246,27 @@ return function(playerGui,catalog,onStatus)
     render=function()
         assert(grid and alive(grid),"MM2 inventory is being rebuilt.")
         clearCards()
-        local items={}
-        for _,kind in ipairs({"Knife","Gun"}) do
-            local list=catalog.list(kind)
-            assert(type(list)=="table","MM2 catalog did not return an item list.")
-            for _,entry in ipairs(list) do items[#items+1]=entry end
+        local generation=renderGeneration
+        local renderSeason,renderQuery=season,query
+        renderPasses=renderPasses+1
+        if not catalogItems then
+            catalogItems={}
+            for _,kind in ipairs({"Knife","Gun"}) do
+                local list=catalog.list(kind)
+                assert(type(list)=="table","MM2 catalog did not return an item list.")
+                for _,entry in ipairs(list) do catalogItems[#catalogItems+1]=entry end
+            end
+            categoryCounts={season1=0,classic=0,holiday=0}
+            for _,entry in ipairs(catalogItems) do local key=entryCategory(entry);categoryCounts[key]=categoryCounts[key]+1 end
+            table.sort(catalogItems,compare)
         end
-        categoryCounts={season1=0,classic=0,holiday=0}
-        for _,entry in ipairs(items) do local key=entryCategory(entry);categoryCounts[key]=categoryCounts[key]+1 end
-        table.sort(items,compare)
+        local items=catalogItems
         local equipped=catalog.getEquipped and catalog.getEquipped() or {}
         local ok,message=pcall(function()
             for _,entry in ipairs(items) do
-                if entryCategory(entry)==season and (query=="" or lower(entry.name):find(query,1,true) or lower(entry.id):find(query,1,true)) then
+                if entryCategory(entry)==renderSeason and (renderQuery=="" or lower(entry.name):find(renderQuery,1,true) or lower(entry.id):find(renderQuery,1,true)) then
+                    if #cards>0 and #cards%24==0 and type(task.wait)=="function" then task.wait() end
+                    if generation~=renderGeneration or not enabled or dead then return end
                     local card=template:Clone()
                     cards[#cards+1]=card
                     cardEntries[card]=entry
@@ -285,6 +297,7 @@ return function(playerGui,catalog,onStatus)
             end
         end)
         if not ok then clearCards();error(message) end
+        if generation==renderGeneration and enabled then renderedSeason=renderSeason;renderedQuery=renderQuery end
         return #cards,#items
     end
     local refresh
@@ -402,6 +415,7 @@ return function(playerGui,catalog,onStatus)
         bindControls()
     end
     refresh=function()
+        if rendering then rerenderRequested=true;return lastReport end
         if not ownedRoot or not alive(ownedRoot) then
             mounting=true
             releaseMount()
@@ -411,15 +425,25 @@ return function(playerGui,catalog,onStatus)
         end
         ownedRoot.Visible=true
         for pane in pairs(originals) do pcall(function() pane.Visible=false end) end
-        local n,total=render()
+        local n,total=#cards,catalogItems and #catalogItems or 0
+        if renderedSeason~=season or renderedQuery~=query then
+            rendering=true
+            local ok,count,all=pcall(render)
+            rendering=false
+            if not ok then error(count) end
+            if not enabled or dead then return lastReport end
+            n,total=count,all
+        end
         assert(total>0,"MM2's item database returned no knife/gun cosmetics. Copy MM2 report for details.")
-        updateSideSlots(catalog.getEquipped and catalog.getEquipped() or {})
+        local equipped=catalog.getEquipped and catalog.getEquipped() or {}
+        updateSelection(equipped);updateSideSlots(equipped)
+        if rerenderRequested then rerenderRequested=false;schedule() end
         status("MM2 "..season.." inventory: "..n.." local cosmetic cards.")
         return lastReport
     end
     local watchers={}
     function api.disable()
-        enabled=false;queued=false
+        enabled=false;queued=false;rerenderRequested=false;catalogItems=nil
         disconnect(watchers);watchers={};releaseMount()
         if template then destroy(template);template=nil end
         panePath,gridPath=nil,nil
@@ -431,6 +455,7 @@ return function(playerGui,catalog,onStatus)
         enabled=true;query="";season="season1"
         local ok,message=pcall(refresh)
         if not ok then api.disable();status("MM2 inventory could not load: "..tostring(message).."\n"..inventoryTree());return false,lastReport end
+        if not enabled then return false,"Inventory loading cancelled." end
         local function changed(o)
             if not mounting and not localObject(o) and (inventoryAncestor(o) or lower(o.Name):find("inventory",1,true)) then schedule() end
         end
@@ -439,7 +464,7 @@ return function(playerGui,catalog,onStatus)
         return true,message
     end
     function api.report()
-        return "Native inventory build: equipped side slots V5\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")
+        return "Native inventory build: batched inventory V6\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nRender passes="..renderPasses.."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")
     end
     function api.destroy() if not dead then api.disable();dead=true end end
     return api

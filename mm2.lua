@@ -106,11 +106,11 @@ return function(game, injectedRequire)
     local equipped,pending,connections = {},{},{}
     local allowPending=false
     local watchersActive=false
-    local observed={}
+    local observed,watchedCharacters={},{}
     local equipError,lastEquipResult
     local function disconnectAll()
         for _,connection in ipairs(connections) do pcall(function() connection:Disconnect() end) end
-        connections={};watchersActive=false;observed={}
+        connections={};watchersActive=false;observed={};watchedCharacters={}
     end
     local function connect(signal, fn)
         local method=signal and read(signal,"Connect")
@@ -119,6 +119,10 @@ return function(game, injectedRequire)
     local function set(o,k,v) if not o then return false end; local ok=pcall(function() o[k]=v end); return ok and (v==nil or read(o,k)~=nil) end
     local function toolKind(t)
         local text=lower(read(t,"Name")); return text:find("gun",1,true) and "Gun" or (text:find("knife",1,true) or text:find("weapon",1,true)) and "Knife"
+    end
+    local function referenceKind(object)
+        if not isA(object,"ObjectValue") then return nil end
+        local name=lower(read(object,"Name")); return name=="displayrefgun" and "Gun" or name=="displayrefknife" and "Knife"
     end
     local function weaponTarget(object)
         if isA(object,"Tool") then return true end
@@ -129,7 +133,18 @@ return function(game, injectedRequire)
     local function weaponHandle(object)
         return isA(object,"BasePart") and object or child(object,"Handle")
     end
+    local function displayReference(expected)
+        local ps=service("Players");local p=ps and read(ps,"LocalPlayer");local character=p and read(p,"Character")
+        for _,reference in ipairs(children(character)) do
+            if referenceKind(reference)==expected then
+                local target=read(reference,"Value");local handle=weaponHandle(target)
+                return reference,target,handle
+            end
+        end
+    end
     local function targetTool(expected)
+        local reference,target,referenceHandle=displayReference(expected)
+        if referenceHandle then return target,referenceHandle,reference end
         local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local c=p and read(p,"Character")
         local bp=p and read(p,"Backpack")
         local containers={character=c,backpack=bp}
@@ -279,8 +294,12 @@ return function(game, injectedRequire)
             track=nextTrack
             return "Previewing emote: "..e.name
         end
-        local _,handle=targetTool(kind)
-        if selectedTool then assert(weaponTarget(selectedTool) and toolKind(selectedTool)==kind,"Matching native weapon is required.");handle=weaponHandle(selectedTool) end
+        local handle
+        if selectedTool then
+            local referenceKindValue=referenceKind(selectedTool)
+            if referenceKindValue then assert(referenceKindValue==kind,"Matching native weapon is required.");handle=weaponHandle(read(selectedTool,"Value"))
+            else assert(weaponTarget(selectedTool) and toolKind(selectedTool)==kind,"Matching native weapon is required.");handle=weaponHandle(selectedTool) end
+        else local _,targetHandle=targetTool(kind);handle=targetHandle end
         if not handle and allowPending then
             pending[kind]=e.id;equipped[kind]=e.id
             return "Queued "..kind:lower().." locally: "..e.name.." (waiting for your matching weapon)"
@@ -337,8 +356,28 @@ return function(game, injectedRequire)
             if not ok then pending[kind]=id;equipError=tostring(message) else equipError=nil end
         end
     end
+    local function applyToReference(reference)
+        if not alive then return end
+        local kind=referenceKind(reference);local id=kind and equipped[kind]
+        if id and weaponHandle(read(reference,"Value")) then
+            local ok,message=pcall(api.preview,id,kind,reference)
+            if not ok then pending[kind]=id;equipError=tostring(message) else equipError=nil end
+        end
+    end
+    local function watchReference(reference)
+        if not referenceKind(reference) then return end
+        if not observed[reference] then
+            observed[reference]=true
+            local changed=read(reference,"GetPropertyChangedSignal")
+            if type(changed)=="function" then connect(changed(reference,"Value"),function() applyToReference(reference) end) end
+        end
+        applyToReference(reference)
+    end
+    local function watchReferences(character)
+        for _,reference in ipairs(children(character)) do watchReference(reference) end
+    end
     local function watchTool(tool)
-        if not weaponTarget(tool) then return end
+        if not weaponTarget(tool) or not toolKind(tool) then return end
         if not observed[tool] then
             observed[tool]=true
             connect(read(tool,"DescendantAdded"),function() applyToTool(tool) end)
@@ -353,22 +392,35 @@ return function(game, injectedRequire)
         end
         for _,tool in ipairs(descendants(container)) do watchTool(tool) end
     end
+    local function watchCharacter(character)
+        if not character then return end
+        watchContainer(character);watchReferences(character)
+        if not watchedCharacters[character] then
+            watchedCharacters[character]=true
+            connect(read(character,"ChildAdded"),watchReference)
+        end
+    end
     local function ensureWatchers()
         local ps=service("Players");local p=read(ps,"LocalPlayer")
         if not watchersActive then
             watchersActive=true
-            connect(read(p,"CharacterAdded"),watchContainer)
+            connect(read(p,"CharacterAdded"),watchCharacter)
             connect(read(p,"ChildAdded"),function(o) if isA(o,"Backpack") then watchContainer(o) end end)
         end
-        watchContainer(read(p,"Character"));watchContainer(read(p,"Backpack"))
+        watchCharacter(read(p,"Character"));watchContainer(read(p,"Backpack"))
     end
     function api.equip(id,category)
         assert(alive,"The MM2 cosmetic preview is closed.")
         local kind=category and tostring(category):sub(1,1):upper()..tostring(category):sub(2):lower(); assert(kind=="Gun" or kind=="Knife","Equip category must be Knife or Gun.")
         local e=findEntry(id,kind); assert(e,"Unsupported "..kind:lower().." cosmetic: "..tostring(id))
         lastAttempt={id=e.id,kind=kind,definition=e.definition}
+        equipped[kind]=e.id;pending[kind]=e.id
         allowPending=true; local ok,result=pcall(api.preview,e.id,kind); allowPending=false
-        if not ok then equipError=tostring(result);error(result) end
+        if not ok then
+            equipError=tostring(result);ensureWatchers();equipError=tostring(result)
+            lastEquipResult="Selected "..e.name.."; avatar preview unavailable: "..equipError
+            return lastEquipResult
+        end
         equipError=nil;lastEquipResult=result
         ensureWatchers()
         return result
@@ -409,7 +461,7 @@ return function(game, injectedRequire)
     end
     function api.report()
         local rs=service("ReplicatedStorage"); local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local lines={"MM2 discovery (read-only)","GameId="..tostring(read(game,"GameId") or "?"),"PlaceId="..tostring(read(game,"PlaceId") or "?"),"ReplicatedStorage="..(rs and "available" or "missing"),"LocalPlayer="..(p and tostring(read(p,"Name") or "available") or "missing")}
-        lines[#lines+1]="Build: replicated visuals and avatar diagnostics V6"
+        lines[#lines+1]="Build: replicated visuals and avatar diagnostics V7"
         lines[#lines+1]="Selected Knife="..tostring(equipped.Knife).." Gun="..tostring(equipped.Gun).." Last equip error="..tostring(equipError or "none")
         lines[#lines+1]="Pending Knife="..tostring(pending.Knife).." Gun="..tostring(pending.Gun).." Last result="..tostring(lastEquipResult or "none")
         if lastAttempt then
@@ -428,6 +480,10 @@ return function(game, injectedRequire)
             top[#top+1]=tostring(read(object,"Name")).."["..tostring(read(object,"ClassName")).."]"
         end
         lines[#lines+1]="Avatar children="..table.concat(top,", ")
+        for _,kind in ipairs({"Knife","Gun"}) do
+            local reference,target,handle=displayReference(kind)
+            lines[#lines+1]="DisplayRef"..kind.."="..(reference and fullName(reference) or "missing").." Value="..(target and fullName(target) or "missing").." class="..(target and tostring(read(target,"ClassName")) or "missing").." Handle="..(handle and fullName(handle) or "missing")
+        end
         local visualCount=0
         for _,object in ipairs(descendants(character)) do
             if visualCount>=32 then break end

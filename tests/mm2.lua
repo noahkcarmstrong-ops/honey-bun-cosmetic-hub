@@ -155,9 +155,10 @@ local emptyApi=create(emptyGame,function(module)return module.Data end)
 assert(emptyApi.equip('Fragile_G_2023','Gun'):find('waiting',1,true),'No native weapon queues a selection before loading any asset')
 assert(emptyLoads==0,'Selecting without a native weapon never downloads an asset')
 assetPlayer.Character=node('Character','Model',{directDisplay})
-local fail1,err1=pcall(emptyApi.equip,'Fragile_G_2023','Gun')
-local fail2,err2=pcall(emptyApi.equip,'Fragile_G_2023','Gun')
-assert(not fail1 and not fail2 and tostring(err1):find('returned no objects',1,true),'Empty asset results report the actual load failure')
+local fail1=emptyApi.equip('Fragile_G_2023','Gun')
+local fail2=emptyApi.equip('Fragile_G_2023','Gun')
+assert(fail1:find('avatar preview unavailable',1,true) and fail2:find('avatar preview unavailable',1,true),'Empty asset results keep selection while reporting preview failure')
+assert(emptyApi.getEquipped().Gun=='Fragile_G_2023' and emptyApi.report():find('returned no objects',1,true),'Failed preview remains selected and reports the actual load failure')
 assert(emptyLoads==1,'Unavailable ItemID is not downloaded repeatedly on every click')
 -- Existing replicated weapon resources must win over blocked external downloads.
 local resourceSource=node('Fragile_G_2023','Part',{standalone})
@@ -183,3 +184,46 @@ local expandedReport=alternateApi.report()
 assert(expandedReport:find('UnrecognizedHolster',1,true),'Report includes character objects even when weapon matcher misses them')
 assert(expandedReport:find('RS roots=',1,true),'Report lists replicated top-level asset folders')
 print('Alternate replicated visuals and unmatched avatar diagnostics passed.')
+
+-- Avatar display references can point to arbitrary display models outside Character.
+local refData=node('Item','ModuleScript');refData.Data={RefKnife={ItemName='Reference Knife',ItemType='Knife',MeshId='ref-knife',TextureId='ref-knife-texture'},RefGun={ItemName='Reference Gun',ItemType='Gun',MeshId='ref-gun',TextureId='ref-gun-texture'}}
+local refRs=node('ReplicatedStorage','ReplicatedStorage',{node('Database','Folder',{node('Sync','Folder',{refData})})})
+local refWorkspace=node('Workspace','Workspace')
+local function display(name,mesh,texture)
+    local special=node('SpecialMesh','SpecialMesh');special.MeshId=mesh;special.TextureId=texture
+    local handle=node('Handle','Part',{special});handle.IsA=function(_,c)return c=='BasePart'or c=='Part'end
+    local model=node(name,'Model',{handle});return model,special
+end
+local knifeDisplay,refKnifeMesh=display('ArbitraryKnifeDisplay','old-ref-knife','old-ref-knife-texture');knifeDisplay.Parent=refWorkspace
+local gunDisplay,refGunMesh=display('ArbitraryGunDisplay','old-ref-gun','old-ref-gun-texture');gunDisplay.Parent=refWorkspace
+local knifeRef=node('DisplayRefKnife','ObjectValue');knifeRef.Value=knifeDisplay
+local gunRef=node('DisplayRefGun','ObjectValue');gunRef.Value=gunDisplay
+local knifeValueChanged=signal();knifeRef.GetPropertyChangedSignal=function()return knifeValueChanged end
+local refCharacter=node('Character','Model',{knifeRef,gunRef})
+refCharacter.ChildAdded=signal()
+local referenceConnections=0
+local connectCharacter=refCharacter.ChildAdded.Connect
+refCharacter.ChildAdded.Connect=function(self,fn)referenceConnections=referenceConnections+1;return connectCharacter(self,fn)end
+local refPlayer={Name='ReferencePlayer',Character=refCharacter,Backpack=node('Backpack','Backpack'),CharacterAdded=signal(),ChildAdded=signal()}
+local refGame={GetService=function(_,name)return name=='ReplicatedStorage' and refRs or name=='Players' and {LocalPlayer=refPlayer}end,GetObjects=function()error('Reference displays must not require external assets')end}
+local refApi=create(refGame,function(module)return module.Data end)
+local refKnifeResult=refApi.equip('RefKnife','Knife');assert(refKnifeMesh.MeshId=='ref-knife','DisplayRefKnife applies to arbitrary referenced display')
+local connectionsBeforeSecondEquip=referenceConnections
+refApi.equip('RefGun','Gun');assert(refGunMesh.MeshId=='ref-gun','DisplayRefGun applies to arbitrary referenced display')
+assert(referenceConnections==connectionsBeforeSecondEquip,'Repeated selections must not add duplicate character listeners')
+local replacement,replacementMesh=display('ReplacementKnifeDisplay','replacement-old','replacement-old-texture');replacement.Parent=refWorkspace;knifeRef.Value=replacement;knifeValueChanged:Fire()
+assert(replacementMesh.MeshId=='ref-knife','Changing DisplayRefKnife.Value reapplies the selected cosmetic')
+local respawnKnife,respawnKnifeMesh=display('RespawnKnifeDisplay','respawn-old','respawn-old-texture');respawnKnife.Parent=refWorkspace
+local respawnGun,respawnGunMesh=display('RespawnGunDisplay','respawn-old','respawn-old-texture');respawnGun.Parent=refWorkspace
+local respawnKnifeRef=node('DisplayRefKnife','ObjectValue');local respawnGunRef=node('DisplayRefGun','ObjectValue')
+respawnKnifeRef.Value=respawnKnife;respawnGunRef.Value=respawnGun
+local respawnCharacter=node('Character','Model',{respawnKnifeRef,respawnGunRef});respawnCharacter.ChildAdded=signal()
+refPlayer.Character=respawnCharacter;refPlayer.CharacterAdded:Fire(respawnCharacter)
+assert(respawnKnifeMesh.MeshId=='ref-knife' and respawnGunMesh.MeshId=='ref-gun','Selected displays reapply after character replacement')
+local lateGun,lateGunMesh=display('LateGunDisplay','late-old','late-old-texture');lateGun.Parent=refWorkspace
+local lateGunRef=node('DisplayRefGun','ObjectValue');lateGunRef.Value=lateGun;respawnCharacter.ChildAdded:Fire(lateGunRef)
+assert(lateGunMesh.MeshId=='ref-gun','A display reference added after respawn is watched and skinned')
+local refReport=refApi.report();assert(refReport:find('DisplayRefKnife=',1,true) and refReport:find('RespawnKnifeDisplay',1,true),'Report resolves display reference paths')
+refApi.restore();assert(respawnKnifeMesh.MeshId=='respawn-old' and respawnGunMesh.MeshId=='respawn-old','Display reference meshes restore cleanly')
+respawnKnifeRef.Value=nil;local nilReferenceReport=refApi.report();assert(nilReferenceReport:find('DisplayRefKnife=',1,true) and nilReferenceReport:find('Value=missing',1,true),'Report keeps named references visible when their Value is missing')
+print('Avatar display references, replacement, respawn and restoration passed.')

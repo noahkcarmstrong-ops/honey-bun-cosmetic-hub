@@ -158,7 +158,9 @@ buttons.Holiday.Activated:Fire();flush()
 assert(#generated()==1 and generated()[1].Name:find('holiday',1,true),'Holiday tab uses its own item category')
 search.Text='missing';flush();assert(#generated()==0,'Native search filters the selected category')
 search.Text='';flush()
+local beforeReopen=generated()[1]
 inventory.Visible=false;collection().Visible=false;inventory.Visible=true;flush()
+assert(generated()[1]==beforeReopen,'Reopening unchanged inventory must not rebuild hundreds of cards')
 assert(#generated()==1 and collection().Visible,'Closing and reopening preserves local cards and selected category')
 -- MM2 replaces its entire inventory GUI, not just its visibility.
 inventory:Destroy()
@@ -181,3 +183,24 @@ local missing=create(node('PlayerGui','Empty'),catalog)
 assert(not missing.enable(),'Missing native inventory fails clearly')
 api.destroy();assert(not pcall(api.enable),'Destroyed browser cannot re-enable')
 print('Native inventory categories, rarity order, local equip, close/reopen, full GUI rebuild and cleanup passed.')
+
+-- Large categories yield between batches and reopening reuses the existing cards.
+local largeEntries={}
+for i=1,100 do largeEntries[i]={id='batch'..i,kind='Knife',name='Batch '..i,image=1000+i,category='season1',rarity='Common'} end
+local largeCatalog={list=function(kind)return kind=='Knife' and largeEntries or {} end,getEquipped=function()return{}end}
+local pauses=0
+task.wait=function()pauses=pauses+1 end
+local largeApi=create(playerGui,largeCatalog)
+assert(largeApi.enable());flush()
+assert(#generated()==100 and pauses==4,'Large catalogs yield every 24 cards rather than cloning everything in one frame')
+local existingCard=generated()[1]
+inventory.Visible=false;inventory.Visible=true;flush()
+assert(generated()[1]==existingCard and pauses==4,'Unchanged reopen neither clones cards nor performs another batch load')
+largeApi.disable();flush()
+-- Turning off the hub during a yielded render cannot leave cards or watchers behind.
+local cancelledApi=create(playerGui,largeCatalog)
+task.wait=function()cancelledApi.disable()end
+assert(not cancelledApi.enable(),'A render cancelled while yielding does not report successful enable')
+flush();assert(not collection() and seasonPane.Visible,'Cancelled batches clean up the local collection and restore native panels')
+task.wait=nil
+print('Unchanged inventory reuse, large catalog batching and cancellation passed.')
