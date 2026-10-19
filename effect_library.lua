@@ -66,6 +66,7 @@ return function(game,gui)
         return keys
     end
     local entries,templates={},{}
+    local selected
     local notice="No player effects collected yet."
     local alive=true
     local function snapshot(root)
@@ -138,6 +139,7 @@ return function(game,gui)
     if type(raw)=="string"and #raw<=MAX_BYTES then
         local ok,saved=pcall(function()return Http:JSONDecode(raw)end)
         if ok and type(saved)=="table"and saved.version==1 and type(saved.entries)=="table"and #saved.entries<=MAX_ENTRIES then
+            if type(saved.selected)=="string" and #saved.selected<100 then selected=saved.selected end
             for _,entry in ipairs(saved.entries)do
                 if type(entry)=="table"and type(entry.id)=="string"and #entry.id<100 and type(entry.name)=="string"and #entry.name<=150 then
                     local good,source=pcall(restore,entry)
@@ -147,7 +149,7 @@ return function(game,gui)
         end
     end
     local function save()
-        local encoded=Http:JSONEncode({version=1,entries=entries})
+        local encoded=Http:JSONEncode({version=1,entries=entries,selected=selected})
         assert(#encoded<=MAX_BYTES,"Saved effect library is full.");gui:SetAttribute(KEY,encoded)
     end
     local function roots(player)
@@ -161,6 +163,15 @@ return function(game,gui)
         return result
     end
     local api={}
+    function api.getSelected()return selected end
+    function api.select(id)
+        if id~=nil then
+            local found=id=="Bats" or templates[id]~=nil
+            assert(found,"Choose a saved effect.")
+        end
+        local previous=selected;selected=id
+        local ok,err=pcall(save);if not ok then selected=previous;error(err) end
+    end
     function api.capturePlayer(name)
         assert(alive,"The effect collector is closed.")
         assert(type(name)=="string"and name~="","Enter a Roblox username.")
@@ -168,7 +179,7 @@ return function(game,gui)
         for _,p in ipairs(Players:GetPlayers())do if tostring(read(p,"Name")):lower()==name:lower()then player=p;break end end
         if not player then return"Player "..name.." is not in this server."end
         if player==Players.LocalPlayer then return"Choose another player's original knife effect."end
-        local added,duplicates,failures=0,0,{}
+        local added,duplicates,failures,captured=0,0,{},{}
         for _,root in ipairs(roots(player))do
             local ok,records=pcall(snapshot,root)
             if not ok then failures[#failures+1]=tostring(records)
@@ -187,12 +198,13 @@ return function(game,gui)
                         templates[id]=source;added=added+1
                     else failures[#failures+1]=tostring(source)end
                 end
+                if templates[id] then captured[#captured+1]=id end
             end
         end
         notice=name..": "..added.." new supported knife visual(s), "..duplicates.." already saved."
         if added==0 and duplicates==0 then notice=notice.." No saveable knife visuals loaded; they must equip the effect nearby."end
         if #failures>0 then notice=notice.." Unsupported: "..table.concat(failures,"; "):sub(1,350)end
-        return notice
+        return notice,captured
     end
     function api.captureServer(first)
         local list=Players:GetPlayers();table.sort(list,function(a,b)

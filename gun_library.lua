@@ -99,39 +99,44 @@ return function(game,gui)
         local keys={};for k in pairs(v)do keys[#keys+1]=k end;table.sort(keys)
         local out={};for _,k in ipairs(keys)do out[#out+1]=k.."="..canonical(v[k],precise or k=="Mounts")end;return "{"..table.concat(out,"|").."}"
     end
-    local function identity(d)
+    local function identity(d,kind)
         local s=canonical(pack(d));local a,b=1,7
         for i=1,#s do a=(a*31+s:byte(i))%2147483647;b=(b*37+s:byte(i))%2147483629 end
-        return "SavedGun_"..string.format("%.0f_%.0f",a,b)
+        return (kind=="Knife" and "SavedKnife_" or "SavedGun_")..string.format("%.0f_%.0f",a,b)
     end
-    local entries,selected={},nil
+    local entries,selected,selectedKnife={},nil,nil
     local raw=gui:GetAttribute(KEY)
     if type(raw)=="string"and #raw<=MAX_BYTES then
         local ok,saved=pcall(function()return Http:JSONDecode(raw)end)
         if ok and type(saved)=="table"and saved.version==1 and type(saved.entries)=="table"and #saved.entries<=MAX_ENTRIES then
             for _,record in ipairs(saved.entries)do
                 if type(record)=="table"and type(record.id)=="string"and #record.id<=100 and type(record.name)=="string"and #record.name<=150 then
+                    local kind=record.kind=="Knife" and "Knife" or "Gun"
                     local definition=unpackDefinition(record.definition)
-                    if definition and record.id==identity(definition)then
-                        entries[#entries+1]={id=record.id,name=record.name,kind="Gun",definition=definition}
+                    if definition and record.id==identity(definition,kind)then
+                        entries[#entries+1]={id=record.id,name=record.name,kind=kind,definition=definition}
                     end
                 end
             end
             if type(saved.selected)=="string"then selected=saved.selected end
+            if type(saved.selectedKnife)=="string"then selectedKnife=saved.selectedKnife end
         end
     end
     if selected then
-        local found=false;for _,entry in ipairs(entries)do if entry.id==selected then found=true;break end end
+        local found=false;for _,entry in ipairs(entries)do if entry.id==selected and entry.kind=="Gun" then found=true;break end end
         if not found then selected=nil end
     end
+    if selectedKnife then local found=false;for _,entry in ipairs(entries)do if entry.id==selectedKnife and entry.kind=="Knife"then found=true;break end end;if not found then selectedKnife=nil end end
     local function save()
-        local records={};for _,entry in ipairs(entries)do records[#records+1]={id=entry.id,name=entry.name,definition=pack(entry.definition)}end
-        local encoded=Http:JSONEncode({version=1,entries=records,selected=selected})
+        local records={};for _,entry in ipairs(entries)do local record={id=entry.id,name=entry.name,definition=pack(entry.definition)};if entry.kind=="Knife"then record.kind="Knife"end;records[#records+1]=record end
+        local encoded=Http:JSONEncode({version=1,entries=records,selected=selected,selectedKnife=selectedKnife})
         assert(#encoded<=MAX_BYTES,"Saved gun library is full.");gui:SetAttribute(KEY,encoded)
     end
     local api={}
-    function api.capture(sourceBasePart,playerName,mounts)
-        assert(sourceBasePart and read(sourceBasePart,"IsA") and sourceBasePart:IsA("BasePart"),"Choose a gun mesh part.")
+    function api.capture(sourceBasePart,playerName,mounts,kind)
+        kind=kind=="Knife" and "Knife" or "Gun"
+        local noun=kind:lower()
+        assert(sourceBasePart and read(sourceBasePart,"IsA") and sourceBasePart:IsA("BasePart"),"Choose a "..noun.." mesh part.")
         assert(type(playerName)=="string"and #playerName>0 and #playerName<=150,"Enter a player name.")
         local class=read(sourceBasePart,"ClassName")
         local mesh;if class~="MeshPart"then mesh=sourceBasePart:FindFirstChildWhichIsA("SpecialMesh")end
@@ -150,21 +155,23 @@ return function(game,gui)
         local encodedMounts=packMounts(mounts)
         definition.Mounts=unpackMounts(encodedMounts)
         assert(validDefinition(definition),"Gun mesh has unsupported or oversized visual properties.")
-        local id=identity(definition)
-        for _,entry in ipairs(entries)do if entry.id==id then return entry end end
+        local id=identity(definition,kind)
+        for _,entry in ipairs(entries)do if entry.id==id and entry.kind==kind then return entry end end
         assert(#entries<MAX_ENTRIES,"Saved gun library is full.")
-        local entry={id=id,name="Gun from "..playerName,kind="Gun",definition=definition}
+        local entry={id=id,name=kind.." from "..playerName,kind=kind,definition=definition}
         entries[#entries+1]=entry
         local ok,err=pcall(save);if not ok then table.remove(entries);error(err)end
         return entry
     end
-    function api.list()local out={};for i,e in ipairs(entries)do out[i]=e end;return out end
-    function api.getSelected()return selected end
-    function api.select(id)
-        if id~=nil then local found=false;for _,entry in ipairs(entries)do if entry.id==id then found=true;break end end;assert(found,"Choose a saved gun.")end
-        local previous=selected;selected=id
-        local ok,err=pcall(save);if not ok then selected=previous;error(err)end
-        return selected
+    function api.list(kind)local out={};for _,e in ipairs(entries)do if kind==nil or e.kind==kind then out[#out+1]=e end end;return out end
+    function api.getSelected(kind)if kind=="Knife"then return selectedKnife end;return selected end
+    function api.select(id,kind)
+        kind=kind=="Knife" and "Knife" or "Gun"
+        if id~=nil then local found=false;for _,entry in ipairs(entries)do if entry.id==id and entry.kind==kind then found=true;break end end;assert(found,"Choose a saved "..kind:lower()..".")end
+        local previous=kind=="Knife" and selectedKnife or selected
+        if kind=="Knife"then selectedKnife=id else selected=id end
+        local ok,err=pcall(save);if not ok then if kind=="Knife"then selectedKnife=previous else selected=previous end;error(err)end
+        if kind=="Knife"then return selectedKnife end;return selected
     end
     return api
 end

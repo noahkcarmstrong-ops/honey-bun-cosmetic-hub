@@ -113,7 +113,8 @@ assert(overlay and overlay.Size.X==2,"MM2 creates a separate overlay with saved 
 local overlayMesh=overlay:FindFirstChildWhichIsA("SpecialMesh")
 assert(overlayMesh and overlayMesh.MeshId=="rbxassetid://321"and overlayMesh.Scale.X==2 and overlayMesh.Scale.Y==2 and overlayMesh.Scale.Z==2,"MM2 renders the saved MeshPart mesh at normalized scale")
 assert(native.Size.X==1 and native.MeshId==nil,"the native weapon geometry and size remain untouched")
-mm2.restore();assert(native.LocalTransparencyModifier==0.25 and overlay.destroyed,"restore reveals the native gun and destroys its overlay")
+mm2.restore();assert(native.LocalTransparencyModifier==0.25 and overlay.destroyed and renderLibrary.getSelected("Gun")==nil,"restore reveals the native gun, removes its overlay, and clears its saved selection")
+mm2.equip(selectedId,"Gun")
 mm2.destroy()
 
 -- A fresh library and MM2 instance use only persisted data after the source leaves.

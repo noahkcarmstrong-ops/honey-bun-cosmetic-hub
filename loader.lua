@@ -6,13 +6,17 @@ local mm2MenuOpen = false
 local mm2API,mm2NativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
 local mm2GunLibraryAPI
 local accessorySoundsAPI
-local effectPlayerInput="qosra"
-local gunPlayerInput="BIearyEyed"
 local mm2Enabled,mm2EffectsEnabled=false,false
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 for _, name in ipairs({"HoneyBunCosmeticHub"}) do
     local old = playerGui:FindFirstChild(name)
-    if old then old:Destroy() end
+    if old then
+        for _,key in ipairs({"HoneyBunCosmeticGuns","HoneyBunCosmeticEffects"}) do
+            local value=old:GetAttribute(key)
+            if value and not playerGui:GetAttribute(key) then playerGui:SetAttribute(key,value) end
+        end
+        old:Destroy()
+    end
 end
 
 local moduleRevision,persistence,persistenceLabel
@@ -169,6 +173,7 @@ local function uiSetting(key,default)
     local value=playerGui:GetAttribute("HoneyBunCosmeticUI_"..key)
     return type(value)==type(default) and value or default
 end
+local copyPlayerInput=uiSetting("copyPlayer","")
 local alive, busy, activePage = true, false, uiSetting("page","Accessories")
 local actionRunning=false
 if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" and activePage~="Characters" and not (isMM2 and activePage=="MM2") then activePage="Accessories" end
@@ -198,6 +203,7 @@ local function saveUI()
     local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animationBundle=animationInput,emoteSlot=emoteSlot,shirt=shirtInput,pants=pantsInput}
     values.bodyPartsOpen=bodyPartsOpen
     values.characterName=characterName
+    values.copyPlayer=copyPlayerInput
     for _,region in ipairs(bodyPartRegions) do values["part_"..region]=bodyPartInputs[region] end
     for key,value in pairs(values) do playerGui:SetAttribute("HoneyBunCosmeticUI_"..key,value) end
 end
@@ -390,7 +396,7 @@ local function mm2()
     api()
     local librarySource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/gun_library.lua",false)
     local libraryChunk,libraryError=loadstring(librarySource);assert(libraryChunk,libraryError)
-    mm2GunLibraryAPI=libraryChunk()(game,gui)
+    mm2GunLibraryAPI=libraryChunk()(game,playerGui)
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/mm2.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     mm2API=chunk()(game,nil,mm2GunLibraryAPI)
@@ -416,7 +422,7 @@ local function effectsMM2()
     local chunk,message=loadstring(source);assert(chunk,message)
     local librarySource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/effect_library.lua",false)
     local libraryChunk,libraryError=loadstring(librarySource);assert(libraryChunk,libraryError)
-    mm2EffectsLibraryAPI=libraryChunk()(game,gui)
+    mm2EffectsLibraryAPI=libraryChunk()(game,playerGui)
     mm2EffectsAPI=chunk()(game,function(message)
         if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
     end,mm2EffectsLibraryAPI)
@@ -450,12 +456,80 @@ render=function()
     if activePage=="MM2" and isMM2 then
         caption(mm2MenuOpen and "MM2 MENU" or "MURDER MYSTERY 2",24)
         if mm2MenuOpen then
-            caption("MM2 INVENTORY COSMETICS",24)
-            caption("Open MM2's Weapons or Effects inventory, then turn on its matching option below.",64)
+            caption("SAVE A PLAYER'S LOOK",24)
+            caption("Enter a username from this server. Their gun, knife, or effect must be loaded nearby. Saved copies are for you only.",64)
+            local owner=input("Player's Roblox username",copyPlayerInput,function(value)copyPlayerInput=value end)
+            local function username()
+                copyPlayerInput=owner.Text:gsub("^%s+",""):gsub("%s+$","")
+                saveUI()
+                assert(copyPlayerInput~="","Enter a Roblox username from this server.")
+                return copyPlayerInput
+            end
+            local function updateWeapons()
+                if mm2Enabled then
+                    nativeMM2().disable()
+                    local ok=nativeMM2().enable()
+                    if ok==false then mm2Enabled=false end
+                end
+            end
+            local function copyWeapon(kind)
+                local message=mm2().collectPlayerWeapon(username(),kind)
+                updateWeapons()
+                return message
+            end
+            local function copyEffect()
+                effectsMM2()
+                local message,ids=mm2EffectsLibraryAPI.capturePlayer(username())
+                mm2EffectsAPI.reloadLibrary()
+                if ids and ids[1] then message=message.." "..mm2EffectsAPI.equip(ids[1],"Effect") end
+                if mm2EffectsEnabled then
+                    nativeEffectsMM2().disable()
+                    local ok=nativeEffectsMM2().enable()
+                    if not ok then mm2EffectsEnabled=false end
+                end
+                return message
+            end
+            button("Save and equip player's gun",function() action(function() return copyWeapon("Gun") end) end)
+            button("Save and equip player's knife",function() action(function() return copyWeapon("Knife") end) end)
+            button("Save and equip player's effect",function() action(copyEffect) end)
+            button("Save all three",function() action(function()
+                username()
+                local messages={}
+                for _,operation in ipairs({function()return copyWeapon("Gun")end,function()return copyWeapon("Knife")end,copyEffect}) do
+                    local ok,message=pcall(operation)
+                    messages[#messages+1]=ok and message or tostring(message):gsub("^.-:%d+:%s*","")
+                end
+                return table.concat(messages,"\n")
+            end) end)
+            caption("YOUR SAVED COLLECTION",24)
+            caption("Equip saved items here without Show all weapons. Auto-save keeps the collection after rejoining. Shooting and attacking use your real MM2 weapons.",64)
+            button("Open saved collection",function() action(function() mm2();effectsMM2();return "Your saved guns, knives, and effects are listed below." end) end)
+            if mm2API then
+                for _,kind in ipairs({"Gun","Knife"}) do
+                    caption(kind=="Gun" and "SAVED GUNS" or "SAVED KNIVES",24)
+                    local entries=mm2API.savedWeapons(kind)
+                    if #entries==0 then caption("None saved yet.",24) end
+                    for _,entry in ipairs(entries) do
+                        button("Equip "..entry.name,function() action(function()return mm2().equip(entry.id,entry.kind)end) end)
+                    end
+                end
+                button("Remove saved weapon appearances",function() action(function()return mm2().restore()end) end)
+            end
+            if mm2EffectsLibraryAPI then
+                caption("SAVED PLAYER EFFECTS",24)
+                local entries=mm2EffectsLibraryAPI.list()
+                if #entries==0 then caption("None saved yet.",24) end
+                for _,entry in ipairs(entries) do
+                    button("Equip "..entry.name,function() action(function()return effectsMM2().equip(entry.id,"Effect")end) end)
+                end
+                button("Remove knife effect",function() action(function()return effectsMM2().restore()end) end)
+            end
+            caption("OPTIONAL MM2 INVENTORY DISPLAY",24)
+            caption("These options show collections in MM2's own inventory. They are not needed for the saved collection above.",48)
             button(mm2Enabled and "Show all weapons: ON" or "Show all weapons: OFF",function() action(function()
                 if mm2Enabled then
-                    nativeMM2().disable();mm2().restore();mm2Enabled=false
-                    return "Original inventory display and weapon visuals restored."
+                    nativeMM2().disable();mm2Enabled=false
+                    return "Original inventory display restored. Your saved weapon appearance stays equipped."
                 end
                 local ok,message=nativeMM2().enable()
                 assert(ok~=false,message or "MM2 inventory could not be detected.")
@@ -463,55 +537,22 @@ render=function()
             end) end)
             button(mm2EffectsEnabled and "Saved effects: ON" or "Saved effects: OFF",function() action(function()
                 if mm2EffectsEnabled then
-                    nativeEffectsMM2().disable();effectsMM2().restore();mm2EffectsEnabled=false
-                    return "Original effects inventory restored; local knife effect removed."
+                    nativeEffectsMM2().disable();mm2EffectsEnabled=false
+                    return "Original effects inventory restored. Your saved effect stays equipped."
                 end
                 local ok,message=nativeEffectsMM2().enable()
                 assert(ok~=false,message or "Open MM2's Effects inventory first.")
                 effectsMM2().collectOriginals()
                 mm2EffectsEnabled=true;return type(ok)=="string" and ok or message
             end) end)
-            caption("Original Bats plus saved player effects. Collects loaded knife particles and trails; custom scripts and animations are not copied.",64)
-            local effectPlayer=input("Roblox username",effectPlayerInput,function(value)effectPlayerInput=value end)
-            local function collectEffects(everyone)
-                effectPlayerInput=effectPlayer.Text:gsub("^%s+",""):gsub("%s+$","")
-                action(function()
-                    effectsMM2()
-                    local message=everyone and mm2EffectsLibraryAPI.captureServer(effectPlayerInput)or mm2EffectsLibraryAPI.capturePlayer(effectPlayerInput)
-                    if not alive then return "Effect collection cancelled."end
-                    mm2EffectsAPI.reloadLibrary()
-                    if mm2EffectsEnabled then
-                        nativeEffectsMM2().disable()
-                        local ok,why=nativeEffectsMM2().enable()
-                        if not ok then mm2EffectsEnabled=false;message=message.." Reopen MM2 Effects: "..tostring(why)end
-                    end
-                    return message
-                end)
-            end
-            button("Collect player's equipped effect",function()collectEffects(false)end)
-            button("Collect server effects",function()collectEffects(true)end)
 
-            caption("COPY A LOADED GUN",24)
-            local gunPlayer=input("Gun owner's Roblox username",gunPlayerInput,function(value)gunPlayerInput=value end)
-            button("Copy and equip player's gun",function() action(function()
-                gunPlayerInput=gunPlayer.Text
-                local message=mm2().collectPlayerGun(gunPlayerInput)
-                if mm2Enabled then
-                    nativeMM2().disable()
-                    local ok,why=nativeMM2().enable()
-                    if ok==false then mm2Enabled=false;message=message.." "..tostring(why) end
-                end
+            button("Collect server effects",function() action(function()
+                effectsMM2()
+                local message=mm2EffectsLibraryAPI.captureServer(copyPlayerInput)
+                mm2EffectsAPI.reloadLibrary()
                 return message
             end) end)
-            caption("Saves their original gun mesh for you only. Saved guns remain available after rejoining when Auto-save is on. Does not copy custom animations or effects.",72)
-            button("Open saved guns",function() action(function() mm2();return "Your saved guns are listed below." end) end)
-            if mm2API then
-                for _,entry in ipairs(mm2API.savedGuns()) do
-                    button("Equip "..entry.name,function() action(function() return mm2().equip(entry.id,"Gun") end) end)
-                end
-            end
 
-            caption("Select a skin in MM2's inventory. Only you see it; the avatar preview needs an available model. Your choice stays selected through resets.",64)
             button("Copy MM2 report",function() action(function()
                 local report=mm2().report().."\n"..nativeMM2().report()
                 if mm2EffectsAPI then report=report.."\n"..mm2EffectsAPI.report() end
@@ -938,6 +979,7 @@ action(function(editor)
     local message=reapplyAll(editor)
     if not soundsLoaded then message=message.." Hat sounds could not load; try their control in Accessories." end
     if activePage=="Characters" then characterModules() end
-    if isMM2 and gui:GetAttribute("HoneyBunCosmeticGuns") then mm2() end
+    if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticGuns") then mm2() end
+    if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticEffects") then effectsMM2() end
     return message
 end)

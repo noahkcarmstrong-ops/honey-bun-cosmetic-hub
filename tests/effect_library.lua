@@ -14,6 +14,7 @@ local meta={__index=function(t,k)return methods[k] or t.props[k]end,__newindex=f
         local old=t.props.Parent;if old==v then return end
         if old then for i,c in ipairs(old.children)do if c==t then table.remove(old.children,i);break end end end
         t.props.Parent=v
+        if old then old.ChildRemoved:Fire(t) end
         if v then
             v.children[#v.children+1]=t;v.ChildAdded:Fire(t)
             local ancestor=v
@@ -25,7 +26,7 @@ local meta={__index=function(t,k)return methods[k] or t.props[k]end,__newindex=f
     end
 end}
 local function node(class,name,parent)
-    local n=setmetatable({props={ClassName=class,Name=name or class,ChildAdded=signal(),DescendantAdded=signal(),CharacterAdded=signal()},children={},propertySignals={}},meta)
+    local n=setmetatable({props={ClassName=class,Name=name or class,ChildAdded=signal(),ChildRemoved=signal(),DescendantAdded=signal(),CharacterAdded=signal()},children={},propertySignals={}},meta)
     n.Parent=parent;return n
 end
 function methods:IsA(c)return c==self.ClassName or (c=='BasePart' and (self.ClassName=='Part' or self.ClassName=='MeshPart')) or (c=='Light' and self.ClassName=='PointLight')end
@@ -88,10 +89,14 @@ assert(library.capturePlayer('qosra'):find('1 already saved',1,true),'Identical 
 assert(emitter.Rate==0 and emitter.Parent==a and trail.Attachment0==a,'The source player visuals are unchanged')
 assert(library.capturePlayer('Missing'):find('not in this server',1,true),'Missing player is reported')
 local saved=screen:GetAttribute('HoneyBunCosmeticEffects');assert(saved,'Capture stores portable data for hub persistence')
+local effectId=library.list()[1].id
+library.select(effectId)
+saved=screen:GetAttribute('HoneyBunCosmeticEffects')
 local oldSource=library.list()[1].definition.Effect
 assert(count(oldSource,'Script')==0 and count(oldSource,'Tool')==0,'Scripts and gear are never copied')
 library.destroy();display:Destroy();ref.Value=nil
 local restored=create(game,gui(saved));local source=restored.list()[1].definition.Effect
+assert(restored.getSelected()==effectId,'Selected effect survives leaving and rejoining')
 assert(count(source,'ParticleEmitter')==1 and count(source,'Trail')==1,'Original visuals restore without source player or server objects')
 local restoredParticle=first(source,'ParticleEmitter');assert(restoredParticle.Texture=='rbxassetid://123'and restoredParticle.Rate==0,'Original texture and emission settings round trip')
 assert(restoredParticle.Lifetime.Min==1 and restoredParticle.Color.Keypoints[2].Value.G==1 and restoredParticle.Size.Keypoints[1].Envelope==0.1,'Particle ranges, colors and envelopes round trip')
@@ -100,10 +105,17 @@ assert(restored.captureServer('qosra'):sub(1,6)=='qosra:','Server collection sta
 -- The real playback module can equip the portable captured source.
 local back=node('Part','BackKnife');local backRef=node('ObjectValue','DisplayRefKnife',localPlayer.Character);backRef.Value=back
 local api=dofile('mm2_effects.lua')(game,nil,restored)
+assert(api.getEquipped().Effect==effectId and count(back,'ParticleEmitter')==1,'Saved effect automatically reapplies without opening native inventory')
 assert(#api.list('Effect')==2,'Bats and saved original both appear in the effects inventory')
 assert(api.equip(restored.list()[1].id,'Effect'):find('original visuals',1,true),'Saved effect uses original playback')
 assert(count(back,'ParticleEmitter')==1 and count(back,'Trail')==1,'Restored particles and trail reach the back knife')
-api.destroy();restored.destroy();assert(#back:GetChildren()==0,'Saved effect playback cleans up')
+local replacement=node('Part','SavedKnifeAppearance',node('Folder','Workspace'));local marker=node('ObjectValue','HoneyBunCosmeticVisual');marker.Value=replacement;marker.Parent=back
+assert(count(replacement,'ParticleEmitter')==1 and count(back,'ParticleEmitter')==0,'Saved effect attaches to the replacement knife mesh')
+marker:Destroy()
+assert(count(replacement,'ParticleEmitter')==0 and count(back,'ParticleEmitter')==1,'Removing replacement moves effect back onto the real knife')
+api.destroy();assert(restored.getSelected()==effectId,'Closing hub preserves selected effect')
+assert(count(replacement,'ParticleEmitter')==0,'Replacement knife effect cleans up')
+restored.destroy();assert(#back:GetChildren()==0,'Saved effect playback cleans up')
 -- Saved files cannot introduce executable classes.
 local bad=http:JSONEncode({version=1,entries={{id='Bad',name='Bad',records={{class='Script',name='DoNotRun',values={}}}}}})
 local invalid=create(game,gui(bad));assert(#invalid.list()==0,'Invalid executable records are rejected');invalid.destroy()
