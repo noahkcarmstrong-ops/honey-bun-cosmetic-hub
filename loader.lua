@@ -44,6 +44,7 @@ end
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
 local mm2API,mm2NativeAPI,mm2SavedNativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
+local mm2EmoteBarAPI
 local mm2EmotesNativeAPI
 local mm2WeaponEditorAPI
 local mm2GunLibraryAPI
@@ -564,6 +565,16 @@ local function nativeEffectsMM2()
     end,"saved-effects")
     return mm2EffectsNativeAPI
 end
+local function emoteBarMM2()
+    if mm2EmoteBarAPI then return mm2EmoteBarAPI end
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/emote_bar.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    local backend=mm2()
+    mm2EmoteBarAPI=chunk()(playerGui,{list=backend.list,preview=backend.preview},function(message)
+        if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
+    end,game)
+    return mm2EmoteBarAPI
+end
 local function nativeEmotesMM2()
     if mm2EmotesNativeAPI then return mm2EmotesNativeAPI end
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/native_inventory.lua",false)
@@ -676,13 +687,15 @@ render=function()
             caption("MM2 EMOTES",24)
             button(mm2EmotesShown and "Show all MM2 emotes: ON" or "Show all MM2 emotes: OFF",function() action(function()
                 if mm2EmotesShown then
-                    nativeEmotesMM2().disable();mm2().stopEmote();mm2EmotesShown=false
+                    nativeEmotesMM2().disable();if mm2EmoteBarAPI then mm2EmoteBarAPI.disable() end;mm2().stopEmote();mm2EmotesShown=false
                     return "Original MM2 Emotes inventory restored."
                 end
                 local ok,message=nativeEmotesMM2().enable()
                 assert(ok~=false,message)
+                local barOk,barMessage=emoteBarMM2().enable()
+                assert(barOk~=false,barMessage)
                 mm2EmotesShown=true
-                return "Open MM2's inventory and select Emotes. Click an emote there to try it."
+                return "Emotes added to the inventory. In the bottom Game Emotes bar, press E for catalog pages. "..tostring(barMessage or "")
             end) end)
             if mm2EmotesShown then
                 button("Stop emote",function()action(function()return mm2().stopEmote()end)end)
@@ -719,6 +732,7 @@ render=function()
                 if mm2EffectsAPI then report=report.."\n"..mm2EffectsAPI.report() end
                 if mm2EffectsLibraryAPI then report=report.."\n"..mm2EffectsLibraryAPI.report() end
                 if mm2EmotesNativeAPI then report=report.."\n"..mm2EmotesNativeAPI.report() end
+                if mm2EmoteBarAPI then report=report.."\n"..mm2EmoteBarAPI.report() end
                 if mm2EffectsNativeAPI then report=report.."\n"..mm2EffectsNativeAPI.report() end
                 if type(setclipboard)=="function" then
                     setclipboard(report)
@@ -1137,6 +1151,7 @@ gui.Destroying:Connect(function()
     connection:Disconnect()
     for object,tween in pairs(tweens) do tween:Cancel();tweens[object]=nil end
     respawn:Disconnect()
+    if mm2EmoteBarAPI then mm2EmoteBarAPI.destroy() end
     if mm2EmotesNativeAPI then mm2EmotesNativeAPI.destroy() end
     if mm2EffectsNativeAPI then mm2EffectsNativeAPI.destroy() end
     if mm2EffectsAPI then mm2EffectsAPI.destroy() end
