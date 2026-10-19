@@ -239,6 +239,18 @@ local offReloadGui, offReload = rejoin(1101)
 assert(value(offReloadGui, 'HoneyBunCosmeticUI_activeAtmosphere') == offAtmosphere, 'restoring atmosphere off persists without resurrecting the previous active state')
 offReload:destroy()
 
+-- MM2 emote visibility follows the same per-account UI storage as other switches.
+local emoteGui, emoteStorage = rejoin(1201)
+emoteGui:SetAttribute('HoneyBunCosmeticUI_mm2EmotesShown', true)
+flush(); emoteStorage:destroy()
+local emoteReloadGui, emoteReload = rejoin(1201)
+assert(value(emoteReloadGui, 'HoneyBunCosmeticUI_mm2EmotesShown') == true, 'MM2 emotes on restores after rejoin')
+emoteReloadGui:SetAttribute('HoneyBunCosmeticUI_mm2EmotesShown', false)
+flush(); emoteReload:destroy()
+local emoteOffGui, emoteOff = rejoin(1201)
+assert(value(emoteOffGui, 'HoneyBunCosmeticUI_mm2EmotesShown') == false, 'MM2 emotes off remains off after rejoin')
+emoteOff:destroy()
+
 _G.characterRejoin = rejoin
 _G.characterFlush = flush
 

@@ -129,6 +129,7 @@ function game:HttpGet(url)
     if url:find('/commits/main',1,true)then return'revision'end
     assert(url:find('/'..string.rep('a',40)..'/',1,true),'Modules and Refresh use immutable commits')
     if url:find('/native_inventory.lua',1,true)then return'native-mm2-module'end
+    if url:find('/emote_bar.lua',1,true)then return'emote-bar-module'end
     if url:find('/accessory_sounds.lua',1,true)then return'accessory-sounds-module'end
     if url:find('/gun_library.lua',1,true)then return'gun-library-module'end
     if url:find('/effect_library.lua',1,true)then return'effect-library-module'end
@@ -147,13 +148,14 @@ function game:HttpGet(url)
     error('Unexpected request '..url)
 end
 loadstring=function(source)
-    if source=='native-mm2-module'then return function()return function(_gui,_catalog,_status,mode)local key=(mode=='effects' or mode=='saved-effects') and 'nativeEffectsEnabled' or mode=='saved' and 'savedNativeEnabled' or 'nativeEnabled';return{refreshSaved=function()calls.savedInventoryRefreshed=true end,enable=function()if calls.nativeFail and mode~='saved' and mode~='saved-effects' then return false,'Open MM2 inventory first' end;calls[key]=true;return'Enabled'end,disable=function()calls[key]=false end,destroy=function()calls[key]=false;calls.nativeDestroyed=true end,report=function()return'Native fixture report'end}end end end
+    if source=='native-mm2-module'then return function()return function(_gui,_catalog,_status,mode)local key=(mode=='effects' or mode=='saved-effects') and 'nativeEffectsEnabled' or mode=='saved' and 'savedNativeEnabled' or mode=='emotes' and 'nativeEmotesEnabled' or 'nativeEnabled';return{refreshSaved=function()calls.savedInventoryRefreshed=true end,enable=function()if calls.nativeFail and mode~='saved' and mode~='saved-effects' and mode~='emotes' then return false,'Open MM2 inventory first' end;calls[key]=true;return'Enabled'end,disable=function()calls[key]=false end,destroy=function()calls[key]=false;calls.nativeDestroyed=true end,report=function()return'Native fixture report'end}end end end
+    if source=='emote-bar-module'then return function()return function()return{enable=function()calls.emoteBarEnabled=true;return true,'Emote bar enabled'end,disable=function()calls.emoteBarEnabled=false end,destroy=function()calls.emoteBarEnabled=false end,report=function()return'Emote bar fixture report'end}end end end
     if source=='accessory-sounds-module'then return function()return function(_player,_gui)local enabled=_gui:GetAttribute('HoneyBunCosmeticUI_HatSounds')~=false;return{isEnabled=function()return enabled end,setEnabled=function(v)enabled=v;_gui:SetAttribute('HoneyBunCosmeticUI_HatSounds',v);calls.hatSounds=v;return'Sound toggle'end,playNow=function()calls.playHatSounds=true;return'Played'end,destroy=function()calls.hatSoundsDestroyed=true end}end end end
     if source=='gun-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Weapon library uses persistent PlayerGui');return{}end end end
     if source=='effect-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Effect library uses persistent PlayerGui');return{list=function()return{{id='Effect1',name='Effect from PlayerOne'}}end,capturePlayer=function(name)calls.capturePlayer=name;return'Captured player',{'Effect1'}end,captureServer=function(name)calls.capturePriority=name;return'Captured server'end,report=function()return'Library fixture'end,destroy=function()calls.libraryDestroyed=true end}end end end
     if source=='mm2-effects-module'then return function()return function(_game,_status)calls.effectLoads=(calls.effectLoads or 0)+1;return{equip=function(id)calls.savedEffect=id;return'Equipped effect'end,getEquipped=function()return{}end,reloadLibrary=function()calls.libraryReloaded=true end,collectOriginals=function()calls.effectsCollecting=true end,restore=function()calls.effectsRestored=true end,destroy=function()calls.effectsDestroyed=true end,report=function()return'Effects fixture report'end}end end end
     if source=='crosshair-module'then return function()return function()return{set=function(image)calls.crosshair=image end,destroy=function()calls.crosshairDestroyed=true end}end end end
-    if source=='mm2-module'then return function()return function()calls.weaponLoads=(calls.weaponLoads or 0)+1;return{setKnifeSide=function(value)calls.knifeSide=value;return value end,savedInventory=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,savedWeapons=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,equip=function(id,kind)calls.savedWeapon=id;calls.savedKind=kind;return'Equipped'end,collectPlayerWeapon=function(name,kind)calls.captureOwner=name;calls.captureKind=kind;if calls.failGun and kind=='Gun' then error('Gun not loaded')end;return'Copied '..kind end,report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
+    if source=='mm2-module'then return function()return function()calls.weaponLoads=(calls.weaponLoads or 0)+1;return{setKnifeSide=function(value)calls.knifeSide=value;return value end,savedInventory=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,savedWeapons=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,equip=function(id,kind)calls.savedWeapon=id;calls.savedKind=kind;return'Equipped'end,collectPlayerWeapon=function(name,kind)calls.captureOwner=name;calls.captureKind=kind;if calls.failGun and kind=='Gun' then error('Gun not loaded')end;return'Copied '..kind end,report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,stopEmote=function()calls.emoteStopped=true;return'Stopped'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
     if source=='atmosphere-module'then return function()return function()local environment,activeAsset;return{environment=function()if not environment then return end;return{time=environment.time,fog=environment.fog,color=environment.color}end,applyEnvironment=function(settings)environment=settings;calls.environment=settings;return true end,restoreEnvironment=function()environment=nil;calls.environment=nil;return true end,daylightEnabled=function()return calls.daylight~=false end,setDaylight=function(v)calls.daylight=v;return'Time updated'end,apply=function(id)activeAsset=id;calls.skybox=id;return true end,currentAsset=function()return activeAsset end,previewImage=function()return'rbxassetid://123456'end,restore=function()activeAsset=nil;calls.skyRestored=true;return'Sky restored'end,destroy=function()calls.skyDestroyed=true end}end end end
     if source=='editor-module'then return function()assert(not calls.failAvatarLoad,'Fixture avatar not ready');return createEditor end end
     if source=='motion-module'then return function()return createMotion end end
@@ -332,6 +334,19 @@ game.GameId=66654135
 dofile('loader.lua')
 click('MM2');click('Open MM2 menu')
 assert(find(gui(),'TextLabel','MM2 MENU'),'MM2 entry opens its own menu')
+click('Show all MM2 emotes: OFF')
+assert(calls.nativeEmotesEnabled and calls.emoteBarEnabled and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2EmotesShown')==true,'Enabling all MM2 emotes applies both displays and saves the preference')
+click('Show all MM2 emotes: ON')
+assert(not calls.nativeEmotesEnabled and not calls.emoteBarEnabled and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2EmotesShown')==false,'Disabling all MM2 emotes restores both displays and saves the preference')
+dofile('loader.lua')
+assert(not calls.nativeEmotesEnabled and not calls.emoteBarEnabled,'Loader rerun keeps disabled MM2 emotes off')
+click('MM2');click('Open MM2 menu')
+click('Show all MM2 emotes: OFF')
+assert(guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2EmotesShown')==true,'Re-enabling all MM2 emotes saves the startup preference')
+dofile('loader.lua')
+assert(calls.nativeEmotesEnabled and calls.emoteBarEnabled,'Loader rerun restores saved MM2 emotes and the emote bar')
+click('MM2');click('Open MM2 menu')
+assert(find(gui(),'TextButton','Show all MM2 emotes: ON'),'Restored MM2 emote preference is reflected in the menu')
 field('Roblox crosshair image ID').Text='not an id';click('Apply crosshair')
 assert(not calls.crosshair,'Invalid crosshair input is rejected')
 field('Roblox crosshair image ID').Text='https://www.roblox.com/library/12345/Crosshair';click('Apply crosshair')
@@ -342,7 +357,7 @@ click('MM2');click('Open MM2 menu');click('Restore default crosshair')
 assert(calls.crosshair=='' and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')=='','Restore default clears saved crosshair')
 
 setclipboard=function(value)calls.clipboard=value end
-click('Copy MM2 report');setclipboard=nil;assert(calls.clipboard=='MM2 fixture report\nNative fixture report','MM2 discovery report is copied')
+click('Copy MM2 report');setclipboard=nil;assert(calls.clipboard:find('MM2 fixture report',1,true) and calls.clipboard:find('Native fixture report',1,true) and calls.clipboard:find('Emote bar fixture report',1,true),'MM2 discovery report is copied')
 assert(not find(gui(),'TextButton','Restore original appearance'),'MM2 menu contains no cosmetic actions')
 local owner=field("Player's Roblox username")
 owner.Text='  PlayerOne  '

@@ -270,6 +270,7 @@ local function uiSetting(key,default)
     return type(value)==type(default) and value or default
 end
 local copyPlayerInput=uiSetting("copyPlayer","")
+mm2EmotesShown=uiSetting("mm2EmotesShown",false)
 local knifeSide=uiSetting("mm2KnifeSide",false)
 local crosshairImage=uiSetting("mm2Crosshair","")
 local crosshairInput=crosshairImage
@@ -335,6 +336,7 @@ local function saveUI()
     values.copyPlayer=copyPlayerInput
     values.mm2KnifeSide=knifeSide
     values.mm2Crosshair=crosshairImage
+    values.mm2EmotesShown=mm2EmotesShown
     for _,region in ipairs(bodyPartRegions) do values["part_"..region]=bodyPartInputs[region] end
     for key,value in pairs(values) do playerGui:SetAttribute("HoneyBunCosmeticUI_"..key,value) end
 end
@@ -660,6 +662,13 @@ local function nativeEmotesMM2()
     end,"emotes")
     return mm2EmotesNativeAPI
 end
+local function enableMM2Emotes()
+    local ok,message=nativeEmotesMM2().enable()
+    assert(ok~=false,message)
+    local barOk,barMessage=emoteBarMM2().enable()
+    assert(barOk~=false,barMessage)
+    return barMessage
+end
 render=function()
     if not alive then return end
     local savedScroll=(activePage=="Characters" or activePage=="Atmosphere") and lastRenderedPage==activePage and content.CanvasPosition
@@ -789,13 +798,12 @@ render=function()
             button(mm2EmotesShown and "Show all MM2 emotes: ON" or "Show all MM2 emotes: OFF",function() action(function()
                 if mm2EmotesShown then
                     nativeEmotesMM2().disable();if mm2EmoteBarAPI then mm2EmoteBarAPI.disable() end;mm2().stopEmote();mm2EmotesShown=false
+                    saveUI()
                     return "Original MM2 Emotes inventory restored."
                 end
-                local ok,message=nativeEmotesMM2().enable()
-                assert(ok~=false,message)
-                local barOk,barMessage=emoteBarMM2().enable()
-                assert(barOk~=false,barMessage)
+                local barMessage=enableMM2Emotes()
                 mm2EmotesShown=true
+                saveUI()
                 return "Emotes added to the inventory. In the bottom Game Emotes bar, press E for catalog pages. "..tostring(barMessage or "")
             end) end)
             if mm2EmotesShown then
@@ -1474,6 +1482,10 @@ action(function()
     local editor=api()
     local soundsLoaded=pcall(hatSounds)
     local message=reapplyAll(editor)
+    if isMM2 and mm2EmotesShown then
+        local ok,err=pcall(enableMM2Emotes)
+        if not ok then message=message.." Saved MM2 emotes could not load: "..tostring(err) end
+    end
     if not atmosphereLoaded then message=message.." Your saved atmosphere could not fully load: "..tostring(atmosphereError) end
     if not soundsLoaded then message=message.." Hat sounds could not load; try their control in Accessories." end
     if activePage=="Characters" then characterModules() end
