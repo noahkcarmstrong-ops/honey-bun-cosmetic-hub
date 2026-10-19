@@ -18,18 +18,24 @@ local function node(class,name)
     function x:FindFirstChild(n,r)for _,c in ipairs(self.children)do if c.Name==n then return c end;if r then local q=c:FindFirstChild(n,true);if q then return q end end end end
     function x:FindFirstChildOfClass(k)for _,c in ipairs(self.children)do if c:IsA(k)then return c end end end
     function x:FindFirstChildWhichIsA(k,r)for _,c in ipairs(r and self:GetDescendants()or self.children)do if c:IsA(k)then return c end end end
+    function x:ApplyMesh(source)
+        assert(self.ClassName=='MeshPart' and source.ClassName=='MeshPart')
+        local h=self.Parent and self.Parent:FindFirstChildOfClass('Humanoid')
+        assert(not h or h.failName~=self.Name,'Fixture rejected mesh update')
+        self.MeshId=source.MeshId;self.TextureID=source.TextureID
+    end
  function x:Destroy()self.destroyed=true;self.Parent=nil;for i=#self.children,1,-1 do self.children[i]:Destroy()end end
     function x:Clone()local n=node(self.ClassName,self.Name);for k,v in pairs(self)do if k~="children"and k~="Parent"and k~="_parent"and type(v)~="function"then n[k]=v end end;for _,c in ipairs(self.children)do c:Clone().Parent=n end;return n end
     return x
 end
 local function signal()local s={};function s:Connect(f)self.f=f;return{Disconnect=function()self.f=nil end}end;function s:Fire(...)if self.f then self.f(...)end end;return s end
-local function hum()local h=node("Humanoid","Humanoid");h.Health=100;h.RigType="R15";h.replaced={};function h:AddAccessory(a)a.Parent=self.Parent end;function h:ReplaceBodyPartR15(n,p)if self.failName==n then return false end;local old=self.Parent:FindFirstChild(n);if old then old:Destroy()end;self.replaced[n]=p;p.Parent=self.Parent;return true end;return h end
+local function hum()local h=node("Humanoid","Humanoid");h.Health=100;h.RigType="R15";h.replaced={};function h:GetAppliedDescription()local d=node('HumanoidDescription','Description');function d:GetAccessories()return{{AssetId=9876}}end;return d end;function h:AddAccessory(a)a.Parent=self.Parent end;function h:ReplaceBodyPartR15(n,p)if self.failName==n then return false end;local old=self.Parent:FindFirstChild(n);if old then old:Destroy()end;self.replaced[n]=p;p.Parent=self.Parent;return true end;return h end
 Enum={HumanoidRigType={R6="R6",R15="R15"},BodyPartR15={}}
 CFrame={new=function(x,y,z)return cf(x,y,z)end}
 for _,n in ipairs({"Head","UpperTorso","LowerTorso","LeftUpperArm","LeftLowerArm","LeftHand","RightUpperArm","RightLowerArm","RightHand","LeftUpperLeg","LeftLowerLeg","LeftFoot","RightUpperLeg","RightLowerLeg","RightFoot"})do Enum.BodyPartR15[n]=n end
 Instance={new=function(c)return node(c,c)end}
 local body=node("Model","Character");hum().Parent=body;local root=node("Part","HumanoidRootPart");root.CFrame=cf();root.Parent=body
-for _,n in ipairs({"Head","UpperTorso","LowerTorso","LeftUpperArm","LeftLowerArm","LeftHand","RightUpperArm","RightLowerArm","RightHand","LeftUpperLeg","LeftLowerLeg","LeftFoot","RightUpperLeg","RightLowerLeg","RightFoot"})do local p=node("Part",n);p.Color={r=1,g=1,b=1};p.CFrame=cf();p.Parent=body end
+for _,n in ipairs({"Head","UpperTorso","LowerTorso","LeftUpperArm","LeftLowerArm","LeftHand","RightUpperArm","RightLowerArm","RightHand","LeftUpperLeg","LeftLowerLeg","LeftFoot","RightUpperLeg","RightLowerLeg","RightFoot"})do local p=node("MeshPart",n);p.Color={r=1,g=1,b=1};p.CFrame=cf();p.Parent=body end
 local bc=node("BodyColors","Body Colors");bc.HeadColor3={r=1,g=1,b=1};bc.TorsoColor3={r=1,g=1,b=1};bc.LeftArmColor3={r=1,g=1,b=1};bc.RightArmColor3={r=1,g=1,b=1};bc.LeftLegColor3={r=1,g=1,b=1};bc.RightLegColor3={r=1,g=1,b=1};bc.Parent=body
 local head=body:FindFirstChild("Head");local ha=node("Attachment","HatAttachment");ha.CFrame=cf();ha.Parent=head
 local player={Character=body,CharacterAdded=signal()};local accessory=node("Accessory","Blue Hat");local handle=node("Part","Handle");handle.CFrame=cf();handle.AttachmentPoint=cf();handle.Parent=accessory;local at=node("Attachment","HatAttachment");at.CFrame=cf();at.Parent=handle;local injected=node("Script","Injected");injected.Parent=accessory
@@ -39,14 +45,14 @@ local savedSettings=nil;local http={bundleType="BodyParts"};function http:GetAsy
 local gui=node("PlayerGui","PlayerGui");function gui:SetAttribute(k,v)self[k]=v end;function gui:GetAttribute(k)return self[k]end
 player.PlayerGui=gui;function player:FindFirstChild(n)return self[n]end;function player:FindFirstChildOfClass(n)if n=="PlayerGui"then return self.PlayerGui end end;function player:WaitForChild(n)return self[n]end;function player:HasAppearanceLoaded()return true end
 Color3={fromRGB=function(r,g,b)return{R=r/255,G=g/255,B=b/255,r=r/255,g=g/255,b=b/255}end,new=function(r,g,b)return{R=r,G=g,B=b,r=r,g=g,b=b}end};task={queue={},wait=function()end,spawn=function(f)table.insert(task.queue,f)end}
-local mode="normal";local function freshAccessory()local a=node("Accessory","Blue Hat");a.AttachmentPoint=cf();local h=node("Part","Handle");h.CFrame=cf();h.AttachmentPoint=cf();h.Parent=a;return a end
+local mode="normal";local function freshAccessory()local a=node("Accessory","Blue Hat");a.SourceAssetId=9876;a.AttachmentPoint=cf();local h=node("Part","Handle");h.CFrame=cf();h.AttachmentPoint=cf();h.Parent=a;return a end
 local marketplace={assetType=28};function marketplace:GetProductInfoAsync()return{AssetTypeId=self.assetType}end
 game={GetService=function(_,n)return({Players=players,HttpService=http,MarketplaceService=marketplace})[n]end,GetObjects=function(_,id)assert(id=="rbxassetid://123");if mode=="respawn"then local fresh=node("Model","Fresh");player.Character=fresh;player.CharacterAdded:Fire(fresh)end;if mode=="blocked"then return{node("Part","NotWearable")}end;if accessory.destroyed then return{freshAccessory()}end;return{accessory}end,HttpGet=function()return http:GetAsync()end}
 Enum.InfoType={Asset="Asset"}
 local create=dofile("avatar.lua");assert(type(create)=="function","module returns create(player)");local api=create(player)
 assert(api.equipAccessory(123):match("Equipped"));local candidate=body:FindFirstChild("Blue Hat");assert(injected.destroyed and candidate,"sanitizing removes inserted script and parents cloned accessory");assert(#api.listAccessories()==1)
 api.setSkin(Color3.new(.5,.4,.3),"All");assert(head.Color.r==.5 and body:FindFirstChild("LeftUpperArm").Color.r==.5 and bc.HeadColor3.r==.5,"R15 grouped skin applies");api.restore();assert(head.Color.r==1 and bc.HeadColor3.r==1,"restore returns original colors")
-assert(api.applyBody("https://www.roblox.com/bundles/555"):match("applied"));assert(players.generated and body:FindFirstChildOfClass("Humanoid").replaced.Head,"bundle outfit generates template and replaces body parts")
+assert(api.applyBody("https://www.roblox.com/bundles/555"):match("applied"));assert(players.generated and body:FindFirstChild('Head')==head and not head.destroyed,"bundle outfit generates appearance without replacing live parts")
 mode="respawn";local stale=create(player);local ok=pcall(function()stale.equipAccessory(123)end);assert(not ok,"respawn cancels stale asset operation");stale.destroy();player.Character=body;player.CharacterAdded:Fire(body)
 
 -- Blocked body replacement rolls back every changed limb and preserves the root.
@@ -66,7 +72,7 @@ local originalHat=freshAccessory();originalHat.Name="Original Roblox Hat";origin
 local wardrobe=create(player);wardrobe.equipAccessory(123)
 local addedHat=wardrobe.listAccessories()[1]
 wardrobe.removeCurrentAccessories()
-assert(originalHat.Parent==nil and not originalHat.destroyed,"original accessory is detached, not destroyed")
+assert(originalHat.Parent==body and originalHat:FindFirstChild('Handle').LocalTransparencyModifier==1 and not originalHat.destroyed,"original accessory is hidden without changing its parent")
 assert(#wardrobe.listAccessories()==1 and wardrobe.listAccessories()[1].key==addedHat.key,"hub-added accessory stays equipped")
 wardrobe.removeCurrentAccessories();wardrobe.restore()
 assert(originalHat.Parent==body and not originalHat.destroyed,"restore returns original hat")
@@ -77,9 +83,9 @@ assert(originalHat.Parent==body,"closing or refreshing returns original hats")
 -- Saved selections survive editor recreation and a fresh character, while restore clears them.
 mode="normal"; local persist=create(player); persist.equipAccessory(123); persist.setSkin(Color3.fromRGB(128,96,64),"All"); persist.applyBody("https://www.roblox.com/bundles/555")
 local saved=persist.getSettings(); assert(saved and saved.accessories and #saved.accessories==1 and saved.colors and saved.colors.All and saved.hideOriginals==true,"getSettings returns normalized saved selections")
-persist.destroy(); local resumed=create(player); local fresh=body:Clone(); local freshHum=fresh:FindFirstChildOfClass("Humanoid"); freshHum.Health=100; freshHum.RigType=Enum.HumanoidRigType.R15; freshHum.replaced={}; freshHum.ReplaceBodyPartR15=function(self,n,p)self.replaced[n]=p;p.Parent=self.Parent;return true end; freshHum.AddAccessory=function(self,a)a.Parent=self.Parent end; local freshHat=freshAccessory();freshHat.Name="Original Roblox Hat";freshHat.Parent=fresh; player.Character=fresh; player.CharacterAdded:Fire(fresh)
+persist.destroy(); local resumed=create(player); local fresh=body:Clone(); local freshHum=fresh:FindFirstChildOfClass("Humanoid"); freshHum.Health=100; freshHum.RigType=Enum.HumanoidRigType.R15; freshHum.replaced={}; freshHum.GetAppliedDescription=hum().GetAppliedDescription; freshHum.ReplaceBodyPartR15=function(self,n,p)self.replaced[n]=p;p.Parent=self.Parent;return true end; freshHum.AddAccessory=function(self,a)a.Parent=self.Parent end; local freshHat=freshAccessory();freshHat.Name="Original Roblox Hat";freshHat.Parent=fresh; player.Character=fresh; player.CharacterAdded:Fire(fresh)
 while #task.queue>0 do local work=table.remove(task.queue,1);work() end
-assert(resumed.getSettings().accessories and #resumed.getSettings().accessories==1,"new editor reads prior session settings"); assert(freshHat.Parent==nil and not freshHat.destroyed,"saved hideOriginals hides fresh original accessories"); local replay=resumed.reapplySaved(); assert(type(replay)=="string" and #replay>0,"saved accessories/body/color replay on fresh character"); local count=#resumed.listAccessories(); resumed.reapplySaved(); assert(#resumed.listAccessories()==count,"manual replay does not duplicate cosmetics")
+assert(resumed.getSettings().accessories and #resumed.getSettings().accessories==1,"new editor reads prior session settings"); assert(freshHat.Parent==fresh and freshHat:FindFirstChild("Handle").LocalTransparencyModifier==1 and not freshHat.destroyed,"saved hideOriginals hides fresh original accessories without reparenting"); local replay=resumed.reapplySaved(); assert(type(replay)=="string" and #replay>0,"saved accessories/body/color replay on fresh character"); local count=#resumed.listAccessories(); resumed.reapplySaved(); assert(#resumed.listAccessories()==count,"manual replay does not duplicate cosmetics")
 mode="blocked"; local failed=pcall(function()resumed.reapplySaved()end); assert(failed,"blocked saved asset reports without throwing"); local failedMessage=resumed.reapplySaved(); assert(failedMessage:match("some could not load") and #resumed.getSettings().accessories==1,"failed saved accessory remains persisted")
 mode="normal"; resumed.restore(); local cleared=resumed.getSettings(); assert((not cleared.accessories or #cleared.accessories==0) and freshHat.Parent==fresh,"restore clears saved selections and restores original hat"); resumed.destroy()
 
@@ -92,7 +98,7 @@ skinOnly.equipAccessory(123); skinOnly.equipAccessory(123); skinOnly.removeCurre
 local beforeSkinOnly=skinOnly.getSettings(); assert(beforeSkinOnly.hideOriginals and beforeSkinOnly.body and #skinOnly.listAccessories()==2,"skin-only setup keeps multiple cosmetics")
 local changedBodyHead=player.Character:FindFirstChild("Head")
 skinOnly.restoreSkin(); local afterSkinOnly=skinOnly.getSettings()
-assert(#skinOnly.listAccessories()==2 and hiddenHat.Parent==nil and not hiddenHat.destroyed,"skin-only restore preserves added hats and hidden originals")
+assert(#skinOnly.listAccessories()==2 and hiddenHat.Parent==body and hiddenHat:FindFirstChild("Handle").LocalTransparencyModifier==1 and not hiddenHat.destroyed,"skin-only restore preserves added hats and hidden originals")
 assert(afterSkinOnly.hideOriginals and afterSkinOnly.body and next(afterSkinOnly.colors)==nil,"skin-only restore clears saved colors only")
 assert(player.Character:FindFirstChild("Head")==changedBodyHead and changedBodyHead.Color==originalSkin,"skin-only restore returns actual original color without replacing body")
 skinOnly.destroy()
@@ -121,8 +127,54 @@ assert(not pcall(mixed.applyBodyPart,"Head","https://www.roblox.com/bundles/82/R
 http.bundleType="BodyParts"
 local partialHead=body:FindFirstChild("Head")
 mixed.reapplySaved()
-assert(mixed.getSettings().bodyParts.Head and body:FindFirstChild("Head")~=partialHead,"custom heads survive saved replay")
+assert(mixed.getSettings().bodyParts.Head and body:FindFirstChild("Head")==partialHead and not partialHead.destroyed,"custom heads survive saved replay without destroying the head")
 mixed.applyBody("Girl")
 assert(next(mixed.getSettings().bodyParts)==nil,"new full body package clears mixed overrides")
 mixed.destroy()
+-- Equipped gear grips live on hands; cosmetic body changes must preserve them.
+player.Character=body
+local gear=node("Tool","Equipped gear");gear.Parent=body
+local gearHandle=node("Part","Handle");gearHandle.Parent=gear
+local rightHand=body:FindFirstChild("RightHand")
+local grip=node("Weld","RightGrip");grip.Part0=rightHand;grip.Part1=gearHandle;grip.Parent=rightHand
+local gearScript=node("LocalScript","GameGearController");gearScript.Parent=rightHand
+local backpack=node('Backpack','Backpack');player.Backpack=backpack
+local storedGear=node('Tool','Stored gear');storedGear.Parent=backpack
+local gameEquipment=freshAccessory();gameEquipment.Name='Game weapon';gameEquipment.SourceAssetId=0;gameEquipment.Parent=body
+local gameHandle=gameEquipment:FindFirstChild('Handle')
+local gameWeld=node('Weld','GameWeaponJoint');gameWeld.Part0=gameHandle;gameWeld.Part1=rightHand;gameWeld.Parent=gameHandle
+local weaponController=node('LocalScript','GameWeaponController');weaponController.Parent=gameEquipment
+local appliedHat=freshAccessory();appliedHat.SourceAssetId=nil;appliedHat.Parent=body
+local liveDescription=node('HumanoidDescription','Live Description');liveDescription.Parent=body:FindFirstChildOfClass('Humanoid')
+local hatDescription=node('AccessoryDescription','Avatar Hat');hatDescription.Parent=liveDescription
+function hatDescription:GetAppliedInstance()return appliedHat end
+local gearApi=create(player)
+gearApi.applyBody("Girl")
+assert(not grip.destroyed and grip.Parent==rightHand and not gearScript.destroyed,"cosmetic body change destroyed equipped gear grip or controller")
+assert(body:FindFirstChild("RightHand")==rightHand and gear.Parent==body and not gear.destroyed,"cosmetics replaced the live gear-holding hand or equipped tool")
+gearApi.removeCurrentAccessories()
+assert(gameEquipment.Parent==body and gameHandle.LocalTransparencyModifier~=1 and not gameWeld.destroyed and not weaponController.destroyed,'Avatar hat hiding leaves game weapons and their welds/controllers alone')
+assert(appliedHat.Parent==body and appliedHat:FindFirstChild('Handle').LocalTransparencyModifier==1,'Public applied accessory descriptions identify hats without protected SourceAssetId')
+gearApi.restoreBody();gearApi.reapplySaved();gearApi.destroy()
+assert(not grip.destroyed and gear.Parent==body,"restore, replay, and cleanup preserve equipped gear")
+assert(storedGear.Parent==backpack and not storedGear.destroyed and not gameWeld.destroyed,'Backpack gear and game weapon joints survive all cosmetic operations')
+assert(appliedHat:FindFirstChild('Handle').LocalTransparencyModifier==0,'Cleanup restores hidden avatar visuals without destroying inventory')
+-- A Part-based R15 head keeps its existing face, joints, and controllers too.
+Enum.MeshType={FileMesh='FileMesh'}
+Vector3={new=function(x,y,z)return{X=x,Y=y,Z=z}end}
+local headCharacter=body:Clone();headCharacter:FindFirstChild('Head'):Destroy()
+local partHead=node('Part','Head');partHead.CFrame=cf();partHead.Size=Vector3.new(2,2,2);partHead.Color=Color3.new(1,1,1);partHead.Parent=headCharacter
+local headJoint=node('Weld','GameHeadJoint');headJoint.Parent=partHead
+local originalHeadMesh=node('SpecialMesh','OriginalHeadMesh');originalHeadMesh.Parent=partHead
+local headPlayer={Character=headCharacter,CharacterAdded=signal()}
+function headPlayer:FindFirstChildOfClass()return nil end
+local sourceHead=template:FindFirstChild('Head');sourceHead.MeshId='head-shape';sourceHead.MeshSize=Vector3.new(4,4,4)
+local headEditor=create(headPlayer);marketplace.assetType=79
+headEditor.applyBodyPart('Head',789)
+assert(headCharacter:FindFirstChild('Head')==partHead and not headJoint.destroyed,'Part head keeps game-owned identity and joints')
+local headMesh=partHead:FindFirstChildOfClass('SpecialMesh')
+assert(headMesh.MeshId=='head-shape' and headMesh.Scale.X==0.5,'Part head uses properly scaled visual geometry')
+headEditor.restoreBody()
+assert(partHead:FindFirstChild('OriginalHeadMesh') and not headJoint.destroyed,'Part head visual restore preserves game joints')
+headEditor.destroy()
 print("Avatar backend fixture and lifecycle tests passed.")

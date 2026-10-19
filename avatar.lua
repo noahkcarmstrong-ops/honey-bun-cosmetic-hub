@@ -116,8 +116,14 @@ return function(player,onStatus)
     local function check(ctx)
         assert(valid(ctx),"Your avatar changed while loading. Try again on the new character.")
     end
+    local function showOriginalAccessories()
+        for _,entry in ipairs(hidden) do
+            for part,value in pairs(entry.parts) do pcall(function() part.LocalTransparencyModifier=value end) end
+        end
+        hidden={}
+    end
     local function forget()
-        dispose(hidden)
+        showOriginalAccessories()
         if snapshot then
             dispose(snapshot.meshes)
             for _,part in pairs(snapshot.parts) do part:Destroy() end
@@ -206,9 +212,27 @@ return function(player,onStatus)
         weld.C0,weld.C1=c0,c1
         weld.Parent=handle
     end
-    local function reattach(c)
-        for _,item in ipairs(c:GetChildren()) do
-            if item:IsA("Accessory") or item:IsA("Hat") then pcall(attach,item,c) end
+    local function applyPartAppearance(target,source)
+        if target:IsA("MeshPart") and source:IsA("MeshPart") then
+            local size=target.Size
+            target:ApplyMesh(source);target.Size=size
+        elseif target:IsA("Part") and (source:IsA("Part") or source:IsA("MeshPart")) then
+            local prepared={}
+            if source:IsA("MeshPart") then
+                local bounds=source.MeshSize
+                assert(bounds and bounds.X>0 and bounds.Y>0 and bounds.Z>0,"This head has no usable mesh dimensions.")
+                local mesh=Instance.new("SpecialMesh")
+                mesh.MeshType=Enum.MeshType.FileMesh;mesh.MeshId=source.MeshId;mesh.TextureId=source.TextureID
+                mesh.Scale=Vector3.new(target.Size.X/bounds.X,target.Size.Y/bounds.Y,target.Size.Z/bounds.Z)
+                prepared[1]=mesh
+            else
+                for _,item in ipairs(source:GetChildren()) do if item:IsA("SpecialMesh") then prepared[#prepared+1]=item:Clone() end end
+            end
+            for _,item in ipairs(target:GetChildren()) do if item:IsA("SpecialMesh") then item:Destroy() end end
+            for _,item in ipairs(prepared) do item.Parent=target end
+            if source:IsA("Part") then target.Shape=source.Shape end
+        else
+            error("This body part cannot be changed safely on this avatar. Your gear was left alone.")
         end
     end
     local function replaceParts(ctx,parts,names)
@@ -222,25 +246,21 @@ return function(player,onStatus)
         local ok,err=pcall(function()
             for _,name in ipairs(names) do
                 local target=ctx.character:FindFirstChild(name)
-                local clone=bodyClone(parts[name])
-                clone.CFrame,clone.Color=target.CFrame,target.Color
-                clone.Anchored,clone.CanCollide,clone.Massless=target.Anchored,target.CanCollide,target.Massless
-                clone.Transparency=target.Transparency
-                local success,result=pcall(function() return ctx.humanoid:ReplaceBodyPartR15(Enum.BodyPartR15[name],clone) end)
-                if not success or not result then clone:Destroy();error("Roblox blocked replacing "..name.." on this avatar.") end
+                -- Keep the actual limb, attachments, RightGrip, and game controllers.
+                -- ApplyMesh changes appearance without destroying the gear-holding part.
+                local success,message=pcall(applyPartAppearance,target,parts[name])
+                if not success then error("Roblox blocked changing "..name.." safely: "..tostring(message)) end
                 table.insert(changed,name)
             end
         end)
         if not ok then
             for i=#changed,1,-1 do
                 local name=changed[i]
-                local backup=backups[name]:Clone()
-                local restored,result=pcall(function() return ctx.humanoid:ReplaceBodyPartR15(Enum.BodyPartR15[name],backup) end)
-                if not restored or not result then backup:Destroy() end
+                local target=ctx.character:FindFirstChild(name)
+                pcall(applyPartAppearance,target,backups[name])
             end
         end
         for _,part in pairs(backups) do part:Destroy() end
-        reattach(ctx.character)
         assert(ok,err)
     end
     local api={}
@@ -310,16 +330,38 @@ return function(player,onStatus)
         capture(ctx)
         local hubAdded={}
         for _,entry in ipairs(added) do hubAdded[entry.object]=true end
+        local avatarIds,avatarInstances={},{}
+        local liveDescription=ctx.humanoid:FindFirstChildOfClass("HumanoidDescription")
+        if liveDescription then
+            for _,entry in ipairs(liveDescription:GetChildren()) do
+                if entry:IsA("AccessoryDescription") then
+                    local found,instance=pcall(function() return entry:GetAppliedInstance() end)
+                    if found and instance and instance.Parent==ctx.character then avatarInstances[instance]=true end
+                end
+            end
+        end
+        local ok,description=pcall(function() return ctx.humanoid:GetAppliedDescription() end)
+        if ok and description then
+            local read,entries=pcall(function() return description:GetAccessories(true) end)
+            if read then for _,entry in ipairs(entries) do avatarIds[entry.AssetId]=true end end
+            description:Destroy()
+        end
+        local alreadyHidden={}
+        for _,entry in ipairs(hidden) do alreadyHidden[entry.object]=true end
         local count=0
         for _,item in ipairs(ctx.character:GetChildren()) do
-            if (item:IsA("Accessory") or item:IsA("Hat")) and not hubAdded[item] then
-                item.Parent=nil
-                table.insert(hidden,item)
+            local identified,id=pcall(function() return item.SourceAssetId end)
+            if (item:IsA("Accessory") or item:IsA("Hat")) and not hubAdded[item] and not alreadyHidden[item] and (avatarInstances[item] or (identified and avatarIds[id])) then
+                local entry={object=item,parts={}}
+                for _,part in ipairs(item:GetDescendants()) do
+                    if part:IsA("BasePart") then entry.parts[part]=part.LocalTransparencyModifier or 0;part.LocalTransparencyModifier=1 end
+                end
+                table.insert(hidden,entry)
                 count=count+1
             end
         end
         if not reapplying then settings.hideOriginals=true;save() end
-        return count==0 and "No current Roblox accessories to remove." or "Removed "..count.." Roblox accessories. Restore original appearance brings them back."
+        return count==0 and "No identified Roblox avatar accessories to hide. Game equipment was left alone." or "Hidden "..count.." Roblox accessories. Restore original appearance brings them back."
     end
     function api.setSkin(color,region)
         local ctx=context();region=region or "All"
@@ -466,9 +508,7 @@ return function(player,onStatus)
         local ctx=context()
         clearAdded()
         if not snapshot or snapshot.character~=ctx.character then return "Nothing to restore on this character." end
-        for _,item in ipairs(hidden) do item.Parent=ctx.character end
-        hidden={}
-        reattach(ctx.character)
+        showOriginalAccessories()
         if snapshot.bodyChanged then
             if ctx.humanoid.RigType==Enum.HumanoidRigType.R15 then replaceParts(ctx,snapshot.parts)
             else
@@ -495,7 +535,6 @@ return function(player,onStatus)
                 for _,mesh in ipairs(snapshot.meshes) do mesh:Clone().Parent=ctx.character end
             end
             snapshot.bodyChanged=false
-            reattach(ctx.character)
         end
         settings.body=nil;settings.bodyParts={};save()
         return "Original body restored."
