@@ -174,10 +174,14 @@ return function(game, injectedRequire)
             if read(object,"Name")=="Handle" and isA(object,"BasePart") then visual=object;break end
         end
         if not visual then
-            local parts={}
-            for _,object in ipairs(all) do if isA(object,"BasePart") then parts[#parts+1]=object end end
-            assert(#parts==1,"ItemID "..key.." did not expose one weapon mesh or a named Handle.")
-            visual=parts[1]
+            local parts,meshes,layout={},{},{}
+            for _,object in ipairs(all) do
+                if isA(object,"BasePart") then parts[#parts+1]=object end
+                if isA(object,"SpecialMesh") then meshes[#meshes+1]=object end
+                if #layout<16 then layout[#layout+1]=tostring(read(object,"Name")).."["..tostring(read(object,"ClassName")).."]" end
+            end
+            if #parts==1 then visual=parts[1] elseif #parts==0 and #meshes==1 then visual=meshes[1] end
+            assert(visual,"ItemID "..key.." has an unsupported visual layout: "..table.concat(layout,", "))
         end
         assetCache[key]=visual
         return visual
@@ -188,7 +192,7 @@ return function(game, injectedRequire)
         local h=modelHandle(field(def,"Model"))
         if not h and field(def,"ItemID") then h=itemAsset(field(def,"ItemID")) end
         if h then
-            local m=childClass(h,"SpecialMesh")
+            local m=isA(h,"SpecialMesh") and h or childClass(h,"SpecialMesh")
             if m then
                 mesh=mesh or read(m,"MeshId");texture=texture or read(m,"TextureId")
                 scale=scale or read(m,"Scale");meshType=meshType or read(m,"MeshType")
@@ -365,7 +369,7 @@ return function(game, injectedRequire)
     end
     function api.report()
         local rs=service("ReplicatedStorage"); local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local lines={"MM2 discovery (read-only)","GameId="..tostring(read(game,"GameId") or "?"),"PlaceId="..tostring(read(game,"PlaceId") or "?"),"ReplicatedStorage="..(rs and "available" or "missing"),"LocalPlayer="..(p and tostring(read(p,"Name") or "available") or "missing")}
-        lines[#lines+1]="Build: ItemID asset equip V3"
+        lines[#lines+1]="Build: standalone mesh equip V4"
         lines[#lines+1]="Selected Knife="..tostring(equipped.Knife).." Gun="..tostring(equipped.Gun).." Last equip error="..tostring(equipError or "none")
         lines[#lines+1]="Pending Knife="..tostring(pending.Knife).." Gun="..tostring(pending.Gun).." Last result="..tostring(lastEquipResult or "none")
         if lastAttempt then

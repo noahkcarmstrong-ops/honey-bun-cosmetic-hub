@@ -134,3 +134,15 @@ assert(displayMesh.MeshId=='asset-mesh'and displayMesh.TextureId=='asset-texture
 assetApi.restore();assert(displayMesh.MeshId=='old-display'and displayMesh.Scale==oldScale and displayMesh.MeshType=='old-type','Part display restores exact original geometry and scale')
 assetApi.destroy();assert(assetSource.destroyed,'Detached loaded assets are destroyed when the hub closes')
 print('Live MM2 ItemID loading, visible equip, script stripping, categories and restoration passed.')
+
+-- Mesh assets can load as a standalone SpecialMesh, without a wrapping BasePart.
+local standalone=node('WeaponMesh','SpecialMesh')
+standalone.MeshId='standalone-mesh';standalone.TextureId='standalone-texture';standalone.Scale=oldScale;standalone.MeshType='FileMesh'
+standalone.Destroy=function()end
+local meshGame={GetService=assetGame.GetService,GetObjects=function()return{standalone}end}
+local meshApi=create(meshGame,function(module)return module.Data end)
+meshApi.equip('Fragile_G_2023','Gun')
+assert(displayMesh.MeshId=='standalone-mesh' and displayMesh.TextureId=='standalone-texture','Standalone ItemID mesh applies to the real native weapon')
+meshApi.restore()
+assert(displayMesh.MeshId=='old-display','Standalone asset restores original weapon')
+print('Standalone ItemID mesh equip and restoration passed.')
