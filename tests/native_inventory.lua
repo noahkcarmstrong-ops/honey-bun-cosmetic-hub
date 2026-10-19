@@ -48,7 +48,7 @@ function methods:GetFullName()return (self.Parent and self.Parent:GetFullName().
 function methods:GetPropertyChangedSignal(key)
     self.propertySignals=self.propertySignals or {};self.propertySignals[key]=self.propertySignals[key]or signal();return self.propertySignals[key]
 end
-function methods:FindFirstChild(name)for _,c in ipairs(self.children)do if c.Name==name then return c end end end
+function methods:FindFirstChild(name,recursive)for _,c in ipairs(self.children)do if c.Name==name then return c end end;if recursive then for _,c in ipairs(self.children)do local found=c:FindFirstChild(name,true);if found then return found end end end end
 function methods:Destroy()for _,c in ipairs(self:GetChildren())do c:Destroy()end;self.Parent=nil;self.destroyed=true end
 function methods:Clone()
     local n=node(self.ClassName,self.Name)
@@ -400,8 +400,12 @@ print('Nested native category grids, tabs and reversible manual layout passed.')
 
 -- Saved-effects mode uses the Effects pane and its Effect catalog, including
 -- the lazy plain-Frame container shape used by the live game.
+local equippedDecoy=node('Frame','Equipped',inventory)
+local decoyEffects=node('Frame','Effects',equippedDecoy)
+local decoyGrid=node('ScrollingFrame','Container',decoyEffects)
+local decoyCard=node('Frame','Effect',decoyGrid);node('TextLabel','ItemName',decoyCard).Text='Equipped effect'
 local savedEffectsPane=node('Frame','Effects',inventory)
-local savedEffectsItems=node('Frame','Items',savedEffectsPane)
+local savedEffectsItems=node('ScrollingFrame','Items',savedEffectsPane)
 local savedEffectsContainer=node('Frame','Container',savedEffectsItems)
 local savedEffectNative=node('Frame','NativeEffect',savedEffectsContainer)
 node('TextLabel','ItemName',savedEffectNative).Text='None'
@@ -417,6 +421,8 @@ assert(savedEffectsApi.enable(),'Saved-effects mode waits for the native Effects
 local savedEffectCard=savedEffectsContainer:FindFirstChild('HoneyBunLocal_Saved_Effect_Bats')
 assert(savedEffectCard and savedEffectCard:FindFirstChild('ItemName').Text=='Bats','Saved effect is inserted into the native Effects container')
 assert(savedEffectsContainer:FindFirstChildOfClass('UIGridLayout'),'Plain Effects container receives a reversible local grid')
+savedEffectsApi.refreshSaved();flush()
+assert(savedEffectCard.Parent==savedEffectsContainer,'Refresh keeps effects in the inner grid rather than its outer wrapper')
 savedEffectCard:Destroy();flush()
 savedEffectCard=savedEffectsContainer:FindFirstChild('HoneyBunLocal_Saved_Effect_Bats')
 assert(savedEffectCard,'Saved effects return when the game clears collection cards')

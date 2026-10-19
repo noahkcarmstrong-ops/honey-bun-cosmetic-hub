@@ -104,7 +104,14 @@ return function(playerGui,catalog,onStatus,mode)
         if not effects then return detectWeapon() end
         local _,_,weaponTemplate=detectWeapon()
         for _,branch in ipairs(descendants(playerGui)) do
-            if normalize(branch.Name)=="effects" and is(branch,"GuiObject") and not is(branch,"GuiButton") and inventoryAncestor(branch) then
+            local effectBranch=normalize(branch.Name)=="effects"
+            local ancestor,excludedBranch=branch,false
+            while effectBranch and ancestor and ancestor~=playerGui do
+                local name=normalize(ancestor.Name)
+                if name:find("equipped",1,true) or name:find("loadout",1,true) or lower(ancestor.Name):sub(1,14)=="honeybunlocal_" then excludedBranch=true;break end
+                ancestor=ancestor.Parent
+            end
+            if effectBranch and not excludedBranch and is(branch,"GuiObject") and not is(branch,"GuiButton") and inventoryAncestor(branch) then
                 local fallback
                 for _,candidate in ipairs(descendants(branch)) do
                     local container=is(candidate,"UIGridLayout") and candidate.Parent or candidate
@@ -118,7 +125,15 @@ return function(playerGui,catalog,onStatus,mode)
                         local structural=is(candidate,"UIGridLayout") or is(container,"ScrollingFrame") or normalize(container.Name)=="container"
                         if structural then
                             for _,card in ipairs(children(container)) do
-                                if is(card,"GuiObject") and card:FindFirstChild("ItemName",true) then return branch,container,card end
+                                if is(card,"GuiObject") and lower(card.Name):sub(1,14)~="honeybunlocal_" and card:FindFirstChild("ItemName",true) then
+                                    -- A scrolling wrapper can contain the entire item grid.
+                                    -- Never clone that grid as though it were one effect card.
+                                    local wrapsCards=false
+                                    for _,nested in ipairs(children(card)) do
+                                        if is(nested,"GuiObject") and nested:FindFirstChild("ItemName",true) then wrapsCards=true;break end
+                                    end
+                                    if not wrapsCards then return branch,container,card end
+                                end
                             end
                             -- Prefer the inner grid when Items wraps a scrolling Container.
                             if not fallback or is(candidate,"UIGridLayout") or container.Parent==fallback then fallback=container end
@@ -1002,8 +1017,8 @@ return function(playerGui,catalog,onStatus,mode)
         if savedOnly then
             local count=0;for _,card in pairs(savedCards) do if alive(card) then count=count+1 end end
             if savedTabMode then return "Native inventory build: saved weapons V3\n"..lastReport.."\nGenerated="..count.."\nSaved pane: "..(savedGrid and savedGrid:GetFullName() or "none") end
-            local paths={};for _,key in ipairs({"season1","classic","holiday"}) do paths[#paths+1]=key.."="..(savedGrids[key] and savedGrids[key]:GetFullName() or "none") end
-            return "Native inventory build: saved weapons V3\n"..lastReport.."\nGenerated="..count.."\nCategory grids: "..table.concat(paths,"; ")
+            local paths={};for _,key in ipairs(effects and {"effects"} or {"season1","classic","holiday"}) do paths[#paths+1]=key.."="..(savedGrids[key] and savedGrids[key]:GetFullName() or "none") end
+            return "Native inventory build: "..(effects and "saved effects V4" or "saved weapons V3").."\n"..lastReport.."\nGenerated="..count.."\nCategory grids: "..table.concat(paths,"; ")
         end
         return "Native inventory build: weapons and effects V9\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nRender passes="..renderPasses.."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.." Effects="..tostring(categoryCounts.effects or 0).."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").." Effect="..(sideSlots.Effect and sideSlots.Effect:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")..(diagnosticDetails~="" and ("\nInventory diagnostics:\n"..diagnosticDetails) or "")
     end
