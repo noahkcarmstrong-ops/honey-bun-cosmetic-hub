@@ -933,6 +933,11 @@ return function(game, injectedRequire, gunLibrary)
                     poseBranch(shoulder,pose)
                 end
             end
+            -- WorldModel evaluates avatar joints even without animation scripts.
+            -- Keep the baked preview pose instead of solving back to the idle rig.
+            for _,joint in ipairs(descendants(character)) do
+                if isA(joint,"Motor6D") or isA(joint,"Weld") then joint.Enabled=false end
+            end
             local function matchingTool(parent)
                 for _,candidate in ipairs(children(parent)) do if isA(candidate,"Tool") and toolKind(candidate)==entry.kind then return candidate end end
             end
