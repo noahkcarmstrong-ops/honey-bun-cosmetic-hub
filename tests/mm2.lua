@@ -228,34 +228,22 @@ refApi.restore();assert(respawnKnifeMesh.MeshId=='respawn-old' and respawnGunMes
 respawnKnifeRef.Value=nil;local nilReferenceReport=refApi.report();assert(nilReferenceReport:find('DisplayRefKnife=',1,true) and nilReferenceReport:find('Value=missing',1,true),'Report keeps named references visible when their Value is missing')
 print('Avatar display references, replacement, respawn and restoration passed.')
 
--- Replay an empty GetObjects load with a permitted native AssetService fallback.
-local fallbackMesh=node('Mesh','SpecialMesh');fallbackMesh.MeshId='fallback-mesh';fallbackMesh.TextureId='fallback-texture'
-local fallbackScript=node('Script','LocalScript');fallbackScript.IsA=function(_,c)return c=='LuaSourceContainer' end;fallbackScript.Destroy=function(self)self.destroyed=true end
-local fallbackHandle=node('Handle','Part',{fallbackMesh,fallbackScript});fallbackHandle.IsA=function(_,c)return c=='Part' or c=='BasePart' end
-local fallbackRoot=node('Weapon','Model',{fallbackHandle});fallbackRoot.Destroy=function(self)self.destroyed=true end
-local fallbackLoads=0
-local fallbackService={LoadAssetAsync=function(_,id)assert(id==12965349193);fallbackLoads=fallbackLoads+1;return fallbackRoot end}
-local fallbackGame={GetService=function(_,name)return name=='AssetService' and fallbackService or assetServices[name]end,GetObjects=function()return{}end}
-assetPlayer.Character=node('Character','Model',{directDisplay})
-local fallbackApi=create(fallbackGame,function(module)return module.Data end)
-fallbackApi.equip('Fragile_G_2023','Gun')
-assert(displayMesh.MeshId=='fallback-mesh' and displayMesh.TextureId=='fallback-texture','Native asset loader equips the real display when GetObjects is empty')
-assert(fallbackScript.destroyed,'Fallback model scripts are stripped before using its mesh')
-fallbackApi.equip('Fragile_G_2023','Gun');assert(fallbackLoads==1,'Successful native fallback is cached')
-fallbackApi.destroy();assert(displayMesh.MeshId=='old-display' and fallbackRoot.destroyed,'Fallback roots are cleaned up and native display restored')
-local deniedLoads=0
-local deniedService={LoadAssetAsync=function()deniedLoads=deniedLoads+1;error('Asset permission denied')end}
-local deniedGame={GetService=function(_,name)return name=='AssetService' and deniedService or assetServices[name]end,GetObjects=function()return{}end}
-local deniedApi=create(deniedGame,function(module)return module.Data end)
-deniedApi.equip('Fragile_G_2023','Gun');deniedApi.equip('Fragile_G_2023','Gun')
-assert(deniedLoads==1 and deniedApi.report():find('Asset permission denied',1,true),'A denied fallback reports its reason and is not retried repeatedly')
-print('Native asset fallback, script stripping, permission failures and cleanup passed.')
 
--- An asynchronous asset result must not bring back cosmetics after the hub closes.
+-- Replay the actual client report: GetObjects is empty and LoadAssetAsync is server-only.
+local forbiddenCalls,emptyClientLoads=0,0
+local serverOnlyService={LoadAssetAsync=function()forbiddenCalls=forbiddenCalls+1;error('LoadAssetAsync cannot be used to load assets from the client')end}
+local clientGame={GetService=function(_,name)return name=='AssetService' and serverOnlyService or assetServices[name]end,GetObjects=function()emptyClientLoads=emptyClientLoads+1;return{}end}
+assetPlayer.Character=node('Character','Model',{directDisplay})
+local clientApi=create(clientGame,function(module)return module.Data end)
+clientApi.equip('Fragile_G_2023','Gun');clientApi.equip('Fragile_G_2023','Gun')
+assert(forbiddenCalls==0 and emptyClientLoads==1,'Client selection never invokes the server-only loader or repeats the failed asset download')
+assert(clientApi.getEquipped().Gun=='Fragile_G_2023' and clientApi.report():find('Avatar model unavailable on this client',1,true),'Menu choice remains selected while the visual failure is explicit')
+assert(displayMesh.MeshId=='old-display','Unavailable models cannot be reported as applied avatar appearances')
+print('Client-only asset failure reporting and retry suppression passed.')
+-- An asynchronous GetObjects result must not bring back cosmetics after the hub closes.
 local cancelledAssetApi
-local cancelledRoot=node('CancelledAsset','Model',{fallbackHandle});cancelledRoot.Destroy=function(self)self.destroyed=true end
-local cancelledService={LoadAssetAsync=function()cancelledAssetApi.destroy();return cancelledRoot end}
-local cancelledGame={GetService=function(_,name)return name=='AssetService' and cancelledService or assetServices[name]end,GetObjects=function()return{}end}
+local cancelledRoot=node('CancelledAsset','Model');cancelledRoot.Destroy=function(self)self.destroyed=true end
+local cancelledGame={GetService=assetGame.GetService,GetObjects=function()cancelledAssetApi.destroy();return{cancelledRoot}end}
 cancelledAssetApi=create(cancelledGame,function(module)return module.Data end)
 local cancelledResult=cancelledAssetApi.equip('Fragile_G_2023','Gun')
 assert(cancelledResult:find('cancelled',1,true) and cancelledRoot.destroyed,'An asset that finishes loading after destroy is discarded')

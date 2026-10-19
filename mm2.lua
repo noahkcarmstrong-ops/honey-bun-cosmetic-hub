@@ -177,28 +177,16 @@ return function(game, injectedRequire)
         if assetFailures[key] then error(assetFailures[key]) end
         local generation=appearanceGeneration
         local ok,objects=pcall(function() return game:GetObjects("rbxassetid://"..string.format("%.0f",id)) end)
-        local loader="GetObjects"
-        local firstFailure
-        if not ok or type(objects)~="table" or #objects==0 then
-            firstFailure=ok and type(objects)=="table" and "GetObjects returned no objects" or ("GetObjects: "..tostring(objects))
-            local assets=service("AssetService")
-            local method=read(assets,"LoadAssetAsync")
-            if type(method)=="function" then
-                local loaded,root=pcall(method,assets,id)
-                if loaded and read(root,"ClassName") then
-                    ok,objects=true,{root};loader="AssetService.LoadAssetAsync"
-                else ok,objects=false,"AssetService.LoadAssetAsync: "..tostring(root) end
-            else ok,objects=false,"AssetService.LoadAssetAsync is unavailable" end
-        end
         if not alive or generation~=appearanceGeneration then
             if ok and type(objects)=="table" then for _,root in ipairs(objects) do pcall(function() root:Destroy() end) end end
             error("MM2 cosmetic loading cancelled.")
         end
         if not ok or type(objects)~="table" or #objects==0 then
-            local message="Could not load ItemID "..key..": "..tostring(firstFailure).."; "..tostring(objects)
+            local reason=ok and type(objects)=="table" and "GetObjects returned no objects" or tostring(objects)
+            local message="ItemID "..key..": "..reason..". Avatar model unavailable on this client."
             assetFailures[key]=message;assetLoaders[key]=message;error(message)
         end
-        assetLoaders[key]=loader
+        assetLoaders[key]="GetObjects"
         local all={}
         for _,object in ipairs(objects) do
             assetRoots[#assetRoots+1]=object
@@ -487,7 +475,7 @@ return function(game, injectedRequire)
     end
     function api.report()
         local rs=service("ReplicatedStorage"); local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local lines={"MM2 discovery (read-only)","GameId="..tostring(read(game,"GameId") or "?"),"PlaceId="..tostring(read(game,"PlaceId") or "?"),"ReplicatedStorage="..(rs and "available" or "missing"),"LocalPlayer="..(p and tostring(read(p,"Name") or "available") or "missing")}
-        lines[#lines+1]="Build: native asset loading V8"
+        lines[#lines+1]="Build: client visual loading V9"
         lines[#lines+1]="Selected Knife="..tostring(equipped.Knife).." Gun="..tostring(equipped.Gun).." Last equip error="..tostring(equipError or "none")
         lines[#lines+1]="Pending Knife="..tostring(pending.Knife).." Gun="..tostring(pending.Gun).." Last result="..tostring(lastEquipResult or "none")
         if lastAttempt then
