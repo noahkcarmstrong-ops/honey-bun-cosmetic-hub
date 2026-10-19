@@ -14,6 +14,7 @@ return function(playerGui,catalog,onStatus,mode)
     local sideSlots,sideSnapshots,sideCandidates={},{},{}
     local query,season="",initialCategory
     local lastReport="Native inventory has not been detected yet."
+    local diagnosticDetails=""
     local tabBindings,categoryCounts={},{season1=0,classic=0,holiday=0}
     local function read(o,k) local ok,v=pcall(function() return o[k] end);if ok then return v end end
     local function is(o,c) local ok,v=pcall(function() return o:IsA(c) end);return ok and v end
@@ -490,7 +491,15 @@ return function(playerGui,catalog,onStatus,mode)
         if enabled then local ok,message=pcall(refresh);return ok,message end
         enabled=true;query="";season=initialCategory
         local ok,message=pcall(refresh)
-        if not ok then api.disable();status("MM2 inventory could not load: "..tostring(message).."\n"..inventoryTree());return false,lastReport end
+        if not ok then
+            diagnosticDetails=tostring(message).."\n"..inventoryTree()
+            api.disable()
+            local reason=tostring(message)
+            for _=1,3 do reason=reason:gsub("^.-:%d+:%s*","") end
+            status(reason)
+            return false,lastReport
+        end
+        diagnosticDetails=""
         if not enabled then return false,"Inventory loading cancelled." end
         local function changed(o)
             if not mounting and not localObject(o) and (inventoryAncestor(o) or lower(o.Name):find("inventory",1,true)) then schedule() end
@@ -500,7 +509,7 @@ return function(playerGui,catalog,onStatus,mode)
         return true,message
     end
     function api.report()
-        return "Native inventory build: weapons and effects V7\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nRender passes="..renderPasses.."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.." Effects="..tostring(categoryCounts.effects or 0).."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").." Effect="..(sideSlots.Effect and sideSlots.Effect:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")
+        return "Native inventory build: weapons and effects V8\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nRender passes="..renderPasses.."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.." Effects="..tostring(categoryCounts.effects or 0).."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").." Effect="..(sideSlots.Effect and sideSlots.Effect:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")..(diagnosticDetails~="" and ("\nInventory diagnostics:\n"..diagnosticDetails) or "")
     end
     function api.destroy() if not dead then api.disable();dead=true end end
     return api
