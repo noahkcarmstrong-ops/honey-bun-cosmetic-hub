@@ -448,8 +448,9 @@ return function(game, injectedRequire, gunLibrary)
                 local remaining=6-thin-long
                 local columns={}
                 columns[thin]=knifeSide and {-1,0,0} or {0,0,1}
-                local angle=knifeSide and 0 or math.rad(30)
-                columns[long]={math.sin(angle),math.cos(angle),0}
+                local angle=math.rad(knifeSide and 45 or 30)
+                -- Tilt within the hip plane, keeping the thin edge against the body.
+                columns[long]=knifeSide and {0,math.cos(angle),math.sin(angle)} or {math.sin(angle),math.cos(angle),0}
                 local a,b=columns[remaining%3+1],columns[(remaining+1)%3+1]
                 columns[remaining]={a[2]*b[3]-a[3]*b[2],a[3]*b[1]-a[1]*b[3],a[1]*b[2]-a[2]*b[1]}
                 local rotation=CFrame.new(0,0,0,

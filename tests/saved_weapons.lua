@@ -82,6 +82,7 @@ local sideOverlay
 for _,item in ipairs(workspace:GetChildren())do if item.Name=="HoneyBunSavedKnife"then sideOverlay=item end end
 assert(sideOverlay and math.abs(sideOverlay.CFrame.X-97.87)<0.0001 and sideOverlay.CFrame.Y<0 and sideOverlay.CFrame.Z==0,"side layout moves the existing saved knife promptly")
 assert(math.abs(sideOverlay.CFrame.r[1])>0.99,"side knife thickness faces outward rather than its blade width")
+assert(math.abs(sideOverlay.CFrame.r[8])>0.6 and sideOverlay.CFrame.r[5]>0.6 and sideOverlay.CFrame.r[5]<0.8,"side knife lies diagonally along the hip rather than standing upright")
 assert(overlay.destroyed,"changing layout removes the previous knife overlay")
 mm2.setKnifeSide(false)
 assert(mm2.getKnifeSide()==false,"knife layout can return to the default back position")
