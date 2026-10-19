@@ -197,6 +197,25 @@ return function(game,gui)
             VertexColor=decode(d.VertexColor),Color=decode(d.Color),Material=decode(d.Material,"Material"),Size=decode(d.Size),Mounts=mounts,Presentation=presentation,SurfaceAppearance=surface}
         return validDefinition(result)and result or nil
     end
+    local function withMetadata(base,mounts,presentation)
+        local result={}
+        for key,value in pairs(base) do result[key]=value end
+        if mounts~=nil then
+            local merged={}
+            for key,value in pairs(result.Mounts or {}) do merged[key]=value end
+            for key,value in pairs(mounts) do merged[key]=value end
+            result.Mounts=next(merged) and merged or nil
+        end
+        if presentation~=nil then
+            local merged={}
+            for key,value in pairs(result.Presentation or {}) do merged[key]=value end
+            if presentation.Grip then merged.Grip=presentation.Grip end
+            if presentation.ToolIcon and presentation.ToolIcon~="" then merged.ToolIcon=presentation.ToolIcon end
+            if presentation.Sounds and #presentation.Sounds>0 then merged.Sounds=presentation.Sounds end
+            result.Presentation=next(merged) and merged or nil
+        end
+        return result
+    end
     local function canonical(v,precise)
         if type(v)=="number"then return "number:"..string.format(precise and "%.9f"or"%.5f",v)end
         if type(v)~="table"then return type(v)..":"..tostring(v)end
@@ -205,6 +224,14 @@ return function(game,gui)
     end
     local function identity(d,kind)
         local s=canonical(pack(d));local a,b=1,7
+        for i=1,#s do a=(a*31+s:byte(i))%2147483647;b=(b*37+s:byte(i))%2147483629 end
+        return (kind=="Knife" and "SavedKnife_" or "SavedGun_")..string.format("%.0f_%.0f",a,b)
+    end
+    -- IDs intentionally include presentation and mount data for backwards
+    -- compatibility.  Deduplication uses only the visual definition.
+    local function visualIdentity(d,kind)
+        local packed=pack(d);packed.Mounts=nil;packed.Presentation=nil
+        local s=canonical(packed);local a,b=1,7
         for i=1,#s do a=(a*31+s:byte(i))%2147483647;b=(b*37+s:byte(i))%2147483629 end
         return (kind=="Knife" and "SavedKnife_" or "SavedGun_")..string.format("%.0f_%.0f",a,b)
     end
@@ -222,6 +249,25 @@ return function(game,gui)
         return out
     end
     local entries,selected,selectedKnife={},nil,nil
+    local aliases={}
+    local function resolveId(id)
+        local seen={}
+        while type(id)=="string" and aliases[id] and not seen[id] do
+            seen[id]=true;id=aliases[id]
+        end
+        return id
+    end
+    local function metadataScore(entry)
+        local d=entry.definition;local score=0
+        if d.Mounts then for _ in pairs(d.Mounts) do score=score+1 end end
+        if d.Presentation then
+            if d.Presentation.Grip then score=score+1 end
+            if d.Presentation.ToolIcon then score=score+1 end
+            if d.Presentation.Sounds then score=score+#d.Presentation.Sounds end
+        end
+        return score
+    end
+    local needsMigration=false
     local raw=gui:GetAttribute(KEY)
     if type(raw)=="string"and #raw<=MAX_BYTES then
         local ok,saved=pcall(function()return Http:JSONDecode(raw)end)
@@ -231,25 +277,72 @@ return function(game,gui)
                     local kind=record.kind=="Knife" and "Knife" or "Gun"
                     local definition=unpackDefinition(record.definition)
                     if definition and record.id==identity(definition,kind)then
-                        entries[#entries+1]={id=record.id,name=record.name,kind=kind,definition=definition,catalog=catalogInfo(record.catalog)}
+                        local effective=definition
+                        if type(record.overrides)=="table" then
+                            local mounts,mountsValid=unpackMounts(record.overrides.Mounts)
+                            local presentation,presentationValid=unpackPresentation(record.overrides.Presentation)
+                            if mountsValid and presentationValid then effective=withMetadata(definition,mounts,presentation) end
+                        end
+                        entries[#entries+1]={id=record.id,name=record.name,kind=kind,baseDefinition=definition,definition=effective,revision=0,catalog=catalogInfo(record.catalog)}
                     end
                 end
             end
+            local byVisual={}
+            local deduped={}
+            for _,entry in ipairs(entries) do
+                local key=entry.kind..":"..visualIdentity(entry.definition,entry.kind)
+                local winner=byVisual[key]
+                if winner and winner.catalog and entry.catalog and winner.catalog.Id~=entry.catalog.Id then
+                    key=key..":catalog:"..tostring(entry.catalog.Id)
+                    winner=byVisual[key]
+                end
+                if not winner then
+                    byVisual[key]=entry;deduped[#deduped+1]=entry
+                elseif metadataScore(entry)>metadataScore(winner) then
+                    if not entry.catalog and winner.catalog then entry.catalog=winner.catalog end
+                    aliases[winner.id]=entry.id
+                    for i,value in ipairs(deduped) do if value==winner then deduped[i]=entry;break end end
+                    byVisual[key]=entry;needsMigration=true
+                else
+                    if not winner.catalog and entry.catalog then winner.catalog=entry.catalog end
+                    aliases[entry.id]=winner.id;needsMigration=true
+                end
+            end
+            entries=deduped
             if type(saved.selected)=="string"then selected=saved.selected end
             if type(saved.selectedKnife)=="string"then selectedKnife=saved.selectedKnife end
         end
     end
     if selected then
+        selected=resolveId(selected)
         local found=false;for _,entry in ipairs(entries)do if entry.id==selected and entry.kind=="Gun" then found=true;break end end
         if not found then selected=nil end
     end
-    if selectedKnife then local found=false;for _,entry in ipairs(entries)do if entry.id==selectedKnife and entry.kind=="Knife"then found=true;break end end;if not found then selectedKnife=nil end end
+    if selectedKnife then selectedKnife=resolveId(selectedKnife);local found=false;for _,entry in ipairs(entries)do if entry.id==selectedKnife and entry.kind=="Knife"then found=true;break end end;if not found then selectedKnife=nil end end
     local function save()
-        local records={};for _,entry in ipairs(entries)do local record={id=entry.id,name=entry.name,definition=pack(entry.definition),catalog=entry.catalog};if entry.kind=="Knife"then record.kind="Knife"end;records[#records+1]=record end
+        local records={};for _,entry in ipairs(entries)do
+            local base=entry.baseDefinition or entry.definition
+            local record={id=entry.id,name=entry.name,definition=pack(base),catalog=entry.catalog}
+            local overrides={}
+            if entry.definition.Mounts and canonical(entry.definition.Mounts)~=canonical(base.Mounts) then overrides.Mounts=packMounts(entry.definition.Mounts) end
+            if entry.definition.Presentation and canonical(entry.definition.Presentation)~=canonical(base.Presentation) then overrides.Presentation=packPresentation(entry.definition.Presentation) end
+            if next(overrides) then record.overrides=overrides end
+            if entry.kind=="Knife"then record.kind="Knife"end;records[#records+1]=record
+        end
         local encoded=Http:JSONEncode({version=1,entries=records,selected=selected,selectedKnife=selectedKnife})
         assert(#encoded<=MAX_BYTES,"Saved gun library is full.");gui:SetAttribute(KEY,encoded)
     end
+    if needsMigration then save() end
     local api={}
+    local function updateMetadata(entry,definition)
+        local mounts,presentation=definition.Mounts,definition.Presentation
+        if mounts==nil and presentation==nil then return end
+        local previous=entry.definition
+        entry.definition=withMetadata(previous,mounts,presentation)
+        entry.revision=(entry.revision or 0)+1
+        local ok,err=pcall(save)
+        if not ok then entry.definition=previous;entry.revision=entry.revision-1;error(err) end
+    end
     function api.capture(sourceBasePart,playerName,mounts,kind,presentation,alternateSource)
         kind=kind=="Knife" and "Knife" or "Gun"
         local noun=kind:lower()
@@ -307,15 +400,24 @@ return function(game,gui)
         if encodedPresentation then definition.Presentation=unpackPresentation(encodedPresentation)end
         assert(validDefinition(definition),"Gun mesh has unsupported or oversized visual properties.")
         local id=identity(definition,kind)
-        for _,entry in ipairs(entries)do if entry.id==id and entry.kind==kind then return entry end end
+        for _,entry in ipairs(entries)do if entry.id==id and entry.kind==kind then updateMetadata(entry,definition);return entry end end
+        local visualKey=kind..":"..visualIdentity(definition,kind)
+        for _,entry in ipairs(entries)do
+            if entry.kind==kind and kind..":"..visualIdentity(entry.definition,kind)==visualKey then
+                aliases[id]=entry.id
+                updateMetadata(entry,definition)
+                return entry
+            end
+        end
         assert(#entries<MAX_ENTRIES,"Saved gun library is full.")
-        local entry={id=id,name=kind.." from "..playerName,kind=kind,definition=definition}
+        local entry={id=id,name=kind.." from "..playerName,kind=kind,baseDefinition=definition,definition=definition,revision=0}
         entries[#entries+1]=entry
         local ok,err=pcall(save);if not ok then table.remove(entries);error(err)end
         return entry
     end
     function api.list(kind)local out={};for _,e in ipairs(entries)do if kind==nil or e.kind==kind then out[#out+1]=e end end;return out end
     function api.setCatalog(id,value)
+        id=resolveId(id)
         local info=catalogInfo(value);assert(info,"Weapon catalog details are incomplete.")
         for _,entry in ipairs(entries) do if entry.id==id then
             local previous=entry.catalog;entry.catalog=info
@@ -327,6 +429,7 @@ return function(game,gui)
     function api.getSelected(kind)if kind=="Knife"then return selectedKnife end;return selected end
     function api.select(id,kind)
         kind=kind=="Knife" and "Knife" or "Gun"
+        id=resolveId(id)
         if id~=nil then local found=false;for _,entry in ipairs(entries)do if entry.id==id and entry.kind==kind then found=true;break end end;assert(found,"Choose a saved "..kind:lower()..".")end
         local previous=kind=="Knife" and selectedKnife or selected
         if kind=="Knife"then selectedKnife=id else selected=id end
@@ -335,6 +438,7 @@ return function(game,gui)
     end
     function api.remove(id)
         assert(type(id)=="string" and id~="","Choose a saved weapon.")
+        id=resolveId(id)
         for index,entry in ipairs(entries) do
             if entry.id==id then
                 table.remove(entries,index)

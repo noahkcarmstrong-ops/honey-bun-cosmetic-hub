@@ -376,11 +376,11 @@ return function(game, injectedRequire, gunLibrary)
     local function applyToolPresentation(tool,e)
         if not isA(tool,"Tool") then return end
         local old=toolPresentations[tool]
-        if old and old.id~=e.id then restoreToolPresentation(tool,old);toolPresentations[tool]=nil;old=nil end
+        if old and (old.id~=e.id or old.revision~=(e.revision or 0)) then restoreToolPresentation(tool,old);toolPresentations[tool]=nil;old=nil end
         local presentation=e.definition.Presentation
         if not presentation then return end
         if not old then
-            old={id=e.id,icon=read(tool,"TextureId"),sounds={}}
+            old={id=e.id,revision=e.revision or 0,icon=read(tool,"TextureId"),sounds={}}
             toolPresentations[tool]=old
             local changed=read(tool,"GetPropertyChangedSignal")
             if presentation.ToolIcon and type(changed)=="function" then
@@ -423,7 +423,7 @@ return function(game, injectedRequire, gunLibrary)
         local kind=e.kind or "Gun"
         assert(handle,"Your "..kind:lower().." display has not loaded yet.")
         local old=snapshots[handle]
-        if old and old.overlay and old.overlayId==e.id and read(old.overlay,"Parent") then return end
+        if old and old.overlay and old.overlayId==e.id and old.overlayRevision==(e.revision or 0) and read(old.overlay,"Parent") then return end
         if old then restoreHandle(old);snapshots[handle]=nil end
         local def=e.definition
         local p=read(service("Players"),"LocalPlayer")
@@ -458,7 +458,7 @@ return function(game, injectedRequire, gunLibrary)
             mesh.Parent=overlay
             local weld=Instance.new("WeldConstraint")
             weld.Part0=anchor;weld.Part1=overlay;weld.Parent=overlay
-            old={handle=handle,color=read(handle,"Color"),material=read(handle,"Material"),size=read(handle,"Size"),localTransparency=read(handle,"LocalTransparencyModifier") or 0,overlay=overlay,overlayId=e.id,hidden={}}
+            old={handle=handle,color=read(handle,"Color"),material=read(handle,"Material"),size=read(handle,"Size"),localTransparency=read(handle,"LocalTransparencyModifier") or 0,overlay=overlay,overlayId=e.id,overlayRevision=e.revision or 0,hidden={}}
             snapshots[handle]=old
             -- A separate static visual preserves its dimensions without changing game joints or tools.
             overlay.Parent=service("Workspace")

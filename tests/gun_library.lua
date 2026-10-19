@@ -282,6 +282,40 @@ local invalidIdentify=pcall(function()catalogApi.identifySavedWeapon('missing-na
 assert(not invalidIdentify and presentationLibrary.list('Gun')[1].catalog.Name=='Not Captured','Invalid identification preserves saved metadata')
 catalogApi.destroy()
 
+-- Visual deduplication keeps one stable ID while allowing pose metadata to improve.
+local dedupGui=gui();local dedupLibrary=create(game,dedupGui)
+local first=dedupLibrary.capture(sourceMesh,'PoseA',{Held={Part='RightHand',Offset=frame(1,0,0)}},'Gun',{Grip=frame(2,0,0)})
+local stableId=first.id
+local second=dedupLibrary.capture(sourceMesh,'PoseB',{Held={Part='RightHand',Offset=frame(7,0,0)}},'Gun',{Grip=frame(8,0,0)})
+assert(second.id==stableId and #dedupLibrary.list('Gun')==1,'Recapturing a pose variant reuses the saved visual ID')
+assert(second.definition.Mounts.Held.Offset.X==7 and second.definition.Presentation.Grip.X==8,'Recapturing a pose variant updates effective metadata')
+local rejoined=create(game,gui(dedupGui:GetAttribute('HoneyBunCosmeticGuns')))
+local rejoinedEntry=rejoined.list('Gun')[1]
+assert(rejoinedEntry.id==stableId and rejoinedEntry.definition.Mounts.Held.Offset.X==7 and rejoinedEntry.definition.Presentation.Grip.X==8,'Updated pose metadata survives rejoin')
+
+-- Texture changes remain separate visual identities.
+local originalTexture=sourceMesh.TextureID
+sourceMesh.TextureID='rbxassetid://different-texture'
+local textured=dedupLibrary.capture(sourceMesh,'TextureVariant')
+sourceMesh.TextureID=originalTexture
+assert(textured.id~=stableId and #dedupLibrary.list('Gun')==2,'Different textures are not merged')
+
+-- Legacy duplicate records collapse on rejoin, including the selected alias.
+local legacyGuiA=gui();local legacyA=create(game,legacyGuiA)
+local legacyGuiB=gui();local legacyB=create(game,legacyGuiB)
+local legacyFirst=legacyA.capture(sourceMesh,'LegacyA',nil,'Gun',{Grip=frame(1,0,0)})
+local legacySecond=legacyB.capture(sourceMesh,'LegacyB',{Held={Part='RightHand',Offset=frame(4,0,0)}},'Gun',{Grip=frame(4,0,0)})
+assert(legacyFirst.id~=legacySecond.id,'Legacy duplicate fixture has distinct old IDs')
+-- Use each library's persisted record so the old full-definition IDs remain valid.
+local recordA=http:JSONDecode(legacyGuiA:GetAttribute('HoneyBunCosmeticGuns')).entries[1]
+local recordB=http:JSONDecode(legacyGuiB:GetAttribute('HoneyBunCosmeticGuns')).entries[1]
+local migratedPayload={version=1,entries={recordA,recordB},selected=recordB.id}
+local migratedGui=gui(http:JSONEncode(migratedPayload))
+local migrated=create(game,migratedGui)
+assert(#migrated.list('Gun')==1 and migrated.getSelected()==migrated.list('Gun')[1].id,'Legacy duplicates migrate and selected alias points to winner')
+local persistedMigration=http:JSONDecode(migratedGui:GetAttribute('HoneyBunCosmeticGuns'))
+assert(#persistedMigration.entries==1,'Migrated duplicate cleanup persists')
+
 local bad=gui(http:JSONEncode({version=1,entries={{id="bad",name="bad",definition={PortableGun=true}}}}))
 assert(#create(game,bad).list()==0,"malformed saved definitions are rejected")
 print("Gun mesh capture, SpecialMesh precedence, normalized MeshPart scale, deduplication, source preservation, selection, and rejoin persistence passed.")

@@ -457,10 +457,15 @@ return function(playerGui,catalog,onStatus,mode)
         return true
     end
     local renderSaved
-    local function tabForSaved(inventory,key)
+    local function tabForSaved(inventory,key,detectedGrid)
         local tabs
+        -- Anchor to the actual cards; the sidebar also has a Frame named Weapons.
         local area=inventory
-        for _,o in ipairs(descendants(inventory)) do if normalize(o.Name)=="weapons" and is(o,"GuiObject") and not is(o,"GuiButton") then area=o;break end end
+        local ancestor=detectedGrid
+        while ancestor and ancestor~=inventory do
+            if normalize(ancestor.Name)=="items" then area=ancestor;break end
+            ancestor=ancestor.Parent
+        end
         for _,o in ipairs(descendants(area)) do
             if normalize(o.Name)=="tabs" and is(o,"GuiObject") then tabs=o;break end
         end
@@ -499,6 +504,16 @@ return function(playerGui,catalog,onStatus,mode)
                 if is(o,"GuiObject") and (n=="selected" or n=="selectedborder" or n=="selection") then o.Visible=open end
             end
         end
+        for _,tab in ipairs(children(savedTabParent)) do
+            local key=category(tab.Name)
+            if key then for _,marker in ipairs(descendants(tab)) do
+                local n=normalize(marker.Name)
+                if is(marker,"GuiObject") and (n=="selected" or n=="selectedborder" or n=="selection") then
+                    savedHeader[marker]=savedHeader[marker] or {Visible=marker.Visible}
+                    if open then marker.Visible=false elseif nativeKey then marker.Visible=key==nativeKey end
+                end
+            end end
+        end
     end
     local function mountSavedTab(inventory,detectedGrid,detectedTemplate)
         if savedTabMode and savedTab and alive(savedTab) and savedPane and alive(savedPane) and savedGrid and alive(savedGrid) then return true end
@@ -520,7 +535,7 @@ return function(playerGui,catalog,onStatus,mode)
         savedGrid=atPath(savedPane,sourcePath)
         assert(savedGrid,"The copied native saved pane grid could not be located.")
         for _,o in ipairs(children(savedGrid)) do if is(o,"GuiObject") then destroy(o) end end
-        local tab,tabs=tabForSaved(inventory,"season1")
+        local tab,tabs=tabForSaved(inventory,"season1",detectedGrid)
         if not tab or not tabs then destroy(savedPane);savedPane=nil;savedGrid=nil;return false end
         savedTab=tab:Clone();savedTab.Name="HoneyBunLocal_SavedTab";savedTabText(savedTab)
         for _,o in ipairs(texts(savedTab)) do if is(o,"LuaSourceContainer") then destroy(o) end end
@@ -588,7 +603,10 @@ return function(playerGui,catalog,onStatus,mode)
         end
         savedRoot=inventory
         root=inventory
-        if savedOnly and not effects then mountSavedTab(inventory,detectedGrid,detectedTemplate) end
+        if savedOnly and not effects and not mountSavedTab(inventory,detectedGrid,detectedTemplate) then
+            status("Waiting for MM2's weapon tabs. Saved cards will appear only in Saved Weapons.")
+            return
+        end
         if not template then template=detectedTemplate and detectedTemplate:Clone() end
         if not template then status("Waiting for native weapon cards to load.");return end
         local grids=effects and {effects=detectedGrid} or (savedTabMode and {saved=savedGrid} or findSavedGrids(inventory));savedGrids=grids
