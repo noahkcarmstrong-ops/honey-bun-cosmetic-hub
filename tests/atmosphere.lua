@@ -37,7 +37,10 @@ local lighting = Instance.new("Lighting")
 local original = Instance.new("Sky", lighting); original.Name = "Original"; original.SkyboxBk = "old"
 local game = {Lighting = lighting, assets = {}, fail = false, cancel = false}
 local api
-function game:GetService(name) assert(name == "Lighting"); return self.Lighting end
+local callbacks={}
+local heartbeat={Connect=function(_,fn)local c={active=true};function c:Disconnect()self.active=false end;callbacks[#callbacks+1]={c,fn};return c end}
+local function tick()for _,pair in ipairs(callbacks)do if pair[1].active then pair[2](.3)end end end
+function game:GetService(name)if name=="Lighting" then return self.Lighting elseif name=="RunService" then return {Heartbeat=heartbeat}elseif name=="ContentProvider" then return self.provider end end
 function game:GetObjects(uri)
     assert(uri == "rbxassetid://123")
     if self.fail then error("network") end
@@ -53,7 +56,7 @@ local function model(name, skies)
     return root
 end
 local function sky(name)
-    local s = Instance.new("Sky"); s.Name = name; s.SkyboxBk = name; return s
+    local s = Instance.new("Sky"); s.Name = name;for _,face in ipairs({"Bk","Dn","Ft","Lf","Rt","Up"})do s["Skybox"..face]=name end;return s
 end
 
 assert(not api.apply("0"), "zero is invalid")
@@ -67,6 +70,13 @@ assert(noSky.destroyed and original.Parent == lighting, "failed load leaves Ligh
 
 local ambiguous=model("Ambiguous",{sky("A"),sky("B")});game.assets={ambiguous}
 assert(not api.apply("123") and ambiguous.destroyed and original.Parent==lighting,"Ambiguous models are rejected and cleaned without changing the sky")
+local incomplete=sky("Incomplete");incomplete.SkyboxUp="";game.assets={model("Incomplete",{incomplete})}
+assert(not api.apply("123") and original.Parent==lighting,"Incomplete six-face skies never replace the game sky")
+Enum={AssetFetchStatus={Success="Success",Failure="Failure"}}
+game.provider={PreloadAsync=function(_,assets,callback)callback("blocked-image","Failure")end}
+game.assets={model("Blocked",{sky("Blocked")})}
+assert(not api.apply("123") and original.Parent==lighting,"Unavailable sky images are reported without overwriting the working sky")
+game.provider={PreloadAsync=function(_,assets,callback)callback("valid-image","Success")end}
 local source = sky("Source"); local script = Instance.new("Script", source)
 local wrapper = model("Wrapper", {source}); game.assets = {wrapper}
 assert(api.apply("https://create.roblox.com/store/asset/123/Custom-Sky"))
@@ -74,16 +84,22 @@ assert(original.Parent == nil and wrapper.destroyed and script.destroyed, "succe
 local custom = lighting:FindFirstChildOfClass("Sky"); assert(custom and custom ~= original and custom.Name == "Source")
 assert(#custom:GetChildren() == 0, "cloned Sky has no untrusted descendants")
 
+local gameReset=sky("Game reset");gameReset.Parent=lighting;custom.Parent=nil;tick()
+assert(custom.Parent==lighting and gameReset.Parent==nil,"Override removes newly inserted game skies and reparents custom sky")
+custom.SkyboxBk="game changed it";tick();assert(custom.SkyboxBk=="Source","Game sky texture changes are repaired")
 game.fail = true; assert(not api.apply("rbxassetid://123"), "failed replacement is reported")
 assert(custom.Parent == lighting and not custom.destroyed, "failed replacement keeps current sky")
 game.fail = false
 local second = sky("Second"); local secondWrapper = model("SecondWrapper", {second}); game.assets = {secondWrapper}
 assert(api.apply("https://roblox.com/asset/?id=123")); assert(custom.destroyed and secondWrapper.destroyed)
-assert(api.restore()); assert(original.Parent == lighting and second.Parent == nil, "restore returns exact original object")
+assert(api.restore());assert(gameReset.Parent==lighting,"Restore returns skies added by the game during override")
+assert(original.Parent == lighting and second.Parent == nil, "restore returns exact original object")
 local late = sky("Late"); local lateWrapper = model("LateWrapper", {late}); game.assets = {lateWrapper}; game.cancel = true
 assert(not api.apply(123), "a replacement cancelled during loading is rejected")
 assert(lateWrapper.destroyed, "cancelled replacement cleans wrappers")
 assert(original.Parent == lighting, "cancelled replacement preserves originals")
-api.destroy(); assert(original.Parent == lighting and api.apply(123) == false, "destroy restores and disables API")
+api.destroy();local afterRestore=sky("After restore");afterRestore.Parent=lighting;tick()
+assert(afterRestore.Parent==lighting,"Restore and destroy disconnect the active override")
+assert(original.Parent == lighting and api.apply(123) == false, "destroy restores and disables API")
 
 print("Atmosphere validation, replacement, sanitization, failure, restore, and destroy passed.")

@@ -5,6 +5,9 @@ return function(game)
     local custom
     local generation = 0
     local destroyed = false
+    local keeper,blueprint
+    local skyProperties={"SkyboxBk","SkyboxDn","SkyboxFt","SkyboxLf","SkyboxRt","SkyboxUp"}
+    local function service(name)local ok,value=pcall(game.GetService,game,name);if ok then return value end end
 
     local function id(value)
         if type(value)=="number" then
@@ -75,6 +78,27 @@ return function(game)
             return sky
         end)
         cleanup(roots)
+        if cloned then
+            for _,property in ipairs(skyProperties) do
+                if type(replacement[property])~="string" or replacement[property]=="" then
+                    replacement:Destroy()
+                    return false,"This Sky is missing one or more of its six images. Try a complete skybox model."
+                end
+            end
+            local provider=service("ContentProvider")
+            if provider then
+                local failures={}
+                local loaded,message=pcall(function()
+                    provider:PreloadAsync({replacement},function(asset,status)
+                        if status~=Enum.AssetFetchStatus.Success then failures[#failures+1]=tostring(asset) end
+                    end)
+                end)
+                if not loaded or #failures>0 then
+                    replacement:Destroy()
+                    return false,"Roblox could not load this skybox's images. Try another model. "..tostring(message or failures[1])
+                end
+            end
+        end
         if not cloned then return false,"Could not copy this skybox: "..tostring(replacement) end
         if token ~= generation or destroyed then
             replacement:Destroy()
@@ -91,11 +115,36 @@ return function(game)
         if custom then custom.Parent = nil; custom:Destroy() end
         replacement.Parent = lighting
         custom = replacement
+        if blueprint then blueprint:Destroy() end
+        blueprint=replacement:Clone()
+        if keeper then keeper:Disconnect() end
+        local run=service("RunService")
+        if run then
+            local elapsed=0
+            keeper=run.Heartbeat:Connect(function(dt)
+                elapsed=elapsed+dt;if elapsed<0.25 then return end;elapsed=0
+                if not custom or destroyed then return end
+                for _,child in ipairs(lighting:GetChildren()) do
+                    if child:IsA("Sky") and child~=custom then
+                        local known=false;for _,entry in ipairs(originals) do if entry.object==child then known=true;break end end
+                        if not known then originals[#originals+1]={object=child,parent=lighting} end
+                        child.Parent=nil
+                    end
+                end
+                local ok=pcall(function()
+                    custom.Parent=lighting
+                    for _,property in ipairs(skyProperties) do custom[property]=blueprint[property] end
+                end)
+                if not ok then custom=blueprint:Clone();custom.Parent=lighting end
+            end)
+        end
         return true
     end
 
     function api.restore()
         generation = generation + 1
+        if keeper then keeper:Disconnect();keeper=nil end
+        if blueprint then blueprint:Destroy();blueprint=nil end
         if custom then custom.Parent = nil; custom:Destroy(); custom = nil end
         for _, entry in ipairs(originals) do entry.object.Parent = entry.parent end
         originals={}
