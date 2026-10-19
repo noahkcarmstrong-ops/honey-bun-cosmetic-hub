@@ -332,7 +332,7 @@ return function(playerGui,catalog,onStatus,mode)
             if id then
                 for _,candidate in ipairs(catalog.list(kind) or {}) do if candidate.id==id then entry=candidate;break end end
             end
-            local image=entry and entry.image
+            local image=entry and (entry.image or entry.previewImage)
             if type(image)=="number" or (type(image)=="string" and image:match("^%d+$")) then image="rbxassetid://"..tostring(image) end
             local target=icon(slot)
             if target then snapshot(target,"Image");target.Image=type(image)=="string" and image or read(target,"Image") end
@@ -463,7 +463,7 @@ return function(playerGui,catalog,onStatus,mode)
         end
     end
     local function savedMetadataFor(entry)
-        return {id=entry.id,kind=entry.kind,category=entryCategory(entry),name=entry.name,image=entry.image,rarity=entry.rarity,
+        return {id=entry.id,kind=entry.kind,category=entryCategory(entry),name=entry.name,image=entry.image,previewImage=entry.previewImage,rarity=entry.rarity,
             rarityColor=entry.rarityColor,sortOrder=entry.sortOrder,rarityOrder=entry.rarityOrder,chroma=entry.chroma}
     end
     local function sameSavedMetadata(a,b)
@@ -634,7 +634,7 @@ return function(playerGui,catalog,onStatus,mode)
         if savedRoot and savedRoot~=inventory then
             clearSaved()
         end
-        if savedRoot~=inventory and savedOnly and not effects then
+        if savedRoot~=inventory and savedOnly then
             -- Remove cards left by an older hub before mounting the dedicated tab.
             for _,object in ipairs(descendants(inventory)) do
                 if tostring(object.Name):sub(1,#"HoneyBunLocal_Saved_")=="HoneyBunLocal_Saved_" then destroy(object) end
@@ -704,9 +704,14 @@ return function(playerGui,catalog,onStatus,mode)
                             if entry.rarityColor then pcall(function()rarity.BackgroundColor3=entry.rarityColor end) end
                             rarity.Parent=card
                         end
-                        local image=entry.image;if type(image)=="number" or (type(image)=="string" and image:match("^%d+$")) then image="rbxassetid://"..tostring(image) end
+                        local image=entry.image or entry.previewImage;if type(image)=="number" or (type(image)=="string" and image:match("^%d+$")) then image="rbxassetid://"..tostring(image) end
                         local targetIcon=icon(card);if targetIcon then targetIcon.Image=type(image)=="string" and image or "" end
                         savedModelIcon(card,targetIcon,entry)
+                        if not entry.image and entry.previewImage then
+                            local label=Instance.new("TextLabel");label.Name="HoneyBunParticlePreview";label.Text="Particle preview"
+                            label.BackgroundTransparency=1;label.TextColor3=Color3.fromRGB(220,220,220);label.TextScaled=true
+                            label.Size=UDim2.fromScale(1,0.14);label.Position=UDim2.fromScale(0,0.02);label.Parent=card
+                        end
                         local click=overlay(card)
                         savedCardConnections[id]={click.Activated:Connect(function()
                             local good,result=pcall(catalog.equip or catalog.preview,entry.id,entry.kind)

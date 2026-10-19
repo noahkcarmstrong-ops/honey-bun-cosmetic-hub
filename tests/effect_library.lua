@@ -125,6 +125,17 @@ local ambiguousRaw=http:JSONEncode({version=1,entries={{id='AmbiguousSaved',name
 local ambiguous=create(game,gui(ambiguousRaw));assert(ambiguous.list()[1].name=='Shared' and ambiguous.list()[1].image==nil,'Ambiguous catalog names do not invent metadata');ambiguous.destroy()
 local genericRaw=http:JSONEncode({version=1,entries={{id='GenericSaved',name='Fire',records={{class='Fire',name='Fire',values={}}}}}})
 local generic=create(game,gui(genericRaw));assert(generic.list()[1].name=='Fire' and generic.list()[1].image==nil,'Generic visual names do not become catalog identities');generic.destroy()
+-- Legacy files may contain the same visuals under different labels/IDs. Keep the
+-- first saved record, remap selection to it, and expose an honest particle preview.
+local duplicateRaw=http:JSONEncode({version=1,selected='Second',entries={
+    {id='First',name='First label',records={{class='ParticleEmitter',name='A',values={Texture='rbxassetid://preview'}}}},
+    {id='Second',name='Second label',records={{class='ParticleEmitter',name='B',values={Texture='rbxassetid://preview'}}}}
+}})
+local duplicate=create(game,gui(duplicateRaw));local duplicateEntry=duplicate.list()[1]
+assert(#duplicate.list()==1 and duplicateEntry.id=='First','Portable duplicate visuals collapse by exact visual data')
+assert(duplicate.getSelected()=='First','Selection follows the retained duplicate record')
+assert(duplicateEntry.image==nil and duplicateEntry.previewImage=='rbxassetid://preview' and duplicateEntry.preview.label=='Saved particle texture preview','Unknown effect exposes a labeled particle preview instead of an official icon')
+duplicate.destroy()
 -- Saved files cannot introduce executable classes.
 local bad=http:JSONEncode({version=1,entries={{id='Bad',name='Bad',records={{class='Script',name='DoNotRun',values={}}}}}})
 local invalid=create(game,gui(bad));assert(#invalid.list()==0,'Invalid executable records are rejected');invalid.destroy()

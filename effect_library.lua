@@ -12,7 +12,7 @@ return function(game,gui)
         Fire={"SecondaryColor","Size","Heat"},Smoke={"Opacity","RiseVelocity","Size"},Sparkles={"SparkleColor"},
         PointLight={"Range","Shadows"},SpotLight={"Range","Shadows","Angle","Face"},SurfaceLight={"Range","Shadows","Angle","Face"},Attachment={"CFrame"}
     }
-    local function read(o,key)local ok,v=pcall(function()return o[key]end);return ok and v or nil end
+    local function read(o,key)local ok,v=pcall(function()return o[key]end);if not ok then return nil end;return v end
     local function children(o)return o and o:GetChildren()or{}end
     local function descendants(o)return o and o:GetDescendants()or{}end
     local function finite(n)return type(n)=="number"and n==n and math.abs(n)<1e9 end
@@ -66,6 +66,7 @@ return function(game,gui)
         return keys
     end
     local entries,templates={},{}
+    local visualKeys,aliases={},{}
     local metadataMigrated=false
     local effectCatalog={}
     local catalogByName={}
@@ -145,10 +146,29 @@ return function(game,gui)
         local out={};for _,k in ipairs(keys)do out[#out+1]=tostring(k).."="..canonical(v[k])end
         return"{"..table.concat(out,"|").."}"
     end
+    -- Names and player ownership are labels only. Keep attachment topology and
+    -- every saved visual property so unrelated effects cannot merge accidentally.
+    local function visualIdentity(records)
+        local visual={}
+        for i,record in ipairs(records or{})do
+            visual[i]={class=record.class,values=record.values,parent=record.parent,a=record.a,b=record.b}
+        end
+        return canonical(visual)
+    end
     local function identity(records)
-        local text=canonical(records);local a,b=1,7
+        local text=visualIdentity(records);local a,b=1,7
         for i=1,#text do a=(a*31+text:byte(i))%2147483647;b=(b*37+text:byte(i))%2147483629 end
         return"SavedEffect_"..string.format("%.0f_%.0f",a,b)
+    end
+    local function particlePreview(records)
+        for _,record in ipairs(records or{})do
+            if record.class=="ParticleEmitter" and type(record.values)=="table" then
+                local texture=record.values.Texture
+                if type(texture)=="string" and texture~="" then
+                    return{kind="ParticleTexture",label="Saved particle texture preview",texture=texture}
+                end
+            end
+        end
     end
     local function restore(entry)
         assert(type(entry.records)=="table"and #entry.records<=MAX_RECORDS,"Invalid saved effect size.")
@@ -191,10 +211,25 @@ return function(game,gui)
                             local savedCatalogId=catalogId(source,entry.records)
                             if savedCatalogId then entry.catalog=effectCatalog[savedCatalogId];metadataMigrated=true end
                         end
-                        entries[#entries+1]=entry;templates[entry.id]=source
+                        local key=visualIdentity(entry.records)
+                        local previous=visualKeys[key]
+                        if previous then
+                            aliases[entry.id]=previous
+                            if entry.catalog then
+                                for _,retained in ipairs(entries) do
+                                    if retained.id==previous and not retained.catalog then retained.catalog=entry.catalog;break end
+                                end
+                            end
+                            source:Destroy()
+                        else
+                            visualKeys[key]=entry.id
+                            entries[#entries+1]=entry;templates[entry.id]=source
+                        end
                     end
                 end
             end
+            if selected and aliases[selected] then selected=aliases[selected];metadataMigrated=true end
+            if #entries~=#saved.entries then metadataMigrated=true end
         end
     end
     local function save()
@@ -215,6 +250,7 @@ return function(game,gui)
     local api={}
     function api.getSelected()return selected end
     function api.select(id)
+        id=aliases[id] or id
         if id~=nil then
             local found=id=="Bats" or templates[id]~=nil
             assert(found,"Choose a saved effect.")
@@ -234,7 +270,8 @@ return function(game,gui)
             local ok,records=pcall(snapshot,root)
             if not ok then failures[#failures+1]=tostring(records)
             elseif records then
-                local id=identity(records)
+                local key=visualIdentity(records)
+                local id=visualKeys[key] or identity(records)
                 if templates[id]then duplicates=duplicates+1 else
                     assert(#entries<MAX_ENTRIES,"Saved effect library is full.")
                     local fromCount=0;for _,saved in ipairs(entries)do if saved.from==tostring(player.Name)then fromCount=fromCount+1 end end
@@ -247,7 +284,7 @@ return function(game,gui)
                         entries[#entries+1]=entry
                         local saved,err=pcall(save)
                         if not saved then table.remove(entries);source:Destroy();error(err)end
-                        templates[id]=source;added=added+1
+                        templates[id]=source;visualKeys[key]=id;added=added+1
                     else failures[#failures+1]=tostring(source)end
                 end
                 if templates[id] then captured[#captured+1]=id end
@@ -277,7 +314,10 @@ return function(game,gui)
     function api.list()
         local out={};for _,entry in ipairs(entries)do
             local metadata=entry.catalog
-            out[#out+1]={id=entry.id,name=metadata and metadata.name or entry.name,kind="Effect",rarity=metadata and metadata.rarity,image=metadata and metadata.image,category="effects",definition={Effect=templates[entry.id]}}
+            local image=metadata and metadata.image
+            local hasImage=image~=nil and image~=""
+            local preview;if not hasImage then preview=particlePreview(entry.records) end
+            out[#out+1]={id=entry.id,name=metadata and metadata.name or entry.name,kind="Effect",rarity=metadata and metadata.rarity,image=image,previewImage=preview and preview.texture,preview=preview,category="effects",definition={Effect=templates[entry.id]}}
         end;return out
     end
     function api.report()return"Saved original effect library: "..#entries.."; "..notice end

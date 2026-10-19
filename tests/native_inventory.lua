@@ -411,6 +411,7 @@ local savedEffectNative=node('Frame','NativeEffect',savedEffectsContainer)
 node('TextLabel','ItemName',savedEffectNative).Text='None'
 node('ImageLabel','Icon',savedEffectNative).Image='native-effect'
 node('TextLabel','Equipped',savedEffectNative).Visible=false
+local orphanEffect=node('Frame','HoneyBunLocal_Saved_Effect_legacy',savedEffectsContainer)
 local savedEffectDefs={{id='Bats',kind='Effect',name='Bats',image=321,rarity='Godly'}}
 local savedEffectCatalog={list=function(kind)
     assert(kind=='Effect','Saved-effects mode requests only Effect entries')
@@ -420,12 +421,17 @@ local savedEffectsApi=create(playerGui,savedEffectCatalog,nil,'saved-effects')
 assert(savedEffectsApi.enable(),'Saved-effects mode waits for the native Effects pane');flush()
 local savedEffectCard=savedEffectsContainer:FindFirstChild('HoneyBunLocal_Saved_Effect_Bats')
 assert(savedEffectCard and savedEffectCard:FindFirstChild('ItemName').Text=='Bats','Saved effect is inserted into the native Effects container')
+assert(orphanEffect.destroyed,'Old saved effect cards are cleaned before rendering the current collection')
 assert(savedEffectsContainer:FindFirstChildOfClass('UIGridLayout'),'Plain Effects container receives a reversible local grid')
 savedEffectsApi.refreshSaved();flush()
 assert(savedEffectCard.Parent==savedEffectsContainer,'Refresh keeps effects in the inner grid rather than its outer wrapper')
 savedEffectCard:Destroy();flush()
 savedEffectCard=savedEffectsContainer:FindFirstChild('HoneyBunLocal_Saved_Effect_Bats')
 assert(savedEffectCard,'Saved effects return when the game clears collection cards')
+savedEffectDefs[1].image=nil;savedEffectDefs[1].previewImage='rbxassetid://123'
+savedEffectsApi.refreshSaved();flush()
+savedEffectCard=savedEffectsContainer:FindFirstChild('HoneyBunLocal_Saved_Effect_Bats')
+assert(savedEffectCard:FindFirstChild('Icon').Image=='rbxassetid://123' and savedEffectCard:FindFirstChild('HoneyBunParticlePreview'),'Unidentified effects show a labeled original particle texture preview')
 savedEffectsApi.disable();assert(not savedEffectCard.Parent and not savedEffectsContainer:FindFirstChildOfClass('UIGridLayout'),'Disabling saved-effects removes only local effects')
 savedEffectsApi.destroy()
 print('Saved-effects native pane and plain container passed.')
