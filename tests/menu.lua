@@ -118,6 +118,7 @@ function game:HttpGet(url)
     assert(url:find('/honey-bun-cosmetic-hub/',1,true),'Only the separate cosmetic repo is contacted')
     if url:find('/commits/main',1,true)then return'revision'end
     assert(url:find('/'..string.rep('a',40)..'/',1,true),'Modules and Refresh use immutable commits')
+    if url:find('/mm2.lua',1,true)then return'mm2-module'end
     if url:find('/avatar.lua',1,true)then return'editor-module'end
     if url:find('/motion.lua',1,true)then return'motion-module'end
     if url:find('/animations.lua',1,true)then return'animations-module'end
@@ -129,6 +130,7 @@ function game:HttpGet(url)
     error('Unexpected request '..url)
 end
 loadstring=function(source)
+    if source=='mm2-module'then return function()return function()return{report=function()return'MM2 fixture report'end}end end end
     if source=='editor-module'then return function()return createEditor end end
     if source=='motion-module'then return function()return createMotion end end
     if source=='animations-module'then return function()return createAnimations end end
@@ -275,6 +277,8 @@ game.GameId=66654135
 dofile('loader.lua')
 click('MM2');click('Open MM2 menu')
 assert(find(gui(),'TextLabel','MM2 MENU'),'MM2 entry opens its own menu')
+setclipboard=function(value)calls.clipboard=value end
+click('Copy MM2 report');setclipboard=nil;assert(calls.clipboard=='MM2 fixture report','MM2 discovery report is copied')
 assert(not find(gui(),'TextButton','Restore original appearance'),'MM2 menu contains no cosmetic actions')
 click('Back');assert(find(gui(),'TextButton','Open MM2 menu'),'Back returns to the MM2 entry')
 click('ACCESSORIES');assert(find(gui(),'TextButton','Add accessories'),'Cosmetic tabs remain usable')

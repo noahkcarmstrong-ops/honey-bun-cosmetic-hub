@@ -1,6 +1,6 @@
 # Honey Bun Cosmetic Hub
 
-A universal, local avatar editor with the Honey Bun menu style. It has its own repository and does not detect the current game or load features from the original hub.
+A universal, local avatar editor with the Honey Bun menu style. It has its own repository. An MM2 menu appears in Murder Mystery 2; the cosmetic tabs remain universal. It does not load features from the original hub.
 
 ## Load
 

@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local Input = game:GetService("UserInputService")
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
+local mm2API
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 for _, name in ipairs({"HoneyBunCosmeticHub"}) do
     local old = playerGui:FindFirstChild(name)
@@ -388,7 +389,20 @@ render=function()
     if activePage=="MM2" and isMM2 then
         caption(mm2MenuOpen and "MM2 MENU" or "MURDER MYSTERY 2",24)
         if mm2MenuOpen then
-            caption("No options added yet. MM2 options will appear here.",48)
+            caption("Local skin changer setup: identify the items loaded by this MM2 version before adding previews.",56)
+            button("Copy MM2 report",function() action(function()
+                if not mm2API then
+                    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/mm2.lua",false)
+                    local chunk,message=loadstring(source);assert(chunk,message)
+                    mm2API=chunk()(game)
+                end
+                local report=mm2API.report()
+                if type(setclipboard)=="function" then
+                    setclipboard(report)
+                    return "MM2 report copied. Paste it into chat to finish skin changer setup."
+                end
+                return report
+            end) end)
             button("Back",function() mm2MenuOpen=false;render() end)
         else
             caption("Open your dedicated MM2 menu below.",40)
