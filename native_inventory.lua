@@ -521,7 +521,10 @@ return function(playerGui,catalog,onStatus,mode)
             end
         end
         if savedTab then
+            local shade=open and 12 or 48
+            savedTab.BackgroundColor3=Color3.fromRGB(shade,shade,shade)
             for _,o in ipairs(texts(savedTab)) do
+                if is(o,"GuiButton") then o.BackgroundColor3=Color3.fromRGB(shade,shade,shade) end
                 local n=normalize(o.Name)
                 if is(o,"GuiObject") and (n=="selected" or n=="selectedborder" or n=="selection") then o.Visible=open end
             end
