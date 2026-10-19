@@ -100,6 +100,9 @@ npx --offline --package=fengari-node-cli fengari tests/storage.lua
 npx --offline --package=fengari-node-cli fengari tests/clothes.lua
 npx --offline --package=fengari-node-cli fengari tests/characters.lua
 npx --offline --package=fengari-node-cli fengari tests/previews.lua
+npx --offline --package=fengari-node-cli fengari tests/mm2.lua
+npx --offline --package=fengari-node-cli fengari tests/native_inventory.lua
+npx --offline --package=fengari-node-cli fengari tests/mm2_effects.lua
 ```
 
 These use Roblox stand-ins to check the editor logic; they do not prove that a game permits a particular asset.
@@ -108,8 +111,14 @@ API references: [Accessories](https://create.roblox.com/docs/reference/engine/cl
 
 ## MM2 local cosmetics
 
-Open MM2's Weapons inventory, then open **MM2 → Open MM2 menu** in the hub and enable **Show all cosmetics**. Supported native item cards are copied into the game's inventory window using the loaded knife/gun catalog. Click a local card to select it. The selection applies to a matching native weapon now or when it becomes available, and reapplies after respawning. Season 1, Classic, and Holiday use the loaded item metadata; cards sort by available order metadata, rarity, chroma status, and name. The local collection reconnects when MM2 reopens or rebuilds its inventory. Disable the toggle to restore the original inventory display and weapon appearance.
+Open MM2's Weapons inventory, then open **MM2 → Open MM2 menu** in the hub and enable **Show all weapons**. Supported native item cards are copied into the game's inventory window using the loaded knife/gun catalog. Click a local card to select it. The selection applies to a matching native weapon now or when it becomes available, and reapplies after respawning. Season 1, Classic, and Holiday use the loaded item metadata; cards sort by available order metadata, rarity, chroma status, and name. The local collection reconnects when MM2 reopens or rebuilds its inventory. Disable the toggle to restore the original inventory display and weapon appearance.
 
 This changes the local inventory display; it does not add ownership or trading rights. It requires a recognizable native card layout and loaded catalog. Unsupported layouts or model formats report an explanation. Use **Copy MM2 report** if the inventory cannot be detected. Live compatibility with every rare item and emote is not yet verified.
 
 Weapon appearances are visible only to the person running the hub. The hub tries the selected model asset and exact, identifiable copies MM2 has already loaded. If neither source is available, the inventory selection remains saved but its avatar appearance cannot be shown. Loaded scripts are stripped; supported meshes are applied to the existing native weapon/display without replacing its connections. The tab matcher supports image buttons with separate caption labels. Copy MM2 report includes category totals, matched tab controls, pending selections, item asset IDs, and equip failures.
+
+### Local knife effects
+
+Open MM2's **Effects** inventory and enable **MM2 → Show all effects**. This separately lists the entries in the loaded `Database.Sync.Effects` catalog using native item cards. Clicking a card selects a local knife effect; supported, available visual templates are copied onto your knife display and knife tool. The selected preview reapplies when those targets arrive after a reset. The effects toggle does not change the weapons toggle.
+
+An inventory entry alone does not guarantee its effect assets are available. Missing templates and effects that depend on game-controlled kill behavior report an unavailable explanation instead of inventing a substitute effect. These previews do not grant ownership or change what other players see. Turning effects off or closing the hub removes the added visuals and restores the native inventory display.

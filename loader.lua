@@ -3,8 +3,8 @@ local Players = game:GetService("Players")
 local Input = game:GetService("UserInputService")
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
-local mm2API,mm2NativeAPI
-local mm2Enabled=false
+local mm2API,mm2NativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI
+local mm2Enabled,mm2EffectsEnabled=false,false
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 for _, name in ipairs({"HoneyBunCosmeticHub"}) do
     local old = playerGui:FindFirstChild(name)
@@ -393,6 +393,27 @@ local function nativeMM2()
     end)
     return mm2NativeAPI
 end
+local function effectsMM2()
+    assert(isMM2,"This menu is only available in MM2.")
+    if mm2EffectsAPI then return mm2EffectsAPI end
+    api()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/mm2_effects.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    mm2EffectsAPI=chunk()(game,function(message)
+        if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
+    end)
+    return mm2EffectsAPI
+end
+local function nativeEffectsMM2()
+    if mm2EffectsNativeAPI then return mm2EffectsNativeAPI end
+    local catalog=effectsMM2()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/native_inventory.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    mm2EffectsNativeAPI=chunk()(playerGui,catalog,function(message)
+        if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
+    end,"effects")
+    return mm2EffectsNativeAPI
+end
 render=function()
     if not alive then return end
     local savedScroll=activePage=="Characters" and lastRenderedPage==activePage and content.CanvasPosition
@@ -412,8 +433,8 @@ render=function()
         caption(mm2MenuOpen and "MM2 MENU" or "MURDER MYSTERY 2",24)
         if mm2MenuOpen then
             caption("MM2 INVENTORY COSMETICS",24)
-            caption("Open MM2's Weapons inventory first, then enable this option to show local cosmetic cards inside that inventory window.",64)
-            button(mm2Enabled and "Show all cosmetics: ON" or "Show all cosmetics: OFF",function() action(function()
+            caption("Open MM2's Weapons or Effects inventory, then turn on its matching option below.",64)
+            button(mm2Enabled and "Show all weapons: ON" or "Show all weapons: OFF",function() action(function()
                 if mm2Enabled then
                     nativeMM2().disable();mm2().restore();mm2Enabled=false
                     return "Original inventory display and weapon visuals restored."
@@ -422,9 +443,21 @@ render=function()
                 assert(ok~=false,message or "MM2 inventory could not be detected.")
                 mm2Enabled=true;return type(ok)=="string" and ok or message
             end) end)
+            button(mm2EffectsEnabled and "Show all effects: ON" or "Show all effects: OFF",function() action(function()
+                if mm2EffectsEnabled then
+                    nativeEffectsMM2().disable();effectsMM2().restore();mm2EffectsEnabled=false
+                    return "Original effects inventory restored; local knife effect removed."
+                end
+                local ok,message=nativeEffectsMM2().enable()
+                assert(ok~=false,message or "Open MM2's Effects inventory first.")
+                mm2EffectsEnabled=true;return type(ok)=="string" and ok or message
+            end) end)
+            caption("Effects preview on your knife, visible only to you. Some effects may be unavailable; special kill effects cannot be reproduced by a knife preview.",64)
             caption("Select a skin in MM2's inventory. Only you see it; the avatar preview needs an available model. Your choice stays selected through resets.",64)
             button("Copy MM2 report",function() action(function()
                 local report=mm2().report().."\n"..nativeMM2().report()
+                if mm2EffectsAPI then report=report.."\n"..mm2EffectsAPI.report() end
+                if mm2EffectsNativeAPI then report=report.."\n"..mm2EffectsNativeAPI.report() end
                 if type(setclipboard)=="function" then
                     setclipboard(report)
                     return "MM2 report copied. Paste it into chat if a preview cannot load."
@@ -818,6 +851,8 @@ gui.Destroying:Connect(function()
     alive=false
     connection:Disconnect()
     respawn:Disconnect()
+    if mm2EffectsNativeAPI then mm2EffectsNativeAPI.destroy() end
+    if mm2EffectsAPI then mm2EffectsAPI.destroy() end
     if mm2NativeAPI then mm2NativeAPI.destroy() end
     if mm2API then mm2API.destroy() end
     if persistence then persistence.destroy() end

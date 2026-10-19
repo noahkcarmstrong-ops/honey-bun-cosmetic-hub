@@ -204,3 +204,45 @@ assert(not cancelledApi.enable(),'A render cancelled while yielding does not rep
 flush();assert(not collection() and seasonPane.Visible,'Cancelled batches clean up the local collection and restore native panels')
 task.wait=nil
 print('Unchanged inventory reuse, large catalog batching and cancellation passed.')
+
+-- Effects share native styling but have their own pane, cards, and selection.
+local effectsPane=node('Frame','Effects',inventory)
+local effectsItems=node('ScrollingFrame','Items',effectsPane)
+node('UIGridLayout','Grid',effectsItems)
+local none=node('Frame','None',effectsItems)
+node('TextLabel','ItemName',none).Text='None'
+node('ImageLabel','Icon',none).Image='native-none'
+node('TextLabel','Equipped',none).Visible=false
+local effectSlot=node('Frame','Equipped',effectsPane)
+node('ImageLabel','Icon',effectSlot).Image='native-effect'
+node('TextLabel','ItemName',effectSlot).Text='None'
+local effectsSearch=node('TextBox','Search',effectsPane)
+local effectChoice
+local effectCatalog={list=function(kind)
+    assert(kind=='Effect','Effects mode requests only effects')
+    return{{id='Flames',name='Flames',kind='Effect',image=456,rarity='Godly'},{id='Sparkles',name='Sparkles',kind='Effect',image=789,rarity='Common'}}
+end,getEquipped=function()return{Effect=effectChoice}end,equip=function(id,kind)assert(kind=='Effect');effectChoice=id;return'Applied local effect'end}
+local weaponOverlay=create(playerGui,catalog)
+assert(weaponOverlay.enable());flush()
+local effectsOverlay=create(playerGui,effectCatalog,nil,'effects')
+assert(effectsOverlay.enable());flush()
+local effectCollection=effectsPane:FindFirstChild('HoneyBunLocal_Effects')
+assert(effectCollection and collection(),'Weapon and effect collections coexist')
+local effectCards={}
+for _,v in ipairs(effectCollection:GetChildren())do if v.Name:find('HoneyBunLocal_Effect_',1,true)then effectCards[#effectCards+1]=v end end
+assert(#effectCards==2 and not effectsItems.Visible and none.Parent==effectsItems,'Every catalog effect is shown without changing native cards')
+assert(effectCards[1]:FindFirstChild('ItemName').Text=='Flames','Effect card uses the selected effect name')
+overlay(effectCards[1]).Activated:Fire()
+assert(effectChoice=='Flames' and effectCards[1]:FindFirstChild('Equipped').Visible,'Click equips an effect and marks its native card')
+assert(effectSlot:FindFirstChild('ItemName').Text=='Flames' and effectSlot:FindFirstChild('Icon').Image=='rbxassetid://456','Native effect side slot shows local selection')
+effectsSearch.Text='missing';flush()
+local visibleCards=0
+for _,v in ipairs(effectCollection:GetChildren())do if v.Name:find('HoneyBunLocal_Effect_',1,true)then visibleCards=visibleCards+1 end end
+assert(visibleCards==0,'Effect search filters independently')
+effectCollection:Destroy();effectsPane.Visible=false;effectsPane.Visible=true;flush()
+assert(effectsPane:FindFirstChild('HoneyBunLocal_Effects'),'Effects collection reconnects after its pane is replaced')
+assert(equipped:FindFirstChild('Knife'):FindFirstChild('ItemName').Text~='Flames','Reconnecting effects cannot overwrite a weapon side slot')
+effectsOverlay.disable();flush()
+assert(effectsItems.Visible and effectSlot:FindFirstChild('ItemName').Text=='None' and collection(),'Disabling effects restores its pane and keeps weapons enabled')
+weaponOverlay.destroy();effectsOverlay.destroy()
+print('Independent native effects inventory, equip, search, side slot and restoration passed.')

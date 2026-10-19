@@ -1,5 +1,7 @@
--- Local cards in the existing MM2 Weapons inventory; no ownership or remote changes.
-return function(playerGui,catalog,onStatus)
+-- Local cards in the existing MM2 Weapons/Effects inventory; no ownership or remote changes.
+return function(playerGui,catalog,onStatus,mode)
+    local effects=mode=="effects"
+    local initialCategory=effects and "effects" or "season1"
     local api={}
     local enabled,dead=false,false
     local grid,template,root,ownedRoot,nativePane,nativeHost
@@ -10,7 +12,7 @@ return function(playerGui,catalog,onStatus)
     local renderedSeason,renderedQuery,catalogItems
     local cards,cardEntries,originals,connections,cardConnections={},{},{},{},{}
     local sideSlots,sideSnapshots,sideCandidates={},{},{}
-    local query,season="","season1"
+    local query,season="",initialCategory
     local lastReport="Native inventory has not been detected yet."
     local tabBindings,categoryCounts={},{season1=0,classic=0,holiday=0}
     local function read(o,k) local ok,v=pcall(function() return o[k] end);if ok then return v end end
@@ -45,6 +47,29 @@ return function(playerGui,catalog,onStatus)
         end
     end
     local function detect()
+        if effects then
+            for _,branch in ipairs(descendants(playerGui)) do
+                if normalize(branch.Name)=="effects" and is(branch,"GuiObject") and not is(branch,"GuiButton") then
+                    for _,layout in ipairs(descendants(branch)) do
+                        if is(layout,"UIGridLayout") then
+                            local container=layout.Parent
+                            local ancestor,excluded=container,false
+                            while ancestor and ancestor~=branch do
+                                local name=normalize(ancestor.Name)
+                                if name:find("equipped",1,true) or lower(ancestor.Name):sub(1,14)=="honeybunlocal_" then excluded=true;break end
+                                ancestor=ancestor.Parent
+                            end
+                            if not excluded then
+                                for _,card in ipairs(children(container)) do
+                                    if is(card,"GuiObject") and card:FindFirstChild("ItemName",true) then return branch,container,card end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            return
+        end
         for _,label in ipairs(descendants(playerGui)) do
             if (is(label,"TextLabel") or is(label,"TextButton")) and (label.Text=="Default Knife" or label.Text=="Default Gun") then
                 local inventory=inventoryAncestor(label)
@@ -88,6 +113,7 @@ return function(playerGui,catalog,onStatus)
         if v=="holiday" or v:find("halloween",1,true) or v:find("christmas",1,true) then return "holiday" end
     end
     local function entryCategory(entry)
+        if effects then return "effects" end
         return category(entry.category) or category(entry.event) or category(entry.season) or "classic"
     end
     local function pathFrom(ancestor,object)
@@ -196,8 +222,11 @@ return function(playerGui,catalog,onStatus)
                 if name:find("equipped",1,true) or name=="loadout" then
                     local names={};for _,childObject in ipairs(children(object)) do if is(childObject,"GuiObject") and #names<24 then names[#names+1]=tostring(childObject.Name) end end
                     if #sideCandidates<12 then sideCandidates[#sideCandidates+1]=object:GetFullName().." children="..table.concat(names,",") end
-                    sideSlots.Knife=sideSlotFor(object,"Knife") or sideSlots.Knife
-                    sideSlots.Gun=sideSlotFor(object,"Gun") or sideSlots.Gun
+                    if effects then
+                        sideSlots.Effect=sideSlotFor(object,"Effect") or sideSlotFor(object,"Item") or object
+                    end
+                    sideSlots.Knife=not effects and (sideSlotFor(object,"Knife") or sideSlots.Knife) or nil
+                    sideSlots.Gun=not effects and (sideSlotFor(object,"Gun") or sideSlots.Gun) or nil
                     if sideSlots.Knife and sideSlots.Gun then break end
                 end
             end
@@ -251,12 +280,12 @@ return function(playerGui,catalog,onStatus)
         renderPasses=renderPasses+1
         if not catalogItems then
             catalogItems={}
-            for _,kind in ipairs({"Knife","Gun"}) do
+            for _,kind in ipairs(effects and {"Effect"} or {"Knife","Gun"}) do
                 local list=catalog.list(kind)
                 assert(type(list)=="table","MM2 catalog did not return an item list.")
                 for _,entry in ipairs(list) do catalogItems[#catalogItems+1]=entry end
             end
-            categoryCounts={season1=0,classic=0,holiday=0}
+            categoryCounts={season1=0,classic=0,holiday=0,effects=0}
             for _,entry in ipairs(catalogItems) do local key=entryCategory(entry);categoryCounts[key]=categoryCounts[key]+1 end
             table.sort(catalogItems,compare)
         end
@@ -273,10 +302,11 @@ return function(playerGui,catalog,onStatus)
                     card.Name="HoneyBunLocal_"..entry.kind.."_"..tostring(entry.id)
                     card.Visible=true;card.LayoutOrder=#cards
                     for _,v in ipairs(texts(card)) do
-                        if (is(v,"TextLabel") or is(v,"TextButton")) and (v.Text=="Default Knife" or v.Text=="Default Gun") then
+                        if (is(v,"TextLabel") or is(v,"TextButton")) and (v.Text=="Default Knife" or v.Text=="Default Gun" or (effects and normalize(v.Name)=="itemname")) then
                             v.Text=entry.name
                             if entry.rarityColor then v.TextColor3=entry.rarityColor end
                         end
+                        if effects and (is(v,"TextLabel") or is(v,"TextButton")) and normalize(v.Name)=="rarity" then v.Text=tostring(entry.rarity or "") end
                         if is(v,"GuiObject") and (normalize(v.Name)=="equipped" or normalize(v.Name)=="selected") then v.Visible=equipped[entry.kind]==entry.id end
                     end
                     local image=entry.image
@@ -358,7 +388,7 @@ return function(playerGui,catalog,onStatus)
                 if is(o,"TextBox") and (lower(o.Name):find("search",1,true) or lower(o.PlaceholderText):find("search",1,true)) then
                     query=lower(o.Text)
                     connections[#connections+1]=o:GetPropertyChangedSignal("Text"):Connect(function() query=lower(o.Text);schedule() end)
-                elseif is(o,"GuiButton") then
+                elseif is(o,"GuiButton") and not effects then
                     local key=buttonCategory(o)
                     if key then
                         tabBindings[#tabBindings+1]=key.."="..o:GetFullName()
@@ -375,21 +405,27 @@ return function(playerGui,catalog,onStatus)
         local detectedTemplate
         if not source or not originalGrid or not alive(originalGrid) then
             local detectedRoot,nativeGrid,card=detect()
-            assert(nativeGrid,"Open MM2's Weapons inventory so its item panel can be detected.")
+            assert(nativeGrid,"Open MM2's "..(effects and "Effects" or "Weapons").." inventory so its item panel can be detected.")
             root=detectedRoot
             nativeHost,nativePane=paneFor(nativeGrid,root)
             source=nativePane;originalGrid=nativeGrid;detectedTemplate=card
             panePath=pathFrom(playerGui,source);gridPath=pathFrom(source,originalGrid)
         else
             nativePane=source;nativeHost=source.Parent
-            root=inventoryAncestor(originalGrid) or root
+            if effects then
+                local ancestor=originalGrid
+                while ancestor do
+                    if normalize(ancestor.Name)=="effects" then root=ancestor;break end
+                    ancestor=ancestor.Parent
+                end
+            else root=inventoryAncestor(originalGrid) or root end
         end
         assert(source and nativeHost,"Native inventory content panel was not found.")
         if not template then
             assert(detectedTemplate,"Native item card template is unavailable.")
             template=detectedTemplate:Clone()
         end
-        ownedRoot=source:Clone();ownedRoot.Name="HoneyBunLocal_Collection"
+        ownedRoot=source:Clone();ownedRoot.Name=effects and "HoneyBunLocal_Effects" or "HoneyBunLocal_Collection"
         for _,o in ipairs(texts(ownedRoot)) do if is(o,"LuaSourceContainer") then destroy(o) end end
         grid=atPath(ownedRoot,gridPath)
         assert(grid,"The copied native item grid could not be located.")
@@ -434,7 +470,7 @@ return function(playerGui,catalog,onStatus)
             if not enabled or dead then return lastReport end
             n,total=count,all
         end
-        assert(total>0,"MM2's item database returned no knife/gun cosmetics. Copy MM2 report for details.")
+        assert(total>0,"MM2's database returned no "..(effects and "effects" or "knife/gun cosmetics")..". Copy MM2 report for details.")
         local equipped=catalog.getEquipped and catalog.getEquipped() or {}
         updateSelection(equipped);updateSideSlots(equipped)
         if rerenderRequested then rerenderRequested=false;schedule() end
@@ -452,7 +488,7 @@ return function(playerGui,catalog,onStatus)
     function api.enable()
         assert(not dead,"MM2 inventory preview was closed.")
         if enabled then local ok,message=pcall(refresh);return ok,message end
-        enabled=true;query="";season="season1"
+        enabled=true;query="";season=initialCategory
         local ok,message=pcall(refresh)
         if not ok then api.disable();status("MM2 inventory could not load: "..tostring(message).."\n"..inventoryTree());return false,lastReport end
         if not enabled then return false,"Inventory loading cancelled." end
@@ -464,7 +500,7 @@ return function(playerGui,catalog,onStatus)
         return true,message
     end
     function api.report()
-        return "Native inventory build: batched inventory V6\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nRender passes="..renderPasses.."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")
+        return "Native inventory build: weapons and effects V7\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nRender passes="..renderPasses.."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.." Effects="..tostring(categoryCounts.effects or 0).."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").." Effect="..(sideSlots.Effect and sideSlots.Effect:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")
     end
     function api.destroy() if not dead then api.disable();dead=true end end
     return api
