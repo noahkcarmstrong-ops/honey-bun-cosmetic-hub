@@ -88,6 +88,8 @@ local function createEditor()
         setSkin=function(color,region)calls.skin=calls.skin+1;calls.color=color;calls.region=region;return'Color applied'end,
         restoreSkin=function()calls.skinRestore=true;return'Original skin restored'end,
         applyBody=function(value)calls.body=calls.body+1;calls.package=value;return'Body applied'end,
+        applyBodyPart=function(region,value)calls.bodyParts=calls.bodyParts or {};calls.bodyParts[region]=value;return'Part equipped'end,
+        restoreBody=function()calls.bodyRestore=true;return'Body restored'end,
         restore=function()calls.restore=calls.restore+1;return'Restored'end,
         reapplySaved=function()if calls.failReplay then error('Fixture avatar unavailable')end;return'Saved cosmetics restored.'end,
         getSettings=function()return{accessories={},colors={}}end,
@@ -164,6 +166,11 @@ field('Red 0–255').Text='999';click('Apply RGB color');assert(calls.skin==1,'I
 click('BODY');click('Girl');assert(calls.body==1 and calls.package=='Girl','Body preset action')
 field('roblox.com/bundles/123/... or bundle ID').Text='https://www.roblox.com/bundles/311/Robloxian-2-0'
 click('Apply body package');assert(calls.body==2 and calls.package:find('/311/',1,true),'Custom body bundle action')
+click('Custom body parts  >')
+field('Head catalog or bundle link / asset ID').Text='https://www.roblox.com/catalog/123/Head';click('Equip head')
+field('Left arm catalog or bundle link / asset ID').Text='https://www.roblox.com/bundles/311/Robloxian-2-0';click('Equip left arm')
+assert(calls.bodyParts.Head:find('/123/',1,true) and calls.bodyParts.LeftArm:find('/311/',1,true),'Head and limb inputs reach independent body region actions')
+click('Restore original body');assert(calls.bodyRestore and calls.restore==0,'Body-only restore preserves other cosmetics')
 click('EMOTES');click('Slot 3: Original / unassigned')
 field('Roblox emote catalog link or ID').Text='12345';click('Assign to slot 3')
 assert(calls.emoteSlot==3 and slots[3].id=='12345','Emote assigned to selected wheel slot')
@@ -181,6 +188,8 @@ assert(calls.motionDestroy,'Refresh cleans motion editor')
 assert(calls.animationDestroy,'Refresh cleans animation bundle editor')
 assert(calls.storageLoaded and calls.storageDestroyed,'Persistent settings load and flush on Refresh')
 assert(calls.clothesDestroy,'Refresh cleans clothing editor')
+click('BODY')
+assert(field('Head catalog or bundle link / asset ID').Text=='https://www.roblox.com/catalog/123/Head','Custom part editor links survive Refresh')
 gui():Destroy()
 for _,c in ipairs(input.InputBegan.listeners)do assert(not c.Connected,'Input listeners disconnected')end
 print('Cosmetic tabs, accessory/body actions, color validation, separate repo, Refresh and cleanup passed.')

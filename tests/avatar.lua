@@ -34,13 +34,15 @@ local bc=node("BodyColors","Body Colors");bc.HeadColor3={r=1,g=1,b=1};bc.TorsoCo
 local head=body:FindFirstChild("Head");local ha=node("Attachment","HatAttachment");ha.CFrame=cf();ha.Parent=head
 local player={Character=body,CharacterAdded=signal()};local accessory=node("Accessory","Blue Hat");local handle=node("Part","Handle");handle.CFrame=cf();handle.AttachmentPoint=cf();handle.Parent=accessory;local at=node("Attachment","HatAttachment");at.CFrame=cf();at.Parent=handle;local injected=node("Script","Injected");injected.Parent=accessory
 local template=node("Model","Template");for _,n in ipairs({"Head","UpperTorso","LowerTorso","LeftUpperArm","LeftLowerArm","LeftHand","RightUpperArm","RightLowerArm","RightHand","LeftUpperLeg","LeftLowerLeg","LeftFoot","RightUpperLeg","RightLowerLeg","RightFoot"})do local p=node("MeshPart",n);p.CFrame=cf();p.Parent=template end
-local players={template=template};function players:GetHumanoidDescriptionFromOutfitIdAsync(id)local d=node("HumanoidDescription","Description");d.id=id;return d end;function players:CreateHumanoidModelFromDescriptionAsync()self.generated=true;if self.onGenerate then self.onGenerate()end;return self.template:Clone() end
-local savedSettings=nil;local http={};function http:GetAsync()return'{"items":[{"type":"UserOutfit","id":131929576}]}'end;function http:JSONDecode(value)if value=="settings-token"then return savedSettings end;return{items={{type="UserOutfit",id=131929576}}}end;function http:JSONEncode(value)savedSettings=value;return"settings-token"end
+local players={template=template};function players:GetHumanoidDescriptionFromOutfitIdAsync(id)local d=node("HumanoidDescription","Description");d.id=id;d.Head=901;d.Torso=902;d.LeftArm=903;d.RightArm=904;d.LeftLeg=905;d.RightLeg=906;return d end;function players:CreateHumanoidModelFromDescriptionAsync(description)self.lastDescription=description;self.generated=true;if self.onGenerate then self.onGenerate()end;return self.template:Clone() end
+local savedSettings=nil;local http={bundleType="BodyParts"};function http:GetAsync()return'{"items":[{"type":"UserOutfit","id":131929576}]}'end;function http:JSONDecode(value)if value=="settings-token"then return savedSettings end;return{bundleType=self.bundleType,items={{type="UserOutfit",id=131929576}}}end;function http:JSONEncode(value)savedSettings=value;return"settings-token"end
 local gui=node("PlayerGui","PlayerGui");function gui:SetAttribute(k,v)self[k]=v end;function gui:GetAttribute(k)return self[k]end
 player.PlayerGui=gui;function player:FindFirstChild(n)return self[n]end;function player:FindFirstChildOfClass(n)if n=="PlayerGui"then return self.PlayerGui end end;function player:WaitForChild(n)return self[n]end;function player:HasAppearanceLoaded()return true end
 Color3={fromRGB=function(r,g,b)return{R=r/255,G=g/255,B=b/255,r=r/255,g=g/255,b=b/255}end,new=function(r,g,b)return{R=r,G=g,B=b,r=r,g=g,b=b}end};task={queue={},wait=function()end,spawn=function(f)table.insert(task.queue,f)end}
 local mode="normal";local function freshAccessory()local a=node("Accessory","Blue Hat");a.AttachmentPoint=cf();local h=node("Part","Handle");h.CFrame=cf();h.AttachmentPoint=cf();h.Parent=a;return a end
-game={GetService=function(_,n)return({Players=players,HttpService=http})[n]end,GetObjects=function(_,id)assert(id=="rbxassetid://123");if mode=="respawn"then local fresh=node("Model","Fresh");player.Character=fresh;player.CharacterAdded:Fire(fresh)end;if mode=="blocked"then return{node("Part","NotWearable")}end;if accessory.destroyed then return{freshAccessory()}end;return{accessory}end,HttpGet=function()return http:GetAsync()end}
+local marketplace={assetType=28};function marketplace:GetProductInfoAsync()return{AssetTypeId=self.assetType}end
+game={GetService=function(_,n)return({Players=players,HttpService=http,MarketplaceService=marketplace})[n]end,GetObjects=function(_,id)assert(id=="rbxassetid://123");if mode=="respawn"then local fresh=node("Model","Fresh");player.Character=fresh;player.CharacterAdded:Fire(fresh)end;if mode=="blocked"then return{node("Part","NotWearable")}end;if accessory.destroyed then return{freshAccessory()}end;return{accessory}end,HttpGet=function()return http:GetAsync()end}
+Enum.InfoType={Asset="Asset"}
 local create=dofile("avatar.lua");assert(type(create)=="function","module returns create(player)");local api=create(player)
 assert(api.equipAccessory(123):match("Equipped"));local candidate=body:FindFirstChild("Blue Hat");assert(injected.destroyed and candidate,"sanitizing removes inserted script and parents cloned accessory");assert(#api.listAccessories()==1)
 api.setSkin(Color3.new(.5,.4,.3),"All");assert(head.Color.r==.5 and body:FindFirstChild("LeftUpperArm").Color.r==.5 and bc.HeadColor3.r==.5,"R15 grouped skin applies");api.restore();assert(head.Color.r==1 and bc.HeadColor3.r==1,"restore returns original colors")
@@ -94,4 +96,33 @@ assert(#skinOnly.listAccessories()==2 and hiddenHat.Parent==nil and not hiddenHa
 assert(afterSkinOnly.hideOriginals and afterSkinOnly.body and next(afterSkinOnly.colors)==nil,"skin-only restore clears saved colors only")
 assert(player.Character:FindFirstChild("Head")==changedBodyHead and changedBodyHead.Color==originalSkin,"skin-only restore returns actual original color without replacing body")
 skinOnly.destroy()
+
+-- Mixed R15 regions replace only selected segments and restore keeps hats and colors.
+player.Character=body; local mixed=create(player); local mixedRoot=body:FindFirstChild("HumanoidRootPart"); local mixedHead=body:FindFirstChild("Head"); mixedHead.Color=Color3.new(.7,.6,.5)
+local mixedHat=freshAccessory();mixedHat.Name="Mixed Hat";mixedHat.Parent=body
+body:FindFirstChild("LeftUpperArm").MeshId="original-arm"
+template:FindFirstChild("LeftUpperArm").MeshId="custom-arm"
+assert(mixed.applyBodyPart("LeftArm","https://www.roblox.com/bundles/555"):match("LeftArm")); marketplace.assetType=31
+assert(body:FindFirstChild("LeftUpperArm").MeshId=="custom-arm","selected arm geometry actually changes")
+assert(mixed.applyBodyPart("RightLeg",456):match("RightLeg")); local mixedSettings=mixed.getSettings()
+assert(mixedSettings.bodyParts.LeftArm and mixedSettings.bodyParts.RightLeg,"mixed body selections are saved")
+assert(body:FindFirstChild("HumanoidRootPart")==mixedRoot and body:FindFirstChild("Head")==mixedHead,"mixed replacement preserves unrelated parts")
+marketplace.assetType=27; assert(not pcall(function()mixed.applyBodyPart("Head",456)end),"wrong catalog category is rejected")
+assert(mixed.restoreBody():match("restored") and mixedHat.Parent==body and mixedHead.Color.r==.7,"restoreBody keeps hats and colors")
+assert(body:FindFirstChild("LeftUpperArm").MeshId=="original-arm","body-only restore restores geometry after only region changes")
+assert(next(mixed.getSettings().bodyParts)==nil and not mixed.getSettings().body,"restoreBody clears body selections")
+marketplace.assetType=79
+mixed.applyBodyPart("Head","https://www.roblox.com/catalog/789/Dynamic-Head")
+assert(players.lastDescription.Head==789,"dynamic head catalog ID is passed to body generation")
+mixed.applyBodyPart("Head","https://www.roblox.com/bundles/555/Head")
+assert(players.lastDescription.Head==901,"head bundle uses outfit head asset")
+http.bundleType="AvatarAnimations"
+assert(not pcall(mixed.applyBodyPart,"Head","https://www.roblox.com/bundles/82/Robot"),"animation bundles cannot replace body parts")
+http.bundleType="BodyParts"
+local partialHead=body:FindFirstChild("Head")
+mixed.reapplySaved()
+assert(mixed.getSettings().bodyParts.Head and body:FindFirstChild("Head")~=partialHead,"custom heads survive saved replay")
+mixed.applyBody("Girl")
+assert(next(mixed.getSettings().bodyParts)==nil,"new full body package clears mixed overrides")
+mixed.destroy()
 print("Avatar backend fixture and lifecycle tests passed.")

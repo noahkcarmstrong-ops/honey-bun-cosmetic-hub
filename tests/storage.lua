@@ -128,6 +128,13 @@ local originalGui, original = rejoin(101)
 assert(value(originalGui, 'HoneyBunCosmeticSettings') == 'session-settings', 'account data does not cross accounts')
 original:destroy()
 
+local mixedBody='{"body":"Girl","bodyParts":{"Head":"https://www.roblox.com/catalog/123/Head","LeftArm":"https://www.roblox.com/bundles/311/Body"}}'
+local partsGui,parts=rejoin(505)
+partsGui:SetAttribute('HoneyBunCosmeticSettings',mixedBody);flush();parts:destroy()
+local restoredPartsGui,restoredParts=rejoin(505)
+assert(value(restoredPartsGui,'HoneyBunCosmeticSettings')==mixedBody,'mixed body region selections persist after rejoin')
+restoredParts:destroy()
+
 -- Setting an attribute to nil removes it from the next saved document.
 local removalGui, removal = rejoin(101)
 removalGui:SetAttribute('HoneyBunCosmeticEmotes', nil)

@@ -44,8 +44,10 @@ Clothing and textured bodies can cover skin colors. R6 and R15 limb groups are s
 
 1. Open **BODY**.
 2. Choose **Blocky**, **Girl**, or **Robloxian 2.0**, or paste a Roblox body bundle link/ID and click **Apply body package**.
+3. Expand **Custom body parts** to mix a head, torso, left/right arm, and left/right leg from different packages. Each region has its own link box and Equip button. Use a body bundle URL to select that package's region, or the individual part's catalog URL/asset ID. Individual region replacement requires R15; arms and legs include matching hands and feet.
+4. Use **Restore original body** to restore your avatar's original body shapes while keeping accessories, clothing, and skin colors.
 
-The editor keeps your current character model and rig type. R6 uses compatible CharacterMesh bodies; R15 uses Roblox's body-part replacement API. Body bundles must expose a usable avatar outfit. The Girl and Robloxian 2.0 presets use Roblox's official outfits. Body-only package changes do not add the package's clothes or hair.
+The editor keeps your current character model and rig type. R6 uses compatible CharacterMesh bodies; R15 uses Roblox's body-part replacement API. Body bundles must expose a usable avatar outfit. The Girl and Robloxian 2.0 presets use Roblox's official outfits. Body-only package changes do not add the package's clothes or hair. Custom part selections save and reapply over your selected base package. Equipping a new full body package replaces the mixed part selections. Unsupported or restricted parts show an error; live compatibility depends on the asset and game.
 
 ## Emotes
 

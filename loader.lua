@@ -168,6 +168,11 @@ local statusLabel, render
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
 local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animationBundle","")
 local shirtInput,pantsInput=uiSetting("shirt",""),uiSetting("pants","")
+local bodyPartRegions={"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"}
+local bodyPartNames={"Head","Torso","Left arm","Right arm","Left leg","Right leg"}
+local bodyPartInputs={}
+for _,region in ipairs(bodyPartRegions) do bodyPartInputs[region]=uiSetting("part_"..region,"") end
+local bodyPartsOpen=uiSetting("bodyPartsOpen",false)
 local emoteSlot=uiSetting("emoteSlot",1)
 if emoteSlot<1 or emoteSlot>8 or emoteSlot%1~=0 then emoteSlot=1 end
 local rgb = {uiSetting("red","255"),uiSetting("green","204"),uiSetting("blue","153")}
@@ -179,6 +184,8 @@ if regionIndex<1 or regionIndex>#regions or regionIndex%1~=0 then regionIndex=1 
 local paletteOpen=uiSetting("palette",false)
 local function saveUI()
     local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animationBundle=animationInput,emoteSlot=emoteSlot,shirt=shirtInput,pants=pantsInput}
+    values.bodyPartsOpen=bodyPartsOpen
+    for _,region in ipairs(bodyPartRegions) do values["part_"..region]=bodyPartInputs[region] end
     for key,value in pairs(values) do playerGui:SetAttribute("HoneyBunCosmeticUI_"..key,value) end
 end
 -- Exact RGB samples from the user's 5-column, 6-row Roblox palette reference.
@@ -523,6 +530,24 @@ render=function()
             saveUI()
             action(function(editor) return editor.applyBody(bundleInput) end)
         end)
+        button(bodyPartsOpen and "Custom body parts  v" or "Custom body parts  >",function()
+            if busy then return end
+            bodyPartsOpen=not bodyPartsOpen;saveUI();render()
+        end)
+        if bodyPartsOpen then
+            caption("Mix different packages on an R15 avatar. Paste a body package link for a region, or use that individual body part's catalog link / asset ID.",64)
+            for index,region in ipairs(bodyPartRegions) do
+                local part,label=region,bodyPartNames[index]
+                caption(string.upper(label),22)
+                local partField=input(label.." catalog or bundle link / asset ID",bodyPartInputs[part],function(value) bodyPartInputs[part]=value end)
+                button("Equip "..string.lower(label),function()
+                    bodyPartInputs[part]=partField.Text;saveUI()
+                    action(function(editor) return editor.applyBodyPart(part,bodyPartInputs[part]) end)
+                end)
+            end
+            caption("Arms and legs include their matching hand or foot. A new full body package replaces your mixed part selections.",48)
+        end
+        button("Restore original body",function() action(function(editor) return editor.restoreBody() end) end)
         caption("R6 and R15 use different body parts. Unsupported packages show a message instead of changing your avatar rig.",48)
     end
     button("Reapply saved cosmetics",function() action(reapplyAll) end)

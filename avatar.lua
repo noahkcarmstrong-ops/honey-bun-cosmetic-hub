@@ -12,6 +12,13 @@ local r15={"Head","UpperTorso","LowerTorso","LeftUpperArm","LeftLowerArm","LeftH
     "RightUpperArm","RightLowerArm","RightHand","LeftUpperLeg","LeftLowerLeg","LeftFoot",
     "RightUpperLeg","RightLowerLeg","RightFoot"}
 local outfits={Girl=131929545,["Robloxian 2.0"]=131929576}
+local bodyRegions={Head=true,Torso=true,LeftArm=true,RightArm=true,LeftLeg=true,RightLeg=true}
+local function regionNames(region)
+    if region=="Head" then return {"Head"} end
+    local names=groups[region];local out={}
+    for i=2,#names do out[#out+1]=names[i] end
+    return out
+end
 local function idFrom(value,kind)
     if type(value)=="number" then
         assert(value>0 and value%1==0 and value<9007199254740992,"Enter a positive numeric ID.")
@@ -47,12 +54,13 @@ return function(player,onStatus)
     local nextKey=0
     local playerGui=player:FindFirstChildOfClass("PlayerGui")
     local attribute="HoneyBunCosmeticSettings"
-    local settings={accessories={},colors={},hideOriginals=false}
+    local settings={accessories={},colors={},bodyParts={},hideOriginals=false}
     local reapplying,replayGeneration,replayToken=false,nil,0
     local function copySettings()
-        local copy={accessories={},colors={},hideOriginals=settings.hideOriginals,body=settings.body}
+        local copy={accessories={},colors={},bodyParts={},hideOriginals=settings.hideOriginals,body=settings.body}
         for i,id in ipairs(settings.accessories) do copy.accessories[i]=id end
         for region,color in pairs(settings.colors) do copy.colors[region]={color[1],color[2],color[3]} end
+        for region,value in pairs(settings.bodyParts) do copy.bodyParts[region]=value end
         return copy
     end
     if playerGui then
@@ -63,6 +71,12 @@ return function(player,onStatus)
         if ok and type(saved)=="table" then
             settings.hideOriginals=saved.hideOriginals==true
             if type(saved.body)=="string" then settings.body=saved.body end
+            if type(saved.bodyParts)=="table" then
+                for region,value in pairs(saved.bodyParts) do
+                    if bodyRegions[region] and ((type(value)=="number" and value>0 and value%1==0 and value<9007199254740992)
+                        or (type(value)=="string" and #value<=8192)) then settings.bodyParts[region]=value end
+                end
+            end
             if type(saved.accessories)=="table" then
                 for _,id in ipairs(saved.accessories) do
                     if type(id)=="number" and id>0 and id%1==0 and id<9007199254740992 and #settings.accessories<20 then
@@ -197,14 +211,16 @@ return function(player,onStatus)
             if item:IsA("Accessory") or item:IsA("Hat") then pcall(attach,item,c) end
         end
     end
-    local function replaceParts(ctx,parts)
-        for _,name in ipairs(r15) do
-            assert(parts[name] and ctx.character:FindFirstChild(name),"This package does not contain a complete R15 body.")
+    local function replaceParts(ctx,parts,names)
+        names=names or r15
+        for _,name in ipairs(names) do
+            local target=ctx.character:FindFirstChild(name)
+            assert(parts[name] and parts[name]:IsA("BasePart") and target and target:IsA("BasePart"),"This package does not contain the selected R15 body part.")
         end
         local backups,changed={},{}
-        for _,name in ipairs(r15) do backups[name]=bodyClone(ctx.character:FindFirstChild(name)) end
+        for _,name in ipairs(names) do backups[name]=bodyClone(ctx.character:FindFirstChild(name)) end
         local ok,err=pcall(function()
-            for _,name in ipairs(r15) do
+            for _,name in ipairs(names) do
                 local target=ctx.character:FindFirstChild(name)
                 local clone=bodyClone(parts[name])
                 clone.CFrame,clone.Color=target.CFrame,target.Color
@@ -375,8 +391,61 @@ return function(player,onStatus)
         end)
         template:Destroy()
         assert(applied,message)
-        if not reapplying then settings.body=value;save() end
+        if not reapplying then settings.body=value;settings.bodyParts={};save() end
         return "Body package applied (visible to you)."
+    end
+    function api.applyBodyPart(region,value)
+        local ctx=context()
+        assert(ctx.humanoid.RigType==Enum.HumanoidRigType.R15,"Individual body parts are only supported on R15 avatars.")
+        assert(bodyRegions[region],"Choose a body region.")
+        local field=region;local names=regionNames(region)
+        local text=tostring(value or ""):match("^%s*(.-)%s*$")
+        local isBundle=text:match("^https?://[^/]+/bundles/%d+") ~= nil
+        local id
+        if not isBundle then id=idFrom(value,"catalog") end
+        if isBundle then
+            local bundleId=idFrom(text,"bundles")
+            local ok,bundle=pcall(function()
+                return Http:JSONDecode(game:HttpGet("https://catalog.roblox.com/v1/bundles/"..string.format("%.0f",bundleId).."/details",false))
+            end)
+            check(ctx)
+            assert(ok and type(bundle)=="table" and type(bundle.items)=="table","Roblox could not read that body bundle.")
+            assert(bundle.bundleType=="BodyParts" or bundle.bundleType=="DynamicHead","Choose a body or head bundle, rather than an animation bundle.")
+            local outfit
+            for _,item in ipairs(bundle.items) do
+                if item.type=="UserOutfit" and tonumber(item.id) then outfit=tonumber(item.id);break end
+            end
+            assert(outfit,"That bundle does not contain a usable body outfit.")
+            local loaded,source=pcall(function() return Players:GetHumanoidDescriptionFromOutfitIdAsync(outfit) end)
+            if not valid(ctx) then if loaded and source then source:Destroy() end;check(ctx) end
+            assert(loaded and source,"Roblox could not load that body bundle.")
+            local selected=source[field]
+            source:Destroy()
+            assert(type(selected)=="number" and selected>0,"That bundle has no selected "..region..".")
+            id=selected
+        else
+            local service=game:GetService("MarketplaceService")
+            local ok,info=pcall(function() return service:GetProductInfoAsync(id,Enum.InfoType.Asset) end)
+            check(ctx)
+            assert(ok and type(info)=="table" and info.AssetTypeId, "Roblox could not validate that catalog asset.")
+            local expected={Head={[17]=true,[79]=true},Torso={[27]=true},RightArm={[28]=true},LeftArm={[29]=true},LeftLeg={[30]=true},RightLeg={[31]=true}}
+            assert(expected[region][info.AssetTypeId],"That catalog item is not a "..region.." body part.")
+        end
+        local description=Instance.new("HumanoidDescription")
+        description[field]=id
+        local ok,template=pcall(function() return Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType) end)
+        description:Destroy()
+        if not valid(ctx) then if ok and template then template:Destroy() end;check(ctx) end
+        assert(ok and template,"Roblox blocked generating that body part.")
+        strip(template)
+        local parts={}
+        for _,name in ipairs(names) do local part=template:FindFirstChild(name);if part and part:IsA("BasePart") then parts[name]=part end end
+        local applied,message=pcall(function() capture(ctx,true);replaceParts(ctx,parts,names) end)
+        template:Destroy()
+        assert(applied,message)
+        snapshot.bodyChanged=true
+        if not reapplying then settings.bodyParts[region]=value;save() end
+        return region.." body part applied (visible to you)."
     end
     local function restoreSkinAppearance(ctx)
         if not snapshot or snapshot.character~=ctx.character then skin={};return false end
@@ -417,14 +486,28 @@ return function(player,onStatus)
         settings.colors={};save()
         return "Original skin restored."
     end
+    function api.restoreBody()
+        local ctx=context()
+        if snapshot and snapshot.character==ctx.character and snapshot.bodyChanged then
+            if ctx.humanoid.RigType==Enum.HumanoidRigType.R15 then replaceParts(ctx,snapshot.parts)
+            else
+                for _,item in ipairs(ctx.character:GetChildren()) do if item:IsA("CharacterMesh") then item:Destroy() end end
+                for _,mesh in ipairs(snapshot.meshes) do mesh:Clone().Parent=ctx.character end
+            end
+            snapshot.bodyChanged=false
+            reattach(ctx.character)
+        end
+        settings.body=nil;settings.bodyParts={};save()
+        return "Original body restored."
+    end
     function api.restore()
         local message=restoreAppearance()
-        settings={accessories={},colors={},hideOriginals=false};save()
+        settings={accessories={},colors={},bodyParts={},hideOriginals=false};save()
         return message
     end
     function api.getSettings() return copySettings() end
     local operations={}
-    for _,name in ipairs({"equipAccessory","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","applyBody","restoreSkin","restore"}) do
+    for _,name in ipairs({"equipAccessory","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","applyBody","applyBodyPart","restoreSkin","restoreBody","restore"}) do
         local operation=api[name]
         operations[name]=operation
         api[name]=function(...)
@@ -450,6 +533,7 @@ return function(player,onStatus)
                 if not success then table.insert(failures,(tostring(err):gsub("^.-:%d+:%s*",""))) end
             end
             if desired.body then apply(operations.applyBody,desired.body) end
+            for region,value in pairs(desired.bodyParts) do apply(operations.applyBodyPart,region,value) end
             if desired.hideOriginals then apply(operations.removeCurrentAccessories) end
             for _,id in ipairs(desired.accessories) do apply(operations.equipAccessory,id) end
             if desired.colors.All then apply(operations.setSkin,Color3.new(desired.colors.All[1],desired.colors.All[2],desired.colors.All[3]),"All") end
