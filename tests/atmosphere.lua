@@ -82,6 +82,7 @@ local wrapper = model("Wrapper", {source}); game.assets = {wrapper}
 assert(api.apply("https://create.roblox.com/store/asset/123/Custom-Sky"))
 assert(original.Parent == nil and wrapper.destroyed and script.destroyed, "success sanitizes and cleans source assets")
 assert(lighting.ClockTime==14,"Applying a sky uses daylight instead of preserving the game midnight")
+assert(api.currentAsset()=="123" and api.previewImage()=="Source","Saved cards can capture the active sky ID and its original front face")
 local custom = lighting:FindFirstChildOfClass("Sky"); assert(custom and custom ~= original and custom.Name == "Source")
 assert(#custom:GetChildren() == 0, "cloned Sky has no untrusted descendants")
 

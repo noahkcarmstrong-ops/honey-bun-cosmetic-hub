@@ -152,7 +152,7 @@ loadstring=function(source)
     if source=='effect-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Effect library uses persistent PlayerGui');return{list=function()return{{id='Effect1',name='Effect from PlayerOne'}}end,capturePlayer=function(name)calls.capturePlayer=name;return'Captured player',{'Effect1'}end,captureServer=function(name)calls.capturePriority=name;return'Captured server'end,report=function()return'Library fixture'end,destroy=function()calls.libraryDestroyed=true end}end end end
     if source=='mm2-effects-module'then return function()return function(_game,_status)calls.effectLoads=(calls.effectLoads or 0)+1;return{equip=function(id)calls.savedEffect=id;return'Equipped effect'end,getEquipped=function()return{}end,reloadLibrary=function()calls.libraryReloaded=true end,collectOriginals=function()calls.effectsCollecting=true end,restore=function()calls.effectsRestored=true end,destroy=function()calls.effectsDestroyed=true end,report=function()return'Effects fixture report'end}end end end
     if source=='mm2-module'then return function()return function()calls.weaponLoads=(calls.weaponLoads or 0)+1;return{setKnifeSide=function(value)calls.knifeSide=value;return value end,savedInventory=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,savedWeapons=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,equip=function(id,kind)calls.savedWeapon=id;calls.savedKind=kind;return'Equipped'end,collectPlayerWeapon=function(name,kind)calls.captureOwner=name;calls.captureKind=kind;if calls.failGun and kind=='Gun' then error('Gun not loaded')end;return'Copied '..kind end,report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
-    if source=='atmosphere-module'then return function()return function()return{daylightEnabled=function()return calls.daylight~=false end,setDaylight=function(v)calls.daylight=v;return'Time updated'end,apply=function(id)calls.skybox=id;return true end,restore=function()calls.skyRestored=true;return'Sky restored'end,destroy=function()calls.skyDestroyed=true end}end end end
+    if source=='atmosphere-module'then return function()return function()return{daylightEnabled=function()return calls.daylight~=false end,setDaylight=function(v)calls.daylight=v;return'Time updated'end,apply=function(id)calls.skybox=id;return true end,currentAsset=function()return calls.skybox end,previewImage=function()return'rbxassetid://123456'end,restore=function()calls.skyRestored=true;return'Sky restored'end,destroy=function()calls.skyDestroyed=true end}end end end
     if source=='editor-module'then return function()return createEditor end end
     if source=='motion-module'then return function()return createMotion end end
     if source=='animations-module'then return function()return createAnimations end end
@@ -179,6 +179,10 @@ end
 local function click(text)assert(find(gui(),'TextButton',text),'Missing button '..text).Activated:Fire()end
 local function field(placeholder)
     for _,o in ipairs(objects)do if not o.destroyed and o.ClassName=='TextBox' and o.PlaceholderText==placeholder then return o end end
+    error('Missing field '..placeholder)
+end
+local function newestField(placeholder)
+    for index=#objects,1,-1 do local o=objects[index];if not o.destroyed and o.ClassName=='TextBox' and o.PlaceholderText==placeholder then return o end end
     error('Missing field '..placeholder)
 end
 dofile('loader.lua')
@@ -369,15 +373,30 @@ click('Daylight: ON');assert(calls.daylight==false,'Daylight can restore game ti
 click('Daylight: OFF');assert(calls.daylight==true,'Daylight can be enabled again')
 click('Restore original sky');assert(calls.skyRestored,'Atmosphere restores the original sky')
 field('Skybox name').Text='Classic sky';click('Save skybox')
-assert(find(gui(),'TextButton','Load Classic sky'),'Saved skybox gets a load button')
+assert(named(gui(),'SkyboxCard_1'),'Saved skybox gets a card')
+assert(named(gui(),'LoadSkybox_1'),'Saved skybox gets a load button')
+local skyPreview=assert(named(gui(),'SkyboxPreview_1'))
+assert(skyPreview.ClassName=='ImageLabel' and skyPreview.Image~='','Saved skybox card includes its face preview')
+assert(named(gui(),'SkyboxOptions_1'),'Saved skybox gets a cog menu button')
 field('Skybox name').Text='Classic renamed';click('Save skybox')
-assert(not find(gui(),'TextButton','Load Classic sky'),'Saving the same asset updates instead of duplicating')
-click('Daylight: ON');click('Load Classic renamed')
+assert(not named(gui(),'SkyboxCard_2') and not named(gui(),'LoadSkybox_2'),'Saving the same asset updates instead of duplicating')
+assert(find(gui(),'TextLabel','Classic renamed'),'Updated skybox name appears on the existing card')
+click('Daylight: ON');clickNamed('LoadSkybox_1')
 assert(calls.skybox=='12345' and calls.daylight==true,'Load reapplies the saved asset and daylight preference')
 click('Refresh');click('ATMOSPHERE')
-assert(find(gui(),'TextButton','Load Classic renamed'),'Skybox library survives Refresh')
-click('Delete Classic renamed')
-assert(not find(gui(),'TextButton','Load Classic renamed'),'Delete removes the saved skybox')
+assert(named(gui(),'SkyboxCard_1') and named(gui(),'LoadSkybox_1'),'Skybox library survives Refresh')
+clickNamed('SkyboxOptions_1');assert(named(gui(),'SkyboxMenu_1'),'Skybox cog opens its options menu')
+assert(find(gui(),'TextButton','Update') and find(gui(),'TextButton','Rename') and find(gui(),'TextButton','Delete') and find(gui(),'TextButton','Cancel'),'Skybox menu shows all four options')
+click('Update');assert(not named(gui(),'SkyboxMenu_1'),'Update saves the current sky and closes the menu')
+clickNamed('SkyboxOptions_1');click('Rename');newestField('Skybox name').Text='Classic final';click('Save Name')
+assert(find(gui(),'TextLabel','Classic final'),'Renamed skybox label appears on the card')
+field('Search saved skyboxes...').Text='missing';assert(not named(gui(),'SkyboxCard_1').Visible,'Search hides unmatched skyboxes')
+field('Search saved skyboxes...').Text='Classic';assert(named(gui(),'SkyboxCard_1').Visible,'Search shows matching skyboxes')
+field('Search saved skyboxes...').Text=''
+clickNamed('SkyboxOptions_1');click('Delete');assert(find(gui(),'TextButton','Confirm delete'),'Delete asks for confirmation')
+click('Cancel');assert(named(gui(),'SkyboxCard_1'),'Cancelled deletion keeps the skybox')
+clickNamed('SkyboxOptions_1');click('Delete');click('Confirm delete')
+assert(not named(gui(),'SkyboxCard_1'),'Confirmed deletion removes the skybox card')
 
 click('ACCESSORIES');assert(find(gui(),'TextButton','Add accessories'),'Cosmetic tabs remain usable')
 click('Hat sounds: ON');assert(calls.hatSounds==false,'Hat sound toggle updates persisted preference')

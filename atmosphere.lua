@@ -160,6 +160,9 @@ return function(game)
         return true
     end
 
+    function api.currentAsset()return custom and appliedId end
+    function api.previewImage()return custom and custom.SkyboxFt end
+
     function api.daylightEnabled()return daylight end
     function api.setDaylight(value)
         daylight=value==true

@@ -278,6 +278,9 @@ local statusLabel, render,lastRenderedPage
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
 local skyboxInput=uiSetting("skybox","")
 local skyboxName=""
+local skyboxMenu,skyboxDelete,skyboxRename
+local skyboxMenuAction=0
+local skyboxSearch=""
 local function savedSkies()
     local raw=uiSetting("savedSkyboxes","")
     if raw=="" then return {} end
@@ -285,7 +288,8 @@ local function savedSkies()
     assert(type(entries)=="table" and #entries<=30,"Saved skyboxes are invalid.")
     for _,entry in ipairs(entries) do
         assert(type(entry)=="table" and type(entry.name)=="string" and #entry.name<=40
-            and type(entry.asset)=="string" and #entry.asset<=512 and type(entry.daylight)=="boolean","Saved skybox is invalid.")
+            and type(entry.asset)=="string" and #entry.asset<=512 and type(entry.daylight)=="boolean"
+            and (entry.image==nil or type(entry.image)=="string" and #entry.image<=512),"Saved skybox is invalid.")
     end
     return entries
 end
@@ -1095,6 +1099,7 @@ render=function()
         caption("Playback can be visible to other players through Roblox's normal animation system. Wheel assignments are saved locally.",52)
         caption("The standard wheel needs an R15 avatar and Roblox's emote menu enabled by the game. Some emotes may be restricted.",52)
     elseif activePage=="Atmosphere" then
+        limits.MaxSize=Vector2.new(1050,850)
         caption("CUSTOM SKYBOX",24)
         caption("Paste a Roblox skybox model link or asset ID. The model must contain a Sky; a single image ID is not a complete skybox.",64)
         local field=input("Roblox skybox model link or ID",skyboxInput,function(value)skyboxInput=value end)
@@ -1114,39 +1119,139 @@ render=function()
         end)end)
         caption("SAVED SKYBOXES",24)
         local nameField=input("Skybox name",skyboxName,function(value)skyboxName=value end)
-        button("Save skybox",function()
+        button(skyboxRename and "Save Name" or "Save skybox",function()
             local asset=field.Text:match("^%s*(.-)%s*$")
             local label=nameField.Text:match("^%s*(.-)%s*$")
             action(function()
                 assert(#label>0 and #label<=40,"Enter a name with 1-40 characters.")
-                assert(#asset>0 and #asset<=512,"Enter a skybox model link or ID.")
                 local entries=savedSkies()
+                if skyboxRename then
+                    assert(entries[skyboxRename],"Saved skybox no longer exists.")
+                    entries[skyboxRename].name=label;storeSkies(entries)
+                    skyboxRename=nil;skyboxName=""
+                    return "Skybox renamed: "..label
+                end
+                assert(#asset>0 and #asset<=512,"Enter a skybox model link or ID.")
                 local index
                 for i,entry in ipairs(entries) do if entry.asset==asset then index=i;break end end
                 assert(index or #entries<30,"You can save up to 30 skyboxes. Delete one first.")
                 local ok,message=atmosphere().apply(asset);assert(ok,message)
-                entries[index or #entries+1]={name=label,asset=asset,daylight=atmosphere().daylightEnabled()}
+                entries[index or #entries+1]={name=label,asset=asset,daylight=atmosphere().daylightEnabled(),image=atmosphere().previewImage()}
                 storeSkies(entries);skyboxInput=asset;skyboxName="";saveUI()
                 return "Skybox saved: "..label
             end)
         end)
+        if skyboxRename then button("Cancel",function()if not busy then skyboxRename=nil;skyboxName="";render() end end) end
         local loaded,entries=pcall(savedSkies)
         if not loaded then caption("Saved skyboxes could not load: "..tostring(entries),48)
         elseif #entries==0 then caption("No saved skyboxes yet. Enter a name above and press Save skybox.",44)
         else
-            for index,entry in ipairs(entries) do
-                caption(entry.name,24)
-                button("Load "..entry.name,function()action(function()
-                    local ok,message=atmosphere().apply(entry.asset);assert(ok,message)
-                    atmosphere().setDaylight(entry.daylight)
-                    skyboxInput=entry.asset;saveUI()
-                    return "Loaded skybox: "..entry.name
-                end)end)
-                button("Delete "..entry.name,function()action(function()
-                    local current=savedSkies();table.remove(current,index);storeSkies(current)
-                    return "Deleted saved skybox: "..entry.name
-                end)end)
+            local search=input("Search saved skyboxes...",skyboxSearch,function(value)skyboxSearch=value end)
+            local grid=row("Frame",0);grid.Name="SkyboxGrid"
+            local arrangement=Instance.new("UIGridLayout",grid)
+            arrangement.SortOrder=Enum.SortOrder.LayoutOrder;arrangement.CellPadding=UDim2.fromOffset(10,20)
+            local cards={}
+            local empty=caption("No skyboxes found.",32)
+            local function fitGrid()
+                local width=grid.AbsoluteSize and grid.AbsoluteSize.X or 440
+                if width<=0 then width=440 end
+                local columns=math.max(1,math.floor((width+10)/134))
+                local cell=(width-(columns-1)*10)/columns
+                arrangement.FillDirectionMaxCells=columns
+                arrangement.CellSize=UDim2.new(1/columns,-10*(columns-1)/columns,0,cell+38)
+                local count=0
+                for _,entry in ipairs(cards) do
+                    entry.card.Visible=entry.name:lower():find(skyboxSearch:lower(),1,true)~=nil
+                    if entry.card.Visible then count=count+1 end
+                end
+                local rows=math.ceil(count/columns)
+                grid.Size=UDim2.new(1,-8,0,rows>0 and rows*(cell+58)-20 or 0)
+                empty.Visible=count==0
             end
+            for index,entry in ipairs(entries) do
+                local id,name=index,entry.name
+                local card=Instance.new("Frame",grid)
+                card.Name="SkyboxCard_"..id;card.BackgroundTransparency=1;card.LayoutOrder=index
+                cards[#cards+1]={card=card,name=name}
+                local image=Instance.new("TextButton",card)
+                image.Name="LoadSkybox_"..id;image.Text="";image.BorderSizePixel=0
+                image.Size=UDim2.new(1,0,1,-38);image.BackgroundColor3=theme.button
+                animateButton(image)
+                Instance.new("UICorner",image).CornerRadius=UDim.new(0,2)
+                image.Activated:Connect(function() action(function()
+                    local ok,message=atmosphere().apply(entry.asset);assert(ok,message)
+                    atmosphere().setDaylight(entry.daylight);skyboxInput=entry.asset;saveUI()
+                    return "Loaded skybox: "..name
+                end) end)
+                local preview=Instance.new("ImageLabel",image)
+                preview.Name="SkyboxPreview_"..id;preview.Size=UDim2.new(1,0,1,0)
+                preview.BackgroundTransparency=1;preview.ScaleType=Enum.ScaleType.Crop
+                local assetId=entry.asset:match("^%d+$") or entry.asset:match("rbxassetid://(%d+)")
+                    or entry.asset:match("/asset/(%d+)") or entry.asset:match("/library/(%d+)")
+                    or entry.asset:match("/catalog/(%d+)") or entry.asset:match("[?&]id=(%d+)")
+                preview.Image=type(entry.image)=="string" and entry.image or (assetId and "rbxthumb://type=Asset&id="..assetId.."&w=420&h=420" or "")
+                local title=text(card,name,UDim2.new(0,0,1,-32),UDim2.new(1,-2,0,32),16,235)
+                title.Font=Enum.Font.SourceSansBold;title.TextWrapped=true;title.TextTruncate=Enum.TextTruncate.AtEnd;title.TextYAlignment=Enum.TextYAlignment.Top
+                local cog=Instance.new("TextButton",image)
+                cog.Name="SkyboxOptions_"..id;cog.Text="⚙";cog.Font=Enum.Font.SourceSans;cog.TextSize=20
+                cog.Size=UDim2.fromOffset(30,30);cog.Position=UDim2.new(1,-31,0,1)
+                cog.BackgroundTransparency=1;cog.TextColor3=theme.ink;cog.Rotation=0
+                animateButton(cog);cog.ZIndex=5
+                cog.Activated:Connect(function()
+                    if busy then return end
+                    if skyboxMenu==id then skyboxMenu=nil else skyboxMenu=id end
+                    skyboxDelete=nil;skyboxMenuAction=skyboxMenuAction+1
+                    local actionId=skyboxMenuAction
+                    smooth(cog,{Rotation=90},0.26)
+                    local scale=cog:FindFirstChild("UIScale")
+                    if scale then
+                        smooth(scale,{Scale=0.84},0.08)
+                        task.delay(0.08,function()
+                            if alive and actionId==skyboxMenuAction then smooth(scale,{Scale=1},0.14) end
+                        end)
+                    end
+                    task.delay(0.26,function()
+                        if alive and not busy and actionId==skyboxMenuAction and cog.Parent then render() end
+                    end)
+                end)
+                if skyboxMenu==id then
+                    local menu=Instance.new("Frame",image)
+                    menu.Name="SkyboxMenu_"..id;menu.Size=UDim2.new(1,0,1,0)
+                    menu.Active=true;menu.BackgroundColor3=theme.paper;menu.BackgroundTransparency=0.04;menu.BorderSizePixel=0;menu.ZIndex=3
+                    Instance.new("UICorner",menu).CornerRadius=UDim.new(0,2)
+                    local function option(label,position,callback)
+                        local item=Instance.new("TextButton",menu)
+                        item.Text=label;item.Font=Enum.Font.SourceSansSemibold;item.TextSize=12
+                        item.TextColor3=theme.ink;item.BackgroundTransparency=0
+                        item.BackgroundColor3=theme.button;animateButton(item)
+                        item.Position=UDim2.new(0,0,position,0);item.Size=UDim2.new(1,0,0.20,0);item.ZIndex=4
+                        item.Activated:Connect(callback)
+                    end
+                    if skyboxDelete==id then
+                        option("Confirm delete",0.34,function() action(function()
+                            local current=savedSkies();table.remove(current,id);storeSkies(current);skyboxDelete=nil;skyboxMenu=nil;skyboxRename=nil
+                            return "Deleted "..name..". Your current sky stays on."
+                        end) end)
+                        option("Cancel",0.56,function() if not busy then skyboxDelete=nil;skyboxMenu=nil;render() end end)
+                    else
+                        option("Update",0.17,function() action(function()
+                            local current=savedSkies();local active=atmosphere()
+                            local asset=active.currentAsset();assert(asset,"Apply a skybox first to update this save.")
+                            current[id].asset=asset;current[id].image=active.previewImage();current[id].daylight=active.daylightEnabled()
+                            storeSkies(current);skyboxMenu=nil
+                            return "Updated "..name.." with your current sky."
+                        end) end)
+                        option("Rename",0.37,function()
+                            if busy then return end
+                            skyboxRename=id;skyboxName=name;skyboxMenu=nil;render()
+                        end)
+                        option("Delete",0.57,function() if not busy then skyboxDelete=id;render() end end)
+                        option("Cancel",0.77,function() if not busy then skyboxMenu=nil;render() end end)
+                    end
+                end
+            end
+            search:GetPropertyChangedSignal("Text"):Connect(function()skyboxSearch=search.Text;fitGrid()end)
+            grid:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitGrid);fitGrid()
         end
         caption("Only you see this change. Saved skyboxes belong to your account and load again using Load.",48)
     elseif activePage=="Animations" then
