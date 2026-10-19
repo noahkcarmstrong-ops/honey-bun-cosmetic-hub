@@ -208,6 +208,7 @@ local before=liveSavedGun()
 localPlayer.Character.Archivable=false
 local gunScene=editorBackend.getWeaponEditorScene(savedGunId,'Holster')
 assert(localPlayer.Character.Archivable==false,'Editor cloning restores Archivable')
+assert(gunScene.axisFrame and gunScene.axisFrame.X==localLowerTorso.CFrame.X,'Editor exposes the body axis frame used by placement sliders')
 assert(gunScene.weapon.CFrame.X==before.CFrame.X and gunScene.weapon.CFrame.Y==before.CFrame.Y,'Avatar preview uses real holster placement and clearance')
 assert(gunScene.weapon:FindFirstChildOfClass('SpecialMesh').TextureId==before:FindFirstChildOfClass('SpecialMesh').TextureId,'Editor preserves surface texture')
 local rawBefore=screen:GetAttribute('HoneyBunCosmeticGuns')

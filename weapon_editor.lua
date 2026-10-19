@@ -8,6 +8,8 @@ return function(playerGui, catalog, onStatus)
     local controls, statusLabel, viewport, worldModel, camera
     local persist,sceneMode, cameraTarget, cameraYaw, cameraDistance, cameraPitch
     local orbitDragging,previousMouseBehavior
+    local guides,axisLabels={},{}
+    local projectAxes
 
     local function connect(signal, fn)
         if not signal or not signal.Connect then return end
@@ -65,13 +67,47 @@ return function(playerGui, catalog, onStatus)
         connections = {}; dragging = nil
     end
     local function clearScene()
+        for _,guide in ipairs(guides) do guide:Destroy() end;guides={}
         for _, key in ipairs({"character", "weapon"}) do local object=scene[key]; if object and object.Destroy then pcall(function() object:Destroy() end) end end
         scene = {};sceneMode=nil
+    end
+    projectAxes=function()
+        if not camera or not viewport then return end
+        for _,guide in ipairs(guides) do
+            local label=axisLabels[guide.Name]
+            if label then
+                local point=camera.CFrame:PointToObjectSpace(guide:GetAttribute("AxisEnd"))
+                local size=viewport.AbsoluteSize
+                local focal=size.Y/(2*math.tan(math.rad(camera.FieldOfView)/2))
+                label.Visible=point.Z<-.1
+                if label.Visible then label.Position=UDim2.fromOffset(size.X/2+point.X*focal/-point.Z,size.Y/2-point.Y*focal/-point.Z) end
+            end
+        end
+    end
+    local function updateAxes()
+        for _,guide in ipairs(guides)do guide:Destroy()end;guides={}
+        if not scene.weapon then return end
+        local center=scene.weapon.CFrame.Position
+        local basis=scene.axisFrame or scene.weapon.CFrame
+        local frame=CFrame.new(center)*basis.Rotation
+        local colors={X=Color3.fromRGB(255,100,100),Y=Color3.fromRGB(100,235,135),Z=Color3.fromRGB(100,160,255)}
+        for _,axis in ipairs({"X","Y","Z"})do
+            local delta=axis=="X" and Vector3.new(1.5,0,0) or axis=="Y" and Vector3.new(0,1.5,0) or Vector3.new(0,0,1.5)
+            local endpoint=frame:PointToWorldSpace(delta)
+            local rod=make("Part",worldModel,{Name=axis,Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,Material=Enum.Material.Neon,Color=colors[axis],Size=Vector3.new(.045,.045,1.5),CFrame=CFrame.lookAt(center,endpoint)*CFrame.new(0,0,-.75)})
+            rod:SetAttribute("AxisEnd",endpoint);guides[#guides+1]=rod
+            if not axisLabels[axis] then
+                local tag=label(viewport,axis,UDim2.fromOffset(24,24),colors[axis],18);tag.Name="AxisLabel"..axis;tag.AnchorPoint=Vector2.new(.5,.5);tag.ZIndex=7
+                axisLabels[axis]=tag
+            end
+        end
+        projectAxes()
     end
     local function updateCamera()
         if not camera then return end
         local target = cameraTarget or Vector3.new(0,2,0)
         pcall(function() camera.CFrame=CFrame.lookAt(target+Vector3.new(math.sin(cameraYaw or 0)*math.cos(cameraPitch or 0)*(cameraDistance or 8),math.sin(cameraPitch or 0)*(cameraDistance or 8),math.cos(cameraYaw or 0)*math.cos(cameraPitch or 0)*(cameraDistance or 8)),target) end)
+        pcall(projectAxes)
     end
     persist=function(value, shouldPersist, targetMode)
         local ok, result = pcall(catalog.setWeaponAdjustment, entry.id, targetMode or mode, copy(value), shouldPersist)
@@ -83,7 +119,7 @@ return function(playerGui, catalog, onStatus)
         if not persist(working,false) then return end
         if sceneMode==mode and scene.update then
             local ok,weapon=pcall(scene.update)
-            if ok then scene.weapon=weapon;return end
+            if ok then scene.weapon=weapon;pcall(updateAxes);return end
         end
         clearScene()
         local ok,result=pcall(catalog.getEditorScene,entry.id,mode)
@@ -93,7 +129,7 @@ return function(playerGui, catalog, onStatus)
         if scene.weapon and not scene.weapon:IsDescendantOf(scene.character) then scene.weapon.Parent=worldModel end
         cameraTarget=scene.focus
         if not cameraTarget then pcall(function()cameraTarget=select(1,scene.character:GetBoundingBox()).Position end)end
-        updateCamera()
+        updateCamera();pcall(updateAxes)
     end
     local function queueRefresh()
         if refreshPending then return end
@@ -155,7 +191,7 @@ return function(playerGui, catalog, onStatus)
         local right=make("ScrollingFrame",panel,{Position=UDim2.new(.46,8,0,62),Size=UDim2.new(.54,-26,1,-116),CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=6})
         local layout=make("UIListLayout",right,{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder}); make("UIPadding",right,{PaddingLeft=UDim.new(0,6),PaddingRight=UDim.new(0,8)})
         local tabs=make("Frame",right,{Size=UDim2.new(1,0,0,34),BackgroundTransparency=1,LayoutOrder=0}); local holster=button(tabs,"Hip / Back",UDim2.new(.49,0,1,0)); local held=button(tabs,"Holding",UDim2.new(.49,0,1,0)); held.Position=UDim2.new(.51,0,0,0)
-        buildControls(right); statusLabel=label(viewport,"Right-click + drag to rotate. Drag sliders or type values.",UDim2.new(1,-20,0,42),Color3.fromRGB(215,225,240),12); statusLabel.Position=UDim2.fromOffset(10,8);statusLabel.TextWrapped=true;statusLabel.ZIndex=5
+        buildControls(right); statusLabel=label(viewport,"Right-click + drag to rotate. X: red · Y: green · Z: blue",UDim2.new(1,-20,0,42),Color3.fromRGB(215,225,240),12); statusLabel.Position=UDim2.fromOffset(10,8);statusLabel.TextWrapped=true;statusLabel.ZIndex=5
         local orbitLeft=button(viewport,"◀",UDim2.fromOffset(30,28)); orbitLeft.Position=UDim2.new(0,8,1,-36)
         local orbitRight=button(viewport,"▶",UDim2.fromOffset(30,28)); orbitRight.Position=UDim2.new(0,42,1,-36)
         local zoomOut=button(viewport,"−",UDim2.fromOffset(30,28)); zoomOut.Position=UDim2.new(0,76,1,-36)
@@ -195,7 +231,7 @@ return function(playerGui, catalog, onStatus)
     end
     function api.destroy()
         if entry and original and not accepted then for name,value in pairs(original) do persist(value,false,name) end end
-        openToken=openToken+1;refreshPending=false; stopConnections(); clearScene(); if gui then pcall(function() gui:Destroy() end) end; gui=nil; viewport=nil; worldModel=nil; statusLabel=nil; entry=nil
+        openToken=openToken+1;refreshPending=false; stopConnections(); clearScene(); if gui then pcall(function() gui:Destroy() end) end; gui=nil;axisLabels={}; viewport=nil; worldModel=nil; statusLabel=nil; entry=nil
     end
     return api
 end

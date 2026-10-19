@@ -924,7 +924,8 @@ return function(game, injectedRequire, gunLibrary)
             handle.Parent=character
             local weapon=applySavedGun(handle,entry,held,tool,character)
             local focus=read(torso.CFrame,"Position") or Vector3.new(torso.CFrame.X,torso.CFrame.Y,torso.CFrame.Z)
-            return {character=character,weapon=weapon,focus=focus,update=function()
+            local axisAnchor=resolveSavedPlacement(handle,entry,held,tool,character)
+            return {character=character,weapon=weapon,focus=focus,axisFrame=axisAnchor.CFrame,update=function()
                 if weapon then weapon:Destroy() end
                 weapon=applySavedGun(handle,entry,held,tool,character)
                 return weapon
