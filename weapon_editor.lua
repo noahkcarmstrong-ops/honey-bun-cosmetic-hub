@@ -7,7 +7,7 @@ return function(playerGui, catalog, onStatus)
     local accepted=false
     local controls, statusLabel, viewport, worldModel, camera
     local persist,sceneMode, cameraTarget, cameraYaw, cameraDistance, cameraPitch
-    local orbitDragging,previousMouseBehavior
+    local orbitDragging,previousMouseBehavior,panOffset
     local frozenCamera
     local previewHover=false
     local ContextActionService
@@ -134,7 +134,7 @@ return function(playerGui, catalog, onStatus)
     end
     local function updateCamera()
         if not camera then return end
-        local target = cameraTarget or Vector3.new(0,2,0)
+        local target = (cameraTarget or Vector3.new(0,2,0))+(panOffset or Vector3.new())
         pcall(function() camera.CFrame=CFrame.lookAt(target+Vector3.new(math.sin(cameraYaw or 0)*math.cos(cameraPitch or 0)*(cameraDistance or 8),math.sin(cameraPitch or 0)*(cameraDistance or 8),math.cos(cameraYaw or 0)*math.cos(cameraPitch or 0)*(cameraDistance or 8)),target) end)
         pcall(projectAxes)
     end
@@ -220,12 +220,13 @@ return function(playerGui, catalog, onStatus)
         local right=make("ScrollingFrame",panel,{Position=UDim2.new(.46,8,0,62),Size=UDim2.new(.54,-26,1,-116),CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=6})
         local layout=make("UIListLayout",right,{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder}); make("UIPadding",right,{PaddingLeft=UDim.new(0,6),PaddingRight=UDim.new(0,8)})
         local tabs=make("Frame",right,{Size=UDim2.new(1,0,0,34),BackgroundTransparency=1,LayoutOrder=0}); local holster=button(tabs,"Hip / Back",UDim2.new(.49,0,1,0)); local held=button(tabs,"Holding",UDim2.new(.49,0,1,0)); held.Position=UDim2.new(.51,0,0,0)
-        buildControls(right); statusLabel=label(viewport,"Left-drag to rotate · Scroll to zoom · X: red · Y: green · Z: blue",UDim2.new(1,-20,0,42),Color3.fromRGB(215,225,240),12); statusLabel.Position=UDim2.fromOffset(10,8);statusLabel.TextWrapped=true;statusLabel.ZIndex=5
+        buildControls(right); statusLabel=label(viewport,"Left-drag: rotate · Right-drag: move view · Scroll: zoom · X: red · Y: green · Z: blue",UDim2.new(1,-20,0,42),Color3.fromRGB(215,225,240),12); statusLabel.Position=UDim2.fromOffset(10,8);statusLabel.TextWrapped=true;statusLabel.ZIndex=5
         local orbitLeft=button(viewport,"◀",UDim2.fromOffset(30,28)); orbitLeft.Position=UDim2.new(0,8,1,-36)
         local orbitRight=button(viewport,"▶",UDim2.fromOffset(30,28)); orbitRight.Position=UDim2.new(0,42,1,-36)
         local zoomOut=button(viewport,"−",UDim2.fromOffset(30,28)); zoomOut.Position=UDim2.new(0,76,1,-36)
         local zoomIn=button(viewport,"+",UDim2.fromOffset(30,28)); zoomIn.Position=UDim2.new(0,110,1,-36)
         cameraYaw,cameraDistance,cameraPitch=math.pi,8,0
+        panOffset=Vector3.new()
         local function orbit(delta) cameraYaw=cameraYaw+delta; updateCamera() end
         connect(orbitLeft.Activated,function() orbit(-math.rad(15)) end); connect(orbitRight.Activated,function() orbit(math.rad(15)) end)
         connect(zoomOut.Activated,function() cameraDistance=math.min(14,cameraDistance+1); orbit(0) end); connect(zoomIn.Activated,function() cameraDistance=math.max(4,cameraDistance-1); orbit(0) end)
@@ -239,9 +240,9 @@ return function(playerGui, catalog, onStatus)
             end,false,3000,Enum.UserInputType.MouseWheel)
         end
         connect(viewport.InputBegan,function(input)
-            if input.UserInputType==Enum.UserInputType.MouseButton1 and not dragging and not orbitDragging then
+            if (input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.MouseButton2) and not dragging and not orbitDragging then
                 previousMouseBehavior=UserInputService.MouseBehavior
-                orbitDragging=true
+                orbitDragging=input.UserInputType
                 freezeGameCamera()
                 UserInputService.MouseBehavior=Enum.MouseBehavior.LockCurrentPosition
                 pcall(projectAxes)
@@ -256,14 +257,19 @@ return function(playerGui, catalog, onStatus)
                 updateCamera()
             end
             if orbitDragging and input.UserInputType==Enum.UserInputType.MouseMovement then
-                cameraYaw=cameraYaw-input.Delta.X*0.008
-                cameraPitch=math.clamp(cameraPitch+input.Delta.Y*0.008,-math.rad(75),math.rad(75))
+                if orbitDragging==Enum.UserInputType.MouseButton2 then
+                    local unitsPerPixel=2*cameraDistance*math.tan(math.rad(camera.FieldOfView)/2)/math.max(viewport.AbsoluteSize.Y,1)
+                    panOffset=panOffset-camera.CFrame.RightVector*(input.Delta.X*unitsPerPixel)+camera.CFrame.UpVector*(input.Delta.Y*unitsPerPixel)
+                else
+                    cameraYaw=cameraYaw-input.Delta.X*0.008
+                    cameraPitch=math.clamp(cameraPitch+input.Delta.Y*0.008,-math.rad(75),math.rad(75))
+                end
                 updateCamera()
             end
             if dragging and (input==dragging.input or input.UserInputType==Enum.UserInputType.MouseMovement and dragging.input.UserInputType==Enum.UserInputType.MouseButton1) then dragging.update(input,false) end
         end)
         connect(UserInputService.InputEnded,function(input)
-            if input.UserInputType==Enum.UserInputType.MouseButton1 then stopOrbit() end
+            if input.UserInputType==orbitDragging then stopOrbit() end
             if dragging and (input==dragging.input or input.UserInputType==Enum.UserInputType.MouseButton1 and dragging.input.UserInputType==Enum.UserInputType.MouseButton1) then dragging=nil end
         end)
         local function paintModeButtons() holster.BackgroundColor3=mode=="Holster" and Color3.fromRGB(70,125,205) or Color3.fromRGB(52,65,82); held.BackgroundColor3=mode=="Held" and Color3.fromRGB(70,125,205) or Color3.fromRGB(52,65,82) end

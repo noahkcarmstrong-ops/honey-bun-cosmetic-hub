@@ -86,6 +86,7 @@ Save up to 12 looks. Each snapshot keeps your hub accessories, skin colors, body
 
 - **Restore original appearance** removes added accessories, brings back hidden original accessories, restores original clothes, the captured body, colors, emote wheel and movement animations, and clears saved cosmetic selections.
 - **Right Shift** shows/hides the menu. Hiding keeps your changes.
+- In the weapon position editor's avatar preview, **left-drag** rotates, **right-drag** moves the view up/down/sideways, and **scroll** zooms. Moving the view does not change weapon placement.
 - **Refresh** closes the old editor and loads the latest version from this repository, then reapplies your saved cosmetics.
 - Respawning or resetting automatically reapplies your body package, hidden original accessories, added accessories, and per-region colors after your new character finishes loading.
 - **Reapply saved cosmetics** retries saved items if an asset failed to load. Failed saved items are kept for retry.

@@ -7,7 +7,7 @@ local function signal()
 end
 local objects,methods={},{}
 Instance={new=function(class)
-    local o=setmetatable({ClassName=class,Name=class,InputBegan=signal(),InputChanged=signal(),MouseEnter=signal(),MouseLeave=signal(),Activated=signal(),FocusLost=signal(),AbsoluteSize={X=200,Y=40},AbsolutePosition={X=0,Y=0}}, {__index=methods})
+    local o=setmetatable({ClassName=class,Name=class,InputBegan=signal(),InputChanged=signal(),MouseEnter=signal(),MouseLeave=signal(),Activated=signal(),FocusLost=signal(),AbsoluteSize={X=200,Y=40},AbsolutePosition={X=0,Y=0},FieldOfView=class=='Camera' and 70 or nil}, {__index=methods})
     objects[#objects+1]=o;return o
 end}
 function methods:Destroy()self.destroyed=true;self.Parent=nil end
@@ -15,13 +15,33 @@ function methods:IsDescendantOf(parent)local p=self.Parent;while p do if p==pare
 local function named(name)for i=#objects,1,-1 do local o=objects[i];if o.Name==name and not o.destroyed then return o end end end
 local function button(text)for i=#objects,1,-1 do local o=objects[i];if o.ClassName=='TextButton' and o.Text==text and not o.destroyed then return o end end;error('Missing button '..text)end
 local function field(row)for i=#objects,1,-1 do local o=objects[i];if o.Parent==named(row) and o.Name=='Value' then return o end end;error('Missing field '..row)end
-local vectorMeta={__add=function(a,b)return setmetatable({X=a.X+b.X,Y=a.Y+b.Y,Z=a.Z+b.Z},vectorMeta)end}
-Vector3={new=function(x,y,z)return setmetatable({X=x or 0,Y=y or 0,Z=z or 0},vectorMeta)end}
+local vectorMeta
+vectorMeta={
+    __add=function(a,b)return setmetatable({X=a.X+b.X,Y=a.Y+b.Y,Z=a.Z+b.Z},vectorMeta)end,
+    __sub=function(a,b)return setmetatable({X=a.X-b.X,Y=a.Y-b.Y,Z=a.Z-b.Z},vectorMeta)end,
+    __mul=function(a,b)if type(a)=='number'then a,b=b,a end;return setmetatable({X=a.X*b,Y=a.Y*b,Z=a.Z*b},vectorMeta)end,
+    __div=function(a,b)return setmetatable({X=a.X/b,Y=a.Y/b,Z=a.Z/b},vectorMeta)end,
+}
+local function vector(x,y,z)return setmetatable({X=x or 0,Y=y or 0,Z=z or 0},vectorMeta)end
+vectorMeta.__index={
+    Dot=function(a,b)return a.X*b.X+a.Y*b.Y+a.Z*b.Z end,
+    Cross=function(a,b)return vector(a.Y*b.Z-a.Z*b.Y,a.Z*b.X-a.X*b.Z,a.X*b.Y-a.Y*b.X)end,
+    Magnitude=function(a)return math.sqrt(a.X*a.X+a.Y*a.Y+a.Z*a.Z)end,
+    Unit=function(a)local n=math.sqrt(a.X*a.X+a.Y*a.Y+a.Z*a.Z);if n==0 then return vector()end;return a/n end,
+}
+Vector3={new=vector}
 Vector2={new=function(x,y)return {X=x,Y=y}end}
 UDim={new=function(s,o)return {Scale=s,Offset=o}end}
 UDim2={new=function(x,xo,y,yo)return {X={Scale=x,Offset=xo},Y={Scale=y,Offset=yo}}end,fromScale=function(x,y)return {X={Scale=x,Offset=0},Y={Scale=y,Offset=0}}end,fromOffset=function(x,y)return {X={Scale=0,Offset=x},Y={Scale=0,Offset=y}}end}
 Color3={new=function(...)return {...}end,fromRGB=function(...)return {...}end}
-CFrame={lookAt=function(position,target)return {Position=position,Target=target}end}
+CFrame={lookAt=function(position,target)
+    local function unit(v)local n=math.sqrt(v.X*v.X+v.Y*v.Y+v.Z*v.Z);return vector(v.X/n,v.Y/n,v.Z/n)end
+    local function cross(a,b)return vector(a.Y*b.Z-a.Z*b.Y,a.Z*b.X-a.X*b.Z,a.X*b.Y-a.Y*b.X)end
+    local forward=unit(vector(target.X-position.X,target.Y-position.Y,target.Z-position.Z))
+    local right=unit(cross(forward,vector(0,1,0)))
+    local up=unit(cross(right,forward))
+    return {Position=position,Target=target,RightVector=right,UpVector=up}
+end}
 Enum={Font={Gotham='Gotham',GothamMedium='GothamMedium'},TextXAlignment={Left='Left',Right='Right'},AutomaticSize={Y='Y'},SortOrder={LayoutOrder='LayoutOrder'},UserInputType={MouseButton1='MouseButton1',MouseButton2='MouseButton2',MouseMovement='MouseMovement',MouseWheel='MouseWheel',Touch='Touch'},UserInputState={Change='Change'},ContextActionResult={Sink='Sink',Pass='Pass'}}
 math.clamp=function(v,a,b)return math.max(a,math.min(b,v))end
 local pending={};task={delay=function(_,fn)pending[#pending+1]=fn end}
@@ -109,9 +129,45 @@ assert(actualCamera.CameraType=='Custom' and actualCamera.CFrame==originalFrame 
 view.InputBegan:Fire({UserInputType='MouseButton1'});input.WindowFocusReleased:Fire()
 assert(input.MouseBehavior=='Default','Losing window focus releases cursor')
 
+local function vectorDistance(a,b)
+    local dx,dy,dz=a.X-b.X,a.Y-b.Y,a.Z-b.Z
+    return math.sqrt(dx*dx+dy*dy+dz*dz)
+end
+local function vectorLength(a)return math.sqrt(a.X*a.X+a.Y*a.Y+a.Z*a.Z)end
+local function vectorDot(a,b)return a.X*b.X+a.Y*b.Y+a.Z*b.Z end
+local clonesBeforePan=clones
+local panTarget=camera.CFrame.Target
+local panOffset=camera.CFrame.Position-panTarget
+local panRight=camera.CFrame.RightVector
+local panUp=camera.CFrame.UpVector
+view.InputBegan:Fire({UserInputType='MouseButton2'})
+input.InputChanged:Fire({UserInputType='MouseMovement',Delta={X=20,Y=10}})
+local panShift=camera.CFrame.Target-panTarget
+assert(vectorLength(panShift)>0,'Right drag pans the preview target')
+assert(vectorDot(panShift,panRight)<0 and vectorDot(panShift,panUp)>0,'Pan follows mouse direction in the preview screen plane')
+assert(math.abs(vectorLength(camera.CFrame.Position-camera.CFrame.Target)-vectorLength(panOffset))<.00001,'Panning preserves camera distance')
+assert(vectorDistance(camera.CFrame.RightVector,panRight)<.00001 and vectorDistance(camera.CFrame.UpVector,panUp)<.00001,'Panning preserves camera yaw and pitch')
+local afterPan=camera.CFrame.Target
+input.InputEnded:Fire({UserInputType='MouseButton1'})
+input.InputChanged:Fire({UserInputType='MouseMovement',Delta={X=10,Y=5}})
+assert(vectorDistance(camera.CFrame.Target,afterPan)>0,'Left release does not end an active right-button pan')
+local beforeModePan=camera.CFrame.Target
+input.InputEnded:Fire({UserInputType='MouseButton2'})
+input.InputChanged:Fire({UserInputType='MouseMovement',Delta={X=10,Y=5}})
+assert(input.MouseBehavior=='Default' and vectorDistance(camera.CFrame.Target,beforeModePan)<.00001,'Right release stops panning and restores cursor')
+assert(writes==0 and values.Holster.Position.X==0 and values.Holster.Position.Y==0,'Panning does not edit or save weapon placement')
+button('Holding').Activated:Fire()
+assert(vectorDistance(camera.CFrame.Target,beforeModePan)<.00001,'Mode changes preserve preview panning')
+input.InputEnded:Fire({UserInputType='MouseButton2'})
+assert(input.MouseBehavior=='Default','Releasing right click restores cursor')
+view.InputBegan:Fire({UserInputType='MouseButton2'})
+input.WindowFocusReleased:Fire()
+assert(input.MouseBehavior=='Default' and actualCamera.CameraType=='Custom','Focus loss ends right-button pan and restores camera')
+button('Hip / Back').Activated:Fire()
+
 local x=field('PositionX');x.Text='1.25';x.FocusLost:Fire();flush()
 assert(values.Holster.Position.X==1.25 and writes==0,'Numeric placement updates live without disk writes')
-assert(clones==1,'Slider updates reuse the avatar clone')
+assert(clones==clonesBeforePan+2,'Slider updates reuse the avatar clone')
 local ySlider;for _,o in ipairs(objects)do if o.Parent==named('PositionY') and o.Name=='Slider'then ySlider=o end end
 local down={UserInputType='MouseButton1',Position={X=100}}
 ySlider.InputBegan:Fire(down)
@@ -138,8 +194,8 @@ api.open(entry,'Holster');button('Reset').Activated:Fire()
 assert(field('PositionX').Text=='0.00','Reset restores current mode controls')
 local closingView;for _,o in ipairs(objects)do if o.ClassName=='ViewportFrame' and not o.destroyed then closingView=o end end
 closingView.MouseEnter:Fire()
-closingView.InputBegan:Fire({UserInputType='MouseButton1'})
+closingView.InputBegan:Fire({UserInputType='MouseButton2'})
 api.destroy();flush()
-assert(input.MouseBehavior=='Default' and actualCamera.CameraType=='Custom' and not boundAction(),'Closing editor restores cursor, actual camera and wheel binding during orbit')
+assert(input.MouseBehavior=='Default' and actualCamera.CameraType=='Custom' and not boundAction(),'Closing editor restores cursor, actual camera and wheel binding during pan')
 for _,s in ipairs({input.InputChanged,input.InputEnded})do for _,c in ipairs(s.listeners)do assert(not c.active,'Global input handlers disconnect')end end
 print('Avatar editor opening, camera, nine sliders, live reuse, mode isolation, Save, Cancel, Reset and cleanup passed.')
