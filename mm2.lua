@@ -432,25 +432,35 @@ return function(game, injectedRequire, gunLibrary)
         local character=read(p,"Character")
         local mount=def.Mounts and def.Mounts[held and "Held" or "Holster"]
         if kind=="Knife" and not held then
-            -- Roblox torso-local +Z is behind the avatar; -X is the knife hip.
-            -- Accessory attachments can be moved by body packages, so measure
-            -- the actual torso and the rotated saved weapon bounds instead.
+            -- A donor's display rotation can point the blade out of our torso.
+            -- Put the thin axis against the body and the long axis upright.
             local torso=child(character,"UpperTorso") or child(character,"Torso") or child(character,"LowerTorso")
             if torso then
-                local captured=mount and mount.Offset
-                local relative=torso.CFrame:ToObjectSpace(handle.CFrame)
-                local orientation=captured or relative
-                local components={orientation:GetComponents()}
-                local rotation=CFrame.new(0,0,0,table.unpack(components,4,12))
                 local bodySize=read(torso,"Size") or Vector3.new(2,2,1)
                 local size=def.Size or Vector3.new(0.2,2,0.2)
-                local half
-                -- GetComponents stores rotation by rows.
-                if knifeSide then half=(math.abs(components[4])*size.X+math.abs(components[5])*size.Y+math.abs(components[6])*size.Z)/2
-                else half=(math.abs(components[10])*size.X+math.abs(components[11])*size.Y+math.abs(components[12])*size.Z)/2 end
+                local dimensions={size.X,size.Y,size.Z}
+                local thin,long=1,1
+                for i=2,3 do
+                    if dimensions[i]<dimensions[thin] then thin=i end
+                    if dimensions[i]>dimensions[long] then long=i end
+                end
+                if long==thin then long=thin==2 and 3 or 2 end
+                local remaining=6-thin-long
+                local columns={}
+                columns[thin]=knifeSide and {-1,0,0} or {0,0,1}
+                local angle=knifeSide and 0 or math.rad(30)
+                columns[long]={math.sin(angle),math.cos(angle),0}
+                local a,b=columns[remaining%3+1],columns[(remaining+1)%3+1]
+                columns[remaining]={a[2]*b[3]-a[3]*b[2],a[3]*b[1]-a[1]*b[3],a[1]*b[2]-a[2]*b[1]}
+                local rotation=CFrame.new(0,0,0,
+                    columns[1][1],columns[2][1],columns[3][1],
+                    columns[1][2],columns[2][2],columns[3][2],
+                    columns[1][3],columns[2][3],columns[3][3])
+                local half=dimensions[thin]/2
                 local x=knifeSide and -(bodySize.X/2+half+0.03) or 0
+                local y=knifeSide and -bodySize.Y/2 or 0
                 local z=knifeSide and 0 or bodySize.Z/2+half+0.03
-                local offset=CFrame.new(x,read(relative,"Y") or 0,z)*rotation
+                local offset=CFrame.new(x,y,z)*rotation
                 -- SpecialMesh.Offset translates its visible center away from its Part.
                 local meshOffset=def.Offset
                 if meshOffset then offset=offset*CFrame.new(-meshOffset.X,-meshOffset.Y,-meshOffset.Z) end

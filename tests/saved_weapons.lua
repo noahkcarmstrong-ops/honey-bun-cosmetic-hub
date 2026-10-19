@@ -3,13 +3,22 @@ local function typed(kind,values)values._kind=kind;return values end
 typeof=function(value)return type(value)=="table"and value._kind or type(value)end
 Vector3={new=function(x,y,z)return typed("Vector3",{X=x,Y=y,Z=z})end}
 Color3={new=function(r,g,b)return typed("Color3",{R=r,G=g,B=b})end}
-local function frame(x,y,z)
-    local f=typed("CFrame",{X=x or 0,Y=y or 0,Z=z or 0})
-    function f:GetComponents()return self.X,self.Y,self.Z,1,0,0,0,1,0,0,0,1 end
-    function f:ToObjectSpace(other)return frame(other.X-self.X,other.Y-self.Y,other.Z-self.Z)end
-    return setmetatable(f,{__mul=function(a,b)return frame(a.X+b.X,a.Y+b.Y,a.Z+b.Z)end})
+local function frame(x,y,z,...)
+    local r={...};if #r==0 then r={1,0,0,0,1,0,0,0,1} end
+    local f=typed("CFrame",{X=x or 0,Y=y or 0,Z=z or 0,r=r})
+    function f:GetComponents()return self.X,self.Y,self.Z,table.unpack(self.r) end
+    function f:ToObjectSpace(other)
+        local r=self.r
+        local inverse=frame(0,0,0,r[1],r[4],r[7],r[2],r[5],r[8],r[3],r[6],r[9])
+        return inverse*frame(other.X-self.X,other.Y-self.Y,other.Z-self.Z,table.unpack(other.r))
+    end
+    return setmetatable(f,{__mul=function(a,b)
+        local r,q=a.r,b.r;local product={}
+        for i=0,2 do for j=1,3 do product[i*3+j]=r[i*3+1]*q[j]+r[i*3+2]*q[j+3]+r[i*3+3]*q[j+6] end end
+        return frame(a.X+r[1]*b.X+r[2]*b.Y+r[3]*b.Z,a.Y+r[4]*b.X+r[5]*b.Y+r[6]*b.Z,a.Z+r[7]*b.X+r[8]*b.Y+r[9]*b.Z,table.unpack(product))
+    end})
 end
-CFrame={new=function(...)local v={...};return frame(v[1],v[2],v[3])end}
+CFrame={new=frame}
 Enum={Material=setmetatable({},{__index=function(_,name)return typed("EnumItem",{label="Enum.Material."..name})end})}
 Enum.MeshType={FileMesh=typed("EnumItem",{label="Enum.MeshType.FileMesh"})}
 local function copy(value)if type(value)~="table"then return value end;local out={};for k,v in pairs(value)do out[k]=copy(v)end;return out end
@@ -42,7 +51,7 @@ local localRef=node("ObjectValue","DisplayRefKnife",localPlayer.Character);local
 local owner=node("Player","KnifeOwner");owner.Character=node("Model","OwnerCharacter")
 local torso=node("Part","UpperTorso",owner.Character);torso.CFrame=frame(10,0,0)
 local source=node("MeshPart","Knife",owner.Character);source.CFrame=frame(13,2,0);source.MeshId="rbxassetid://knife";source.TextureID="rbxassetid://texture"
-source.Size=Vector3.new(2,4,6);source.MeshSize=Vector3.new(1,2,3);source.Color=Color3.new(0.2,0.3,0.4);source.Material=Enum.Material.Metal
+source.Size=Vector3.new(0.2,4,2);source.MeshSize=Vector3.new(1,2,3);source.Color=Color3.new(0.2,0.3,0.4);source.Material=Enum.Material.Metal
 local surface=node('SurfaceAppearance','SurfaceAppearance',source);surface.ColorMap='rbxassetid://original-color-map'
 local ref=node("ObjectValue","DisplayRefKnife",owner.Character);ref.Value=source
 local players={LocalPlayer=localPlayer,GetPlayers=function()return{localPlayer,owner}end}
@@ -57,7 +66,10 @@ local knifeId=knives[1].id
 assert(library.getSelected("Knife")==knifeId and library.getSelected()==nil,"knife selection is independent from the legacy gun selection")
 local overlay
 for _,item in ipairs(workspace:GetChildren())do if item.Name=="HoneyBunSavedKnife"then overlay=item end end
-assert(overlay and overlay.CFrame.X==100 and overlay.CFrame.Y==0 and math.abs(overlay.CFrame.Z-4.03)<0.0001,"knife preview defaults to the local torso back fallback instead of the owner's holster position")
+assert(overlay and overlay.CFrame.X==100 and overlay.CFrame.Y==0 and math.abs(overlay.CFrame.Z-1.13)<0.0001,"flat knife rests against the back using its thickness, not its blade width")
+local backRotation=overlay.CFrame.r
+assert(math.abs(backRotation[7])>0.99 and math.abs(backRotation[8])<0.0001 and math.abs(backRotation[9])<0.0001,"only the thin mesh axis projects out of the back")
+assert(backRotation[5]>0.85,"long blade axis lies upright along the back instead of pointing outward")
 assert(overlay:FindFirstChildOfClass('SpecialMesh').TextureId=='rbxassetid://original-color-map','Copied weapon displays the source surface color map instead of an empty or stale texture')
 local weld=overlay:FindFirstChildOfClass("WeldConstraint")
 assert(weld and weld.Part0==localTorso and weld.Part1==overlay,"knife overlay welds to the matching local body part")
@@ -68,7 +80,8 @@ local sideResult=mm2.setKnifeSide(true)
 assert(sideResult==true and mm2.getKnifeSide()==true,"knife side layout can be enabled")
 local sideOverlay
 for _,item in ipairs(workspace:GetChildren())do if item.Name=="HoneyBunSavedKnife"then sideOverlay=item end end
-assert(sideOverlay and math.abs(sideOverlay.CFrame.X-96.97)<0.0001 and sideOverlay.CFrame.Z==0,"side layout moves the existing saved knife promptly")
+assert(sideOverlay and math.abs(sideOverlay.CFrame.X-97.87)<0.0001 and sideOverlay.CFrame.Y<0 and sideOverlay.CFrame.Z==0,"side layout moves the existing saved knife promptly")
+assert(math.abs(sideOverlay.CFrame.r[1])>0.99,"side knife thickness faces outward rather than its blade width")
 assert(overlay.destroyed,"changing layout removes the previous knife overlay")
 mm2.setKnifeSide(false)
 assert(mm2.getKnifeSide()==false,"knife layout can return to the default back position")
