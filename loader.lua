@@ -43,6 +43,7 @@ local function animateButton(item,base,hover)
 end
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
+local crosshairAPI
 local mm2API,mm2NativeAPI,mm2SavedNativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
 local atmosphereAPI
 local mm2EmoteBarAPI
@@ -270,6 +271,8 @@ local function uiSetting(key,default)
 end
 local copyPlayerInput=uiSetting("copyPlayer","")
 local knifeSide=uiSetting("mm2KnifeSide",false)
+local crosshairImage=uiSetting("mm2Crosshair","")
+local crosshairInput=crosshairImage
 local alive, busy, activePage = true, false, uiSetting("page","Accessories")
 local actionRunning=false
 if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" and activePage~="Characters" and activePage~="Atmosphere" and not (isMM2 and activePage=="MM2") then activePage="Accessories" end
@@ -331,6 +334,7 @@ local function saveUI()
     values.characterName=characterName
     values.copyPlayer=copyPlayerInput
     values.mm2KnifeSide=knifeSide
+    values.mm2Crosshair=crosshairImage
     for _,region in ipairs(bodyPartRegions) do values["part_"..region]=bodyPartInputs[region] end
     for key,value in pairs(values) do playerGui:SetAttribute("HoneyBunCosmeticUI_"..key,value) end
 end
@@ -554,6 +558,14 @@ local function hatSounds()
     accessorySoundsAPI=chunk()(Players.LocalPlayer,playerGui)
     return accessorySoundsAPI
 end
+local function customCrosshair()
+    assert(isMM2,"Custom sheriff crosshairs are available in MM2.")
+    if crosshairAPI then return crosshairAPI end
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/crosshair.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    crosshairAPI=chunk()(game)
+    return crosshairAPI
+end
 local function mm2()
     assert(isMM2,"This menu is only available in MM2.")
     if mm2API then return mm2API end
@@ -678,6 +690,32 @@ render=function()
     if activePage=="MM2" and isMM2 then
         caption(mm2MenuOpen and "MM2 MENU" or "MURDER MYSTERY 2",24)
         if mm2MenuOpen then
+            caption("SHERIFF CROSSHAIR",24)
+            caption("Paste a Roblox image ID or image link. Shows while you hold your gun. Transparent images work best.",54)
+            local crosshairBox=input("Roblox crosshair image ID",crosshairInput,function(value)crosshairInput=value end)
+            if crosshairImage~="" then
+                local preview=Instance.new("ImageLabel",content)
+                preview.Name="CrosshairPreview";preview.BackgroundColor3=theme.button;preview.BorderSizePixel=0
+                preview.Size=UDim2.new(1,0,0,72);order=order+1;preview.LayoutOrder=order
+                preview.Image=crosshairImage;preview.ScaleType=Enum.ScaleType.Fit
+            end
+            button("Apply crosshair",function() action(function()
+                crosshairInput=crosshairBox.Text:gsub("^%s+",""):gsub("%s+$","")
+                local id=crosshairInput:match("^(%d+)$") or crosshairInput:match("^rbxassetid://(%d+)$")
+                if not id and crosshairInput:match("^https?://[^/]*roblox.com/") then
+                    id=crosshairInput:match("[?&]id=(%d+)") or crosshairInput:match("/asset/(%d+)") or crosshairInput:match("/catalog/(%d+)") or crosshairInput:match("/library/(%d+)")
+                end
+                assert(id and tonumber(id) and tonumber(id)>0,"Enter a Roblox image ID or image link.")
+                local image="rbxassetid://"..id
+                customCrosshair().set(image)
+                crosshairImage=image;saveUI()
+                return "Custom crosshair saved. Hold your gun to see it. If it is blank, use the image ID rather than a model or decal ID."
+            end,true) end)
+            button("Restore default crosshair",function() action(function()
+                if crosshairAPI then crosshairAPI.set("") end
+                crosshairImage="";saveUI()
+                return "Default gun crosshair restored."
+            end,true) end)
             caption("KNIFE POSITION",24)
             caption("Off: knife on your back. On: knife at your side.",36)
             button(knifeSide and "Boombox layout: ON" or "Boombox layout: OFF",function() action(function()
@@ -1416,6 +1454,7 @@ gui.Destroying:Connect(function()
     if mm2SavedNativeAPI then mm2SavedNativeAPI.destroy() end
     if mm2NativeAPI then mm2NativeAPI.destroy() end
     if mm2API then mm2API.destroy() end
+    if crosshairAPI then crosshairAPI.destroy() end
     if accessorySoundsAPI then accessorySoundsAPI.destroy() end
     if persistence then persistence.destroy() end
     if avatarAPI then avatarAPI.destroy() end
@@ -1430,6 +1469,7 @@ panel.Position=UDim2.new(1,-12,0.5,0)
 showMenu(true)
 render()
 action(function()
+    if isMM2 and crosshairImage~="" then pcall(function()customCrosshair().set(crosshairImage)end) end
     local atmosphereLoaded,atmosphereError=pcall(reapplyAtmosphere)
     local editor=api()
     local soundsLoaded=pcall(hatSounds)

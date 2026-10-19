@@ -133,6 +133,7 @@ function game:HttpGet(url)
     if url:find('/gun_library.lua',1,true)then return'gun-library-module'end
     if url:find('/effect_library.lua',1,true)then return'effect-library-module'end
     if url:find('/mm2_effects.lua',1,true)then return'mm2-effects-module'end
+    if url:find('/crosshair.lua',1,true)then return'crosshair-module'end
     if url:find('/mm2.lua',1,true)then return'mm2-module'end
     if url:find('/avatar.lua',1,true)then return'editor-module'end
     if url:find('/motion.lua',1,true)then return'motion-module'end
@@ -151,6 +152,7 @@ loadstring=function(source)
     if source=='gun-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Weapon library uses persistent PlayerGui');return{}end end end
     if source=='effect-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Effect library uses persistent PlayerGui');return{list=function()return{{id='Effect1',name='Effect from PlayerOne'}}end,capturePlayer=function(name)calls.capturePlayer=name;return'Captured player',{'Effect1'}end,captureServer=function(name)calls.capturePriority=name;return'Captured server'end,report=function()return'Library fixture'end,destroy=function()calls.libraryDestroyed=true end}end end end
     if source=='mm2-effects-module'then return function()return function(_game,_status)calls.effectLoads=(calls.effectLoads or 0)+1;return{equip=function(id)calls.savedEffect=id;return'Equipped effect'end,getEquipped=function()return{}end,reloadLibrary=function()calls.libraryReloaded=true end,collectOriginals=function()calls.effectsCollecting=true end,restore=function()calls.effectsRestored=true end,destroy=function()calls.effectsDestroyed=true end,report=function()return'Effects fixture report'end}end end end
+    if source=='crosshair-module'then return function()return function()return{set=function(image)calls.crosshair=image end,destroy=function()calls.crosshairDestroyed=true end}end end end
     if source=='mm2-module'then return function()return function()calls.weaponLoads=(calls.weaponLoads or 0)+1;return{setKnifeSide=function(value)calls.knifeSide=value;return value end,savedInventory=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,savedWeapons=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,equip=function(id,kind)calls.savedWeapon=id;calls.savedKind=kind;return'Equipped'end,collectPlayerWeapon=function(name,kind)calls.captureOwner=name;calls.captureKind=kind;if calls.failGun and kind=='Gun' then error('Gun not loaded')end;return'Copied '..kind end,report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
     if source=='atmosphere-module'then return function()return function()local environment,activeAsset;return{environment=function()if not environment then return end;return{time=environment.time,fog=environment.fog,color=environment.color}end,applyEnvironment=function(settings)environment=settings;calls.environment=settings;return true end,restoreEnvironment=function()environment=nil;calls.environment=nil;return true end,daylightEnabled=function()return calls.daylight~=false end,setDaylight=function(v)calls.daylight=v;return'Time updated'end,apply=function(id)activeAsset=id;calls.skybox=id;return true end,currentAsset=function()return activeAsset end,previewImage=function()return'rbxassetid://123456'end,restore=function()activeAsset=nil;calls.skyRestored=true;return'Sky restored'end,destroy=function()calls.skyDestroyed=true end}end end end
     if source=='editor-module'then return function()assert(not calls.failAvatarLoad,'Fixture avatar not ready');return createEditor end end
@@ -330,6 +332,15 @@ game.GameId=66654135
 dofile('loader.lua')
 click('MM2');click('Open MM2 menu')
 assert(find(gui(),'TextLabel','MM2 MENU'),'MM2 entry opens its own menu')
+field('Roblox crosshair image ID').Text='not an id';click('Apply crosshair')
+assert(not calls.crosshair,'Invalid crosshair input is rejected')
+field('Roblox crosshair image ID').Text='https://www.roblox.com/library/12345/Crosshair';click('Apply crosshair')
+assert(calls.crosshair=='rbxassetid://12345' and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')==calls.crosshair,'Crosshair link applies and saves')
+assert(named(gui(),'CrosshairPreview').Image==calls.crosshair,'Applied crosshair shows a preview')
+click('Refresh');assert(calls.crosshair=='rbxassetid://12345' and calls.crosshairDestroyed,'Refresh reapplies the saved crosshair and cleans up the old one')
+click('MM2');click('Open MM2 menu');click('Restore default crosshair')
+assert(calls.crosshair=='' and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')=='','Restore default clears saved crosshair')
+
 setclipboard=function(value)calls.clipboard=value end
 click('Copy MM2 report');setclipboard=nil;assert(calls.clipboard=='MM2 fixture report\nNative fixture report','MM2 discovery report is copied')
 assert(not find(gui(),'TextButton','Restore original appearance'),'MM2 menu contains no cosmetic actions')
