@@ -22,11 +22,12 @@ UDim={new=function(s,o)return {Scale=s,Offset=o}end}
 UDim2={new=function(x,xo,y,yo)return {X={Scale=x,Offset=xo},Y={Scale=y,Offset=yo}}end,fromScale=function(x,y)return {X={Scale=x,Offset=0},Y={Scale=y,Offset=0}}end,fromOffset=function(x,y)return {X={Scale=0,Offset=x},Y={Scale=0,Offset=y}}end}
 Color3={new=function(...)return {...}end,fromRGB=function(...)return {...}end}
 CFrame={lookAt=function(position,target)return {Position=position,Target=target}end}
-Enum={Font={Gotham='Gotham',GothamMedium='GothamMedium'},TextXAlignment={Left='Left',Right='Right'},AutomaticSize={Y='Y'},SortOrder={LayoutOrder='LayoutOrder'},UserInputType={MouseButton1='MouseButton1',MouseMovement='MouseMovement',Touch='Touch'}}
+Enum={Font={Gotham='Gotham',GothamMedium='GothamMedium'},TextXAlignment={Left='Left',Right='Right'},AutomaticSize={Y='Y'},SortOrder={LayoutOrder='LayoutOrder'},UserInputType={MouseButton1='MouseButton1',MouseButton2='MouseButton2',MouseMovement='MouseMovement',Touch='Touch'}}
 math.clamp=function(v,a,b)return math.max(a,math.min(b,v))end
 local pending={};task={delay=function(_,fn)pending[#pending+1]=fn end}
 local function flush()local q=pending;pending={};for _,fn in ipairs(q)do fn()end end
-local input={InputChanged=signal(),InputEnded=signal()};game={GetService=function(_,name)assert(name=='UserInputService');return input end}
+Enum.MouseBehavior={Default='Default',LockCurrentPosition='LockCurrentPosition'}
+local input={InputChanged=signal(),InputEnded=signal(),WindowFocusReleased=signal(),MouseBehavior='Default'};game={GetService=function(_,name)assert(name=='UserInputService');return input end}
 local function copy(v)if type(v)~='table'then return v end;local out={};for k,x in pairs(v)do out[k]=copy(x)end;return out end
 local function default()return {Position={X=0,Y=0,Z=0},Rotation={X=0,Y=0,Z=0},Scale={X=1,Y=1,Z=1}}end
 local values={Holster=default(),Held=default()};local writes,previews,clones=0,0,0
@@ -42,6 +43,19 @@ api.open(entry,'Holster')
 assert(named('HoneyBunWeaponEditor'),'Full editor opens')
 local camera;for _,o in ipairs(objects)do if o.ClassName=='Camera'then camera=o end end
 assert(camera.CFrame.Target.X==100,'Camera targets avatar location instead of world origin')
+local view;for _,o in ipairs(objects)do if o.ClassName=='ViewportFrame'then view=o end end
+local startX=camera.CFrame.Position.X
+view.InputBegan:Fire({UserInputType='MouseButton2'})
+input.InputChanged:Fire({UserInputType='MouseMovement',Delta={X=40,Y=25}})
+assert(camera.CFrame.Position.X~=startX and camera.CFrame.Position.Y~=20,'Right drag orbits horizontally and vertically')
+assert(input.MouseBehavior=='LockCurrentPosition','Orbit locks the cursor for continuous dragging')
+input.InputEnded:Fire({UserInputType='MouseButton2'})
+local endedX=camera.CFrame.Position.X
+input.InputChanged:Fire({UserInputType='MouseMovement',Delta={X=40,Y=25}})
+assert(camera.CFrame.Position.X==endedX and input.MouseBehavior=='Default','Releasing right click ends rotation and restores cursor')
+view.InputBegan:Fire({UserInputType='MouseButton2'});input.WindowFocusReleased:Fire()
+assert(input.MouseBehavior=='Default','Losing window focus releases cursor')
+
 local x=field('PositionX');x.Text='1.25';x.FocusLost:Fire();flush()
 assert(values.Holster.Position.X==1.25 and writes==0,'Numeric placement updates live without disk writes')
 assert(clones==1,'Slider updates reuse the avatar clone')
@@ -65,6 +79,9 @@ button('Cancel').Activated:Fire()
 assert(values.Held.Rotation.X==45 and values.Holster.Position.X==1.25,'Cancel restores both initial modes')
 api.open(entry,'Holster');button('Reset').Activated:Fire()
 assert(field('PositionX').Text=='0.00','Reset restores current mode controls')
+local closingView;for _,o in ipairs(objects)do if o.ClassName=='ViewportFrame' and not o.destroyed then closingView=o end end
+closingView.InputBegan:Fire({UserInputType='MouseButton2'})
 api.destroy();flush()
+assert(input.MouseBehavior=='Default','Closing editor restores cursor during orbit')
 for _,s in ipairs({input.InputChanged,input.InputEnded})do for _,c in ipairs(s.listeners)do assert(not c.active,'Global input handlers disconnect')end end
 print('Avatar editor opening, camera, nine sliders, live reuse, mode isolation, Save, Cancel, Reset and cleanup passed.')
