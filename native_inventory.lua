@@ -775,17 +775,44 @@ return function(playerGui,catalog,onStatus,mode)
                         end)}
                         if catalog.remove and (not effects or entry.editable) then
                             local menu=Instance.new("Frame");menu.Name="HoneyBunSavedOptionsMenu";menu.Visible=false;menu.Active=true
-                            menu.Size=UDim2.fromScale(1,1);menu.BackgroundColor3=Color3.fromRGB(16,17,21);menu.BackgroundTransparency=0.12
+                            menu.Size=UDim2.fromScale(1,1);menu.BackgroundColor3=Color3.fromRGB(16,17,21);menu.BackgroundTransparency=0
                             menu.BorderSizePixel=0;menu.ZIndex=click.ZIndex+1;menu.Parent=card
                             local function bind(button,callback) savedCardConnections[id][#savedCardConnections[id]+1]=button.Activated:Connect(callback) end
+                            local tweenService
+                            pcall(function()tweenService=game:GetService("TweenService")end)
                             local function option(name,text,y)
-                                local o=Instance.new("TextButton");o.Name=name;o.Text=text;o.TextScaled=true
-                                o.Size=UDim2.fromScale(0.9,0.2);o.Position=UDim2.fromScale(0.05,y);o.BackgroundTransparency=1
-                                o.TextColor3=Color3.fromRGB(245,245,250);o.ZIndex=click.ZIndex+2;o.Parent=menu;return o
+                                local o=Instance.new("TextButton");o.Name=name;o.Text=text;o.TextScaled=false;o.TextSize=12
+                                o.Size=UDim2.fromScale(0.9,0.15);o.Position=UDim2.fromScale(0.05,y);o.BackgroundTransparency=0
+                                local base=Color3.fromRGB(43,48,58);local hover=Color3.fromRGB(62,80,105)
+                                o.BackgroundColor3=base;o.BorderSizePixel=0;o.AutoButtonColor=false
+                                pcall(function()o.Font=Enum.Font.SourceSansSemibold end)
+                                o.TextColor3=Color3.fromRGB(245,245,250);o.ZIndex=click.ZIndex+2;o.Parent=menu
+                                local corner=Instance.new("UICorner");corner.CornerRadius=UDim.new(0,4);corner.Parent=o
+                                local scale=Instance.new("UIScale");scale.Scale=1;scale.Parent=o
+                                local tweens={}
+                                local function animate(object,properties,duration)
+                                    if tweens[object] then tweens[object]:Cancel() end
+                                    local good=pcall(function()
+                                        assert(tweenService)
+                                        local tween=tweenService:Create(object,TweenInfo.new(duration or 0.14,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),properties)
+                                        tweens[object]=tween;tween:Play()
+                                    end)
+                                    if not good then for key,value in pairs(properties) do object[key]=value end end
+                                end
+                                local function event(name,fn)
+                                    local signal=read(o,name)
+                                    if signal then savedCardConnections[id][#savedCardConnections[id]+1]=signal:Connect(fn) end
+                                end
+                                event("MouseEnter",function()animate(o,{BackgroundColor3=hover})end)
+                                event("MouseLeave",function()animate(o,{BackgroundColor3=base});animate(scale,{Scale=1})end)
+                                event("MouseButton1Down",function()animate(scale,{Scale=0.93},0.08)end)
+                                event("MouseButton1Up",function()animate(scale,{Scale=1},0.16)end)
+                                bind(o,function()scale.Scale=0.93;animate(scale,{Scale=1},0.18)end)
+                                return o
                             end
                             local adjustmentButtons={}
                             if not effects and catalog.openEditor then
-                                for _,action in ipairs({{"HoneyBunAdjustPreview","Adjust placement","Holster",0.06},{"HoneyBunAdjustHolding","Adjust holding","Held",0.28}}) do
+                                for _,action in ipairs({{"HoneyBunAdjustPreview","Adjust placement","Holster",0.25},{"HoneyBunAdjustHolding","Adjust holding","Held",0.43}}) do
                                     local button=option(action[1],action[2],action[4]);adjustmentButtons[#adjustmentButtons+1]=button
                                     local editMode=action[3]
                                     bind(button,function()
@@ -795,8 +822,8 @@ return function(playerGui,catalog,onStatus,mode)
                                     end)
                                 end
                             end
-                            local rename=option("HoneyBunRenameSaved","Rename",0.48)
-                            local remove=option("HoneyBunDeleteSaved","Delete",0.68)
+                            local rename=option("HoneyBunRenameSaved","Rename",0.61)
+                            local remove=option("HoneyBunDeleteSaved","Delete",0.79)
                             local field=Instance.new("TextBox");field.Name="HoneyBunSavedName";field.Text=entry.name;field.ClearTextOnFocus=false
                             field.Size=UDim2.fromScale(0.9,0.22);field.Position=UDim2.fromScale(0.05,0.28);field.TextScaled=true
                             field.TextColor3=Color3.fromRGB(245,245,250);field.BackgroundColor3=Color3.fromRGB(35,36,40)
@@ -831,8 +858,7 @@ return function(playerGui,catalog,onStatus,mode)
                             pcall(function()cog.Font=Enum.Font.Gotham end)
                             cog.ZIndex=click.ZIndex+3;cog.Parent=card
                             local cogScale=Instance.new("UIScale");cogScale.Scale=1;cogScale.Parent=cog
-                            local cogTween,scaleTween,tweenService
-                            pcall(function()tweenService=game:GetService("TweenService")end)
+                            local cogTween,scaleTween
                             bind(cog,function()
                                 local rotation=(read(cog,"Rotation") or 0)+90
                                 if cogTween then cogTween:Cancel() end;if scaleTween then scaleTween:Cancel() end

@@ -1,4 +1,5 @@
 local create=dofile('native_inventory.lua')
+UDim={new=function(scale,offset)return {Scale=scale,Offset=offset}end}
 Color3={fromRGB=function(r,g,b)return {R=r/255,G=g/255,B=b/255}end}
 local function signal()
     local s={listeners={}}
@@ -420,6 +421,8 @@ assert(editorRequests[2].mode=='Held' and editorRequests[2].entry.id==editorRequ
 cog.Activated:Fire()
 local deleteButton=options:FindFirstChild('HoneyBunDeleteSaved')
 assert(deleteButton,'Saved inventory cards offer deletion')
+assert(deleteButton.TextScaled==false and deleteButton.BackgroundTransparency==0 and deleteButton:FindFirstChildOfClass('UICorner'),'Saved actions use consistent text and separate rounded boxes')
+assert(deleteButton.Position.y>options:FindFirstChild('HoneyBunRenameSaved').Position.y+options:FindFirstChild('HoneyBunRenameSaved').Size.y,'Action boxes have visible vertical gaps')
 deleteButton.Activated:Fire();assert(#savedDefs==2 and deleteButton.Text=='Confirm delete','First click requests confirmation without deleting')
 deleteButton.Activated:Fire();flush()
 assert(#savedDefs==1 and #savedCardsIn(rebuiltPane)==1 and #savedCardsIn(holidayPane)==0,'Confirmed deletion removes only its saved card')
