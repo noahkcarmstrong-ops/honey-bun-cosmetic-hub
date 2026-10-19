@@ -189,8 +189,9 @@ local header=assert(findName(gui(),'ClassicTitleBar'),'Classic title bar is pres
 assert(header.BackgroundColor3.R==0 and header.BackgroundColor3.G==112 and header.BackgroundColor3.B==192,'Classic title bar uses Roblox blue')
 local panel=header.Parent
 local hideButton=assert(find(gui(),'TextButton','−'),'Hide button is present')
-hideButton.Activated:Fire();assert(panel.Visible==false,'Hide animation ends with the panel hidden')
-input.InputBegan:Fire({KeyCode=Enum.KeyCode.RightShift});assert(panel.Visible==true,'Right Shift reopens the panel after hide animation')
+hideButton.Activated:Fire();assert(panel.Visible==false and panel.GroupTransparency==1,'Hide animation fades the whole menu before hiding it')
+input.InputBegan:Fire({KeyCode=Enum.KeyCode.RightShift});assert(panel.Visible==true and panel.GroupTransparency==0,'Right Shift restores the whole menu after fading out')
+assert(panel:FindFirstChild('UIScale').Scale==1,'Opening restores the menu scale')
 local addButton=assert(find(gui(),'TextButton','Add accessories'),'Animated action button is present')
 local baseColor=addButton.BackgroundColor3
 addButton.MouseEnter:Fire()

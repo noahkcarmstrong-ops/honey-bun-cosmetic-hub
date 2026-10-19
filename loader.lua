@@ -82,7 +82,8 @@ gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = playerGui
 
-local panel = Instance.new("Frame")
+local panel = Instance.new("CanvasGroup")
+panel.GroupTransparency=0
 panel.AnchorPoint = Vector2.new(1, 0.5)
 panel.Position = UDim2.new(1, -24, 0.5, 0)
 panel.Size = UDim2.new(1, -48, 0.78, 0)
@@ -236,9 +237,11 @@ local function showMenu(visible)
     menuVisible=visible
     if visible then
         panel.Visible=true
-        smooth(panelScale,{Scale=1},0.2)
+        smooth(panelScale,{Scale=1},0.32)
+        smooth(panel,{GroupTransparency=0,Position=UDim2.new(1,-24,0.5,0)},0.32)
     else
-        smooth(panelScale,{Scale=0.96},0.14,function() if not menuVisible then panel.Visible=false end end)
+        smooth(panelScale,{Scale=0.975},0.24)
+        smooth(panel,{GroupTransparency=1,Position=UDim2.new(1,-12,0.5,0)},0.24,function() if not menuVisible then panel.Visible=false end end)
     end
 end
 hide.Activated:Connect(function() showMenu(false) end)
@@ -1086,8 +1089,10 @@ gui.Destroying:Connect(function()
     if clothesAPI then clothesAPI.destroy() end
     if previewsAPI and previewsAPI.destroy then previewsAPI.destroy() end
 end)
-panelScale.Scale=0.97
-smooth(panelScale,{Scale=1},0.22)
+panelScale.Scale=0.975
+panel.GroupTransparency=1
+panel.Position=UDim2.new(1,-12,0.5,0)
+showMenu(true)
 render()
 action(function(editor)
     local soundsLoaded=pcall(hatSounds)
