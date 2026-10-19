@@ -6,6 +6,10 @@ return function(playerGui,catalog,onStatus,mode)
     local api={}
     local enabled,dead=false,false
     local grid,template,root,ownedRoot,nativePane,nativeHost
+    local savedTab,savedPane,savedGrid,savedTabParent,savedOpen=nil,nil,nil,nil,false
+    local savedTabMode=false
+    local savedNativeVisibility={}
+    local savedHeader={}
     local panePath,gridPath
     local mounting,queued=false,false
     local rendering,rerenderRequested=false,false
@@ -145,6 +149,7 @@ return function(playerGui,catalog,onStatus,mode)
     end
     local function entryCategory(entry)
         if effects then return "effects" end
+        if savedOnly and savedTabMode then return "saved" end
         return category(entry.category) or category(entry.event) or category(entry.season) or "classic"
     end
     local function pathFrom(ancestor,object)
@@ -452,6 +457,126 @@ return function(playerGui,catalog,onStatus,mode)
         return true
     end
     local renderSaved
+    local function tabForSaved(inventory,key)
+        local tabs
+        local area=inventory
+        for _,o in ipairs(descendants(inventory)) do if normalize(o.Name)=="weapons" and is(o,"GuiObject") and not is(o,"GuiButton") then area=o;break end end
+        for _,o in ipairs(descendants(area)) do
+            if normalize(o.Name)=="tabs" and is(o,"GuiObject") then tabs=o;break end
+        end
+        if not tabs then return end
+        for _,o in ipairs(children(tabs)) do
+            if category(o.Name)==key then return o,tabs end
+            for _,v in ipairs(texts(o)) do if category(read(v,"Text"))==key then return o,tabs end end
+        end
+    end
+    local function savedTabText(tab)
+        local changed=false
+        for _,o in ipairs(texts(tab)) do
+            if is(o,"TextLabel") or is(o,"TextButton") then
+                local value=lower(read(o,"Text"))
+                if value:find("season",1,true) or value=="current" or category(value)=="season1" then o.Text="Saved Weapons";changed=true end
+            end
+        end
+        if not changed and (is(tab,"TextLabel") or is(tab,"TextButton")) then tab.Text="Saved Weapons" end
+    end
+    local function showSavedTab(open,nativeKey)
+        if open and not savedOpen then
+            for pane in pairs(savedNativeVisibility) do if alive(pane) then savedNativeVisibility[pane]=pane.Visible end end
+        end
+        savedOpen=open
+        if savedPane then savedPane.Visible=open end
+        for pane,visible in pairs(savedNativeVisibility) do
+            if alive(pane) then
+                if open then pane.Visible=false
+                elseif nativeKey then pane.Visible=category(pane.Name)==nativeKey
+                else pane.Visible=visible end
+            end
+        end
+        if savedTab then
+            for _,o in ipairs(texts(savedTab)) do
+                local n=normalize(o.Name)
+                if is(o,"GuiObject") and (n=="selected" or n=="selectedborder" or n=="selection") then o.Visible=open end
+            end
+        end
+    end
+    local function mountSavedTab(inventory,detectedGrid,detectedTemplate)
+        if savedTabMode and savedTab and alive(savedTab) and savedPane and alive(savedPane) and savedGrid and alive(savedGrid) then return true end
+        if savedTabMode then
+            disconnect(connections);connections={};clearSaved();restoreSideSlots()
+            if savedTab then destroy(savedTab) end;if savedPane then destroy(savedPane) end
+            for o,props in pairs(savedHeader) do for key,value in pairs(props) do pcall(function()o[key]=value end) end end
+            savedHeader={};savedNativeVisibility={};savedOpen=false;savedTabMode=false
+        end
+        nativeHost,nativePane=paneFor(detectedGrid,inventory)
+        local source=nativePane
+        assert(source and nativeHost,"Native inventory content panel was not found.")
+        if not template then template=detectedTemplate and detectedTemplate:Clone() end
+        assert(template,"Native item card template is unavailable.")
+        local sourceGrid=detectedGrid
+        local sourcePath=pathFrom(source,sourceGrid)
+        savedPane=source:Clone();savedPane.Name="HoneyBunLocal_SavedPane"
+        for _,o in ipairs(texts(savedPane)) do if is(o,"LuaSourceContainer") then destroy(o) end end
+        savedGrid=atPath(savedPane,sourcePath)
+        assert(savedGrid,"The copied native saved pane grid could not be located.")
+        for _,o in ipairs(children(savedGrid)) do if is(o,"GuiObject") then destroy(o) end end
+        local tab,tabs=tabForSaved(inventory,"season1")
+        if not tab or not tabs then destroy(savedPane);savedPane=nil;savedGrid=nil;return false end
+        savedTab=tab:Clone();savedTab.Name="HoneyBunLocal_SavedTab";savedTabText(savedTab)
+        for _,o in ipairs(texts(savedTab)) do if is(o,"LuaSourceContainer") then destroy(o) end end
+        -- Fit four native-styled tabs into the space previously used by three.
+        local nativeTabs={}
+        for _,o in ipairs(children(tabs)) do if is(o,"GuiObject") and category(o.Name) then nativeTabs[#nativeTabs+1]=o end end
+        table.sort(nativeTabs,function(a,b)return (category(a.Name)=="season1" and 1 or category(a.Name)=="classic" and 2 or 3)<(category(b.Name)=="season1" and 1 or category(b.Name)=="classic" and 2 or 3)end)
+        pcall(function()
+            local first,last=nativeTabs[1],nativeTabs[#nativeTabs]
+            local origin=first.Position.X
+            local widthScale=(last.Position.X.Scale+last.Size.X.Scale-origin.Scale)/4
+            local widthOffset=(last.Position.X.Offset+last.Size.X.Offset-origin.Offset)/4
+            local all={};for _,o in ipairs(nativeTabs) do all[#all+1]=o end;all[#all+1]=savedTab
+            for index,o in ipairs(all) do
+                if o~=savedTab then savedHeader[o]={Size=o.Size,Position=o.Position} end
+                o.Size=UDim2.new(widthScale,widthOffset,o.Size.Y.Scale,o.Size.Y.Offset)
+                o.Position=UDim2.new(origin.Scale+(index-1)*widthScale,origin.Offset+(index-1)*widthOffset,o.Position.Y.Scale,o.Position.Y.Offset)
+                for _,label in ipairs(texts(o)) do
+                    if is(label,"TextLabel") or is(label,"TextButton") then
+                        if o~=savedTab then savedHeader[label]=savedHeader[label] or {};savedHeader[label].TextScaled=label.TextScaled end
+                        label.TextScaled=true
+                    end
+                end
+            end
+        end)
+        local maxOrder=0
+        for _,o in ipairs(children(tabs)) do if type(read(o,"LayoutOrder"))=="number" then maxOrder=math.max(maxOrder,o.LayoutOrder) end end
+        savedTab.LayoutOrder=maxOrder+1;savedTab.Parent=tabs;savedTabParent=tabs
+        savedPane.Parent=nativeHost;savedPane.Visible=false
+        for _,pane in ipairs(children(nativeHost)) do
+            if pane~=savedPane and is(pane,"GuiObject") and category(pane.Name) then
+                if savedNativeVisibility[pane]==nil then savedNativeVisibility[pane]=pane.Visible end
+            end
+        end
+        local function bindTab(o)
+            if is(o,"GuiButton") then
+                connections[#connections+1]=o.Activated:Connect(function() showSavedTab(true) end)
+            end
+        end
+        for _,o in ipairs(texts(savedTab)) do bindTab(o) end
+        for _,o in ipairs(descendants(tabs)) do
+            if not localObject(o) and is(o,"GuiButton") then
+                -- Keep the native game tab behavior; this callback only closes our pane.
+                connections[#connections+1]=o.Activated:Connect(function() showSavedTab(false,category(o.Name) or category(o.Parent and o.Parent.Name) or category(read(o,"Text"))) end)
+            end
+        end
+        for _,o in ipairs(descendants(inventory)) do
+            if is(o,"TextBox") and (lower(o.Name):find("search",1,true) or lower(o.PlaceholderText):find("search",1,true)) then
+                query=lower(o.Text);connections[#connections+1]=o:GetPropertyChangedSignal("Text"):Connect(function() query=lower(o.Text);renderSaved() end);break
+            end
+        end
+        connections[#connections+1]=savedPane:GetPropertyChangedSignal("Visible"):Connect(function() if enabled and savedPane.Visible~=savedOpen then savedOpen=savedPane.Visible end end)
+        showSavedTab(false)
+        savedTabMode=true
+        return true
+    end
     renderSaved=function()
         if not enabled or dead then return end
         local inventory,detectedGrid,detectedTemplate
@@ -463,9 +588,10 @@ return function(playerGui,catalog,onStatus,mode)
         end
         savedRoot=inventory
         root=inventory
+        if savedOnly and not effects then mountSavedTab(inventory,detectedGrid,detectedTemplate) end
         if not template then template=detectedTemplate and detectedTemplate:Clone() end
         if not template then status("Waiting for native weapon cards to load.");return end
-        local grids=effects and {effects=detectedGrid} or findSavedGrids(inventory);savedGrids=grids
+        local grids=effects and {effects=detectedGrid} or (savedTabMode and {saved=savedGrid} or findSavedGrids(inventory));savedGrids=grids
         for _,target in pairs(grids) do prepareSavedGrid(target) end
         bindSideSlots()
         local wanted={}
@@ -473,7 +599,7 @@ return function(playerGui,catalog,onStatus,mode)
         for _,kind in ipairs(effects and {"Effect"} or {"Knife","Gun"}) do
             for _,entry in ipairs(catalog.list(kind) or {}) do
                 local key=entryCategory(entry);local target=grids[key]
-                if target then
+                if target and (query=="" or lower(entry.name):find(query,1,true) or lower(entry.id):find(query,1,true)) then
                     local id=kind..":"..tostring(entry.id)
                     wanted[id]=true
                     pending[#pending+1]={id=id,entry=entry,target=target}
@@ -636,6 +762,12 @@ return function(playerGui,catalog,onStatus,mode)
     end
     local function releaseMount()
         disconnect(connections);connections={};clearCards();restoreSideSlots()
+        for o,props in pairs(savedHeader) do for key,value in pairs(props) do pcall(function()o[key]=value end) end end
+        savedHeader={}
+        if savedTab then destroy(savedTab);savedTab=nil end
+        if savedPane then destroy(savedPane);savedPane=nil;savedGrid=nil end
+        for pane,visible in pairs(savedNativeVisibility) do pcall(function() pane.Visible=visible end) end
+        savedNativeVisibility={};savedOpen=false;savedTabParent=nil;savedTabMode=false
         if ownedRoot then destroy(ownedRoot);ownedRoot=nil end
         for o,visible in pairs(originals) do pcall(function() o.Visible=visible end) end
         originals={};grid=nil
@@ -777,6 +909,7 @@ return function(playerGui,catalog,onStatus,mode)
         watchers[#watchers+1]=playerGui.DescendantAdded:Connect(changed)
         watchers[#watchers+1]=playerGui.DescendantRemoving:Connect(function(o)
             changed(o)
+            if enabled and (o==savedTab or o==savedPane) then schedule() end
             if enabled then for _,card in pairs(savedCards) do if card==o then schedule();break end end end
         end)
     end
@@ -825,6 +958,7 @@ return function(playerGui,catalog,onStatus,mode)
     function api.report()
         if savedOnly then
             local count=0;for _,card in pairs(savedCards) do if alive(card) then count=count+1 end end
+            if savedTabMode then return "Native inventory build: saved weapons\n"..lastReport.."\nGenerated="..count.."\nSaved pane: "..(savedGrid and savedGrid:GetFullName() or "none") end
             local paths={};for _,key in ipairs({"season1","classic","holiday"}) do paths[#paths+1]=key.."="..(savedGrids[key] and savedGrids[key]:GetFullName() or "none") end
             return "Native inventory build: saved weapons\n"..lastReport.."\nGenerated="..count.."\nCategory grids: "..table.concat(paths,"; ")
         end

@@ -511,14 +511,14 @@ render=function()
                 return table.concat(messages,"\n")
             end) end)
             caption("YOUR SAVED WEAPONS",24)
-            caption("Saved guns and knives automatically appear in MM2's Weapons inventory. Click a card to equip, or Delete then Confirm? to remove your saved copy.",64)
+            caption("Open MM2's Weapons inventory → Saved Weapons. All copied guns and knives stay together there. Click a card to equip, or Delete then Confirm? to remove your saved copy.",64)
             button("Refresh saved weapons in MM2 inventory",function() action(function()
                 updateWeapons()
-                return "Open MM2's Weapons inventory. Your saved weapons appear alongside your existing items."
+                return "Open MM2's Weapons inventory and select Saved Weapons. All your copied guns and knives are there."
             end) end)
             button("Remove saved weapon appearances",function() action(function()return mm2().restore()end) end)
             caption("FIX AN UNIDENTIFIED WEAPON",24)
-            caption("Equip a saved copy, then enter its original MM2 name to match its name, icon, rarity, and category.",48)
+            caption("Equip a saved copy, then enter its original MM2 name to match its name, icon, and rarity.",48)
             local weaponName=input("Original weapon name or item ID","",function()end)
             for _,kind in ipairs({"Knife","Gun"}) do
                 button("Match equipped saved "..kind:lower(),function() action(function()
@@ -536,7 +536,7 @@ render=function()
                 button("Remove knife effect",function() action(function()return effectsMM2().restore()end) end)
             end
             caption("OPTIONAL MM2 INVENTORY DISPLAY",24)
-            caption("Show all weapons is optional. Your saved weapons already appear in the normal inventory.",48)
+            caption("Show all weapons is optional. Leave it off to use your Saved Weapons tab.",48)
             button(mm2Enabled and "Show all weapons: ON" or "Show all weapons: OFF",function() action(function()
                 if mm2Enabled then
                     nativeMM2().disable();mm2Enabled=false;savedNativeMM2().enable()
