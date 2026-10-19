@@ -138,15 +138,35 @@ local connection = Input.InputBegan:Connect(function(key)
     end
 end)
 
-local alive, busy, activePage = true, false, "Accessories"
-local statusText = "Local preview. Changes reset when you respawn or refresh."
+local function uiSetting(key,default)
+    local value=playerGui:GetAttribute("HoneyBunCosmeticUI_"..key)
+    return type(value)==type(default) and value or default
+end
+local alive, busy, activePage = true, false, uiSetting("page","Accessories")
+if activePage~="Accessories" and activePage~="Skin" and activePage~="Body" then activePage="Accessories" end
+local statusText = "Local preview. Your selections save for this Roblox session."
 local statusLabel, render
-local accessoryInput, bundleInput = "", ""
-local rgb = {"255", "204", "153"}
-local hexInput = "#FFCC99"
+local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
+local rgb = {uiSetting("red","255"),uiSetting("green","204"),uiSetting("blue","153")}
+local hexInput = uiSetting("hex","#FFCC99")
 local regions = {"All", "Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg"}
 local regionNames = {"Whole body", "Head", "Torso", "Left arm", "Right arm", "Left leg", "Right leg"}
-local regionIndex = 1
+local regionIndex = uiSetting("region",1)
+if regionIndex<1 or regionIndex>#regions or regionIndex%1~=0 then regionIndex=1 end
+local paletteOpen=uiSetting("palette",false)
+local function saveUI()
+    local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen}
+    for key,value in pairs(values) do playerGui:SetAttribute("HoneyBunCosmeticUI_"..key,value) end
+end
+-- Exact RGB samples from the user's 5-column, 6-row Roblox palette reference.
+local robloxColors={
+    {90,76,66},{124,92,70},{175,148,131},{204,142,105},{234,184,146},
+    {86,66,54},{105,64,40},{188,155,93},{199,172,120},{215,197,154},
+    {149,121,119},{163,75,75},{218,134,122},{255,201,201},{255,152,220},
+    {116,134,157},{82,124,174},{128,187,220},{177,167,255},{167,94,155},
+    {0,143,156},{91,154,76},{124,156,107},{161,196,140},{226,155,64},
+    {245,205,48},{248,217,109},{99,95,98},{205,205,205},{248,248,248},
+}
 local tabButtons = {}
 local order = 0
 local function row(class, height)
@@ -191,7 +211,7 @@ local function input(placeholder, value, changed)
     item.PlaceholderText,item.Text=placeholder,value
     item.ClearTextOnFocus=false
     Instance.new("UICorner",item).CornerRadius=UDim.new(0,6)
-    item.FocusLost:Connect(function() changed(item.Text) end)
+    item.FocusLost:Connect(function() changed(item.Text);saveUI() end)
     return item
 end
 local function api()
@@ -205,7 +225,11 @@ local function api()
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Avatar editor failed to load.")
     assert(alive,"Menu was closed.")
-    avatarAPI=create(Players.LocalPlayer)
+    avatarAPI=create(Players.LocalPlayer,function(message,working)
+        if not alive then return end
+        busy=working;statusText=message
+        if render then render() end
+    end)
     return avatarAPI
 end
 local function action(callback)
@@ -220,17 +244,6 @@ local function action(callback)
         statusText=ok and (message or "Done.") or ("Could not apply: "..tostring(message):gsub("^.-:%d+:%s*",""))
         render()
     end)
-end
-local function groupButtons(choices)
-    local frame=row("Frame",34)
-    for index,choice in ipairs(choices) do
-        local item=Instance.new("TextButton")
-        item.Size=UDim2.new(1/#choices,-6,1,0)
-        item.Position=UDim2.new((index-1)/#choices,0,0,0)
-        item.Parent=frame
-        styleButton(item,choice[1])
-        item.Activated:Connect(choice[2])
-    end
 end
 render=function()
     if not alive then return end
@@ -249,32 +262,57 @@ render=function()
         local field=input("roblox.com/catalog/123456/... or item ID",accessoryInput,function(value) accessoryInput=value end)
         button("Equip accessory",function()
             accessoryInput=field.Text
+            saveUI()
             action(function(editor) return editor.equipAccessory(accessoryInput) end)
         end)
         button("Remove added accessories",function() action(function(editor) return editor.clearAccessories() end) end)
+        button("Remove current Roblox accessories",function() action(function(editor) return editor.removeCurrentAccessories() end) end)
         if avatarAPI and avatarAPI.listAccessories then
             for _,entry in ipairs(avatarAPI.listAccessories()) do
                 local key=entry.key
                 button("Remove: "..entry.name,function() action(function(editor) return editor.removeAccessory(key) end) end)
             end
         end
-        caption("Your existing avatar accessories stay equipped. Asset access and avatar compatibility vary by game.",44)
+        caption("Remove current Roblox accessories hides your original hats and accessories. Restore original appearance brings them back.",48)
     elseif activePage=="Skin" then
         caption("SKIN COLOR",24)
         button("Apply to: "..regionNames[regionIndex].."  >",function()
             if busy then return end
-            regionIndex=regionIndex%#regions+1;render()
+            regionIndex=regionIndex%#regions+1;saveUI();render()
         end)
-        local palette={{"Light",255,224,189},{"Tan",210,161,115},{"Brown",120,78,49},{"Dark",72,48,34},{"Pink",255,170,210},{"Blue",110,190,255}}
-        local choices={}
-        for _,shade in ipairs(palette) do
-            local r,g,b=shade[2],shade[3],shade[4]
-            table.insert(choices,{shade[1],function()
-                rgb={tostring(r),tostring(g),tostring(b)}
-                action(function(editor) return editor.setSkin(Color3.fromRGB(r,g,b),regions[regionIndex]) end)
-            end})
+        button(paletteOpen and "Roblox colors  v" or "Roblox colors  >",function()
+            if busy then return end
+            paletteOpen=not paletteOpen;saveUI();render()
+        end)
+        if paletteOpen then
+            for rowIndex=1,6 do
+                local frame=row("Frame",46)
+                for column=1,5 do
+                    local shade=robloxColors[(rowIndex-1)*5+column]
+                    local r,g,b=shade[1],shade[2],shade[3]
+                    local swatch=Instance.new("TextButton")
+                    swatch.Name=string.format("Color_%02X%02X%02X",r,g,b)
+                    swatch.AnchorPoint=Vector2.new(0.5,0.5)
+                    swatch.Position=UDim2.new((column-0.5)/5,0,0.5,0)
+                    swatch.Size=UDim2.fromOffset(36,36)
+                    swatch.BackgroundColor3=Color3.fromRGB(r,g,b)
+                    swatch.BorderSizePixel=0;swatch.Text="";swatch.AutoButtonColor=false
+                    swatch.Parent=frame
+                    Instance.new("UICorner",swatch).CornerRadius=UDim.new(1,0)
+                    if tonumber(rgb[1])==r and tonumber(rgb[2])==g and tonumber(rgb[3])==b then
+                        local stroke=Instance.new("UIStroke",swatch)
+                        stroke.Color=Color3.fromRGB(68,130,255);stroke.Thickness=2
+                    end
+                    swatch.Activated:Connect(function()
+                        if busy then return end
+                        rgb={tostring(r),tostring(g),tostring(b)}
+                        hexInput=string.format("#%02X%02X%02X",r,g,b)
+                        saveUI()
+                        action(function(editor) return editor.setSkin(Color3.fromRGB(r,g,b),regions[regionIndex]) end)
+                    end)
+                end
+            end
         end
-        groupButtons(choices)
         caption("Custom RGB color (each number from 0 to 255)",30)
         local fields={}
         for index,name in ipairs({"Red", "Green", "Blue"}) do
@@ -284,6 +322,7 @@ render=function()
         end
         button("Apply RGB color",function()
             for i,field in ipairs(fields) do rgb[i]=field.Text end
+            saveUI()
             action(function(editor)
                 local channels={}
                 for i,value in ipairs(rgb) do
@@ -291,16 +330,22 @@ render=function()
                     assert(n and n==n and n>=0 and n<=255 and n%1==0,"Enter whole RGB numbers from 0 to 255.")
                     channels[i]=n
                 end
-                return editor.setSkin(Color3.fromRGB(channels[1],channels[2],channels[3]),regions[regionIndex])
+                local message=editor.setSkin(Color3.fromRGB(channels[1],channels[2],channels[3]),regions[regionIndex])
+                hexInput=string.format("#%02X%02X%02X",channels[1],channels[2],channels[3]);saveUI()
+                return message
             end)
         end)
         local hex=input("Hex color, for example #FFCC99",hexInput,function(value) hexInput=value end)
         button("Apply hex color",function()
             hexInput=hex.Text
+            saveUI()
             action(function(editor)
                 local value=hexInput:match("^%s*#?(%x%x%x%x%x%x)%s*$")
                 assert(value,"Enter six hex characters, for example #FFCC99.")
-                return editor.setSkin(Color3.fromRGB(tonumber(value:sub(1,2),16),tonumber(value:sub(3,4),16),tonumber(value:sub(5,6),16)),regions[regionIndex])
+                local r,g,b=tonumber(value:sub(1,2),16),tonumber(value:sub(3,4),16),tonumber(value:sub(5,6),16)
+                local message=editor.setSkin(Color3.fromRGB(r,g,b),regions[regionIndex])
+                rgb={tostring(r),tostring(g),tostring(b)};saveUI()
+                return message
             end)
         end)
     else
@@ -313,10 +358,12 @@ render=function()
         local field=input("roblox.com/bundles/123/... or bundle ID",bundleInput,function(value) bundleInput=value end)
         button("Apply body package",function()
             bundleInput=field.Text
+            saveUI()
             action(function(editor) return editor.applyBody(bundleInput) end)
         end)
         caption("R6 and R15 use different body parts. Unsupported packages show a message instead of changing your avatar rig.",48)
     end
+    button("Reapply saved cosmetics",function() action(function(editor) return editor.reapplySaved() end) end)
     button("Restore original appearance",function() action(function(editor) return editor.restore() end) end)
 end
 for index,name in ipairs({"Accessories", "Skin", "Body"}) do
@@ -329,13 +376,13 @@ for index,name in ipairs({"Accessories", "Skin", "Body"}) do
     styleButton(item,string.upper(page))
     item.Activated:Connect(function()
         if busy then return end
-        activePage=page;render()
+        activePage=page;saveUI();render()
     end)
     tabButtons[page]=item
 end
 local respawn=Players.LocalPlayer.CharacterAdded:Connect(function()
     if not alive then return end
-    statusText="New character loaded. Choose cosmetics to apply again."
+    statusText="New character loading. Saved cosmetics will reapply automatically."
     render()
 end)
 gui.Destroying:Connect(function()
@@ -345,3 +392,4 @@ gui.Destroying:Connect(function()
     if avatarAPI then avatarAPI.destroy() end
 end)
 render()
+action(function(editor) return editor.reapplySaved() end)

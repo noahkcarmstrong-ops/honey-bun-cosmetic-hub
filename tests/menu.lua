@@ -18,6 +18,8 @@ end}
 function methods:GetChildren()local list={};for _,o in ipairs(objects)do if o.Parent==self then list[#list+1]=o end end;return list end
 function methods:FindFirstChild(name)for _,o in ipairs(self:GetChildren())do if o.Name==name then return o end end end
 function methods:WaitForChild(name)return assert(self:FindFirstChild(name))end
+function methods:GetAttribute(key)return self.attributes and self.attributes[key]end
+function methods:SetAttribute(key,value)self.attributes=self.attributes or {};self.attributes[key]=value end
 function methods:Destroy()
     if self.destroyed then return end
     self.destroyed=true;self.Destroying:Fire()
@@ -37,15 +39,18 @@ local function enum()return setmetatable({},{__index=function(t,k)local v=enum()
 Enum=enum();DateTime={now=function()return{UnixTimestampMillis=123}end};task={spawn=function(fn)fn()end}
 local guiRoot=Instance.new('PlayerGui');local player=Instance.new('Player');guiRoot.Parent=player;player.CharacterAdded=signal()
 local input={InputBegan=signal(),GetFocusedTextBox=function()return nil end}
-local calls={equip=0,skin=0,body=0,destroy=0,restore=0}
+local calls={equip=0,skin=0,body=0,destroy=0,restore=0,current=0}
 local function createEditor()
     return {
         equipAccessory=function(value)calls.equip=calls.equip+1;calls.item=value;return'Equipped fixture'end,
         listAccessories=function()return{}end,
         clearAccessories=function()return'Cleared'end,
+        removeCurrentAccessories=function()calls.current=calls.current+1;return'Removed current accessories'end,
         setSkin=function(color,region)calls.skin=calls.skin+1;calls.color=color;calls.region=region;return'Color applied'end,
         applyBody=function(value)calls.body=calls.body+1;calls.package=value;return'Body applied'end,
         restore=function()calls.restore=calls.restore+1;return'Restored'end,
+        reapplySaved=function()return'Saved cosmetics restored.'end,
+        getSettings=function()return{accessories={},colors={}}end,
         destroy=function()calls.destroy=calls.destroy+1 end,
     }
 end
@@ -79,7 +84,14 @@ dofile('loader.lua')
 assert(not guiRoot:FindFirstChild('HoneyBunHub'),'Cosmetic menu never creates the original hub')
 field('roblox.com/catalog/123456/... or item ID').Text='123'
 click('Equip accessory');assert(calls.equip==1 and calls.item=='123','Accessory input reaches backend')
-click('SKIN');click('Blue');assert(calls.skin==1 and calls.color.B==255 and calls.region=='All','Skin palette action')
+click('Remove current Roblox accessories');assert(calls.current==1,'Original accessory button reaches backend')
+click('SKIN');click('Roblox colors  >')
+local swatches={}
+for _,o in ipairs(objects)do if not o.destroyed and o.Name:match('^Color_') then swatches[#swatches+1]=o end end
+assert(#swatches==30,'Reference palette contains all 30 colors')
+assert(swatches[1].Name=='Color_5A4C42' and swatches[30].Name=='Color_F8F8F8','Reference palette keeps the image order')
+assert(swatches[5].BackgroundColor3.R==234 and swatches[5].BackgroundColor3.G==184 and swatches[5].BackgroundColor3.B==146,'Selected screenshot swatch uses exact RGB')
+swatches[19].Activated:Fire();assert(calls.skin==1 and calls.color.B==255 and calls.region=='All','Skin palette action')
 field('Red 0–255').Text='999';click('Apply RGB color');assert(calls.skin==1,'Invalid RGB never reaches avatar')
 click('BODY');click('Girl');assert(calls.body==1 and calls.package=='Girl','Body preset action')
 field('roblox.com/bundles/123/... or bundle ID').Text='https://www.roblox.com/bundles/311/Robloxian-2-0'
