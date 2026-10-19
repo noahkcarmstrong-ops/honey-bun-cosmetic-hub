@@ -12,8 +12,37 @@ return function(game)
     local repairs=0
     local daylight=true
     local originalClock
+    local environmentSettings
+    local originalLighting
+    local atmosphereEntries={}
+    local tint
     local skyProperties={"SkyboxBk","SkyboxDn","SkyboxFt","SkyboxLf","SkyboxRt","SkyboxUp"}
     local function service(name)local ok,value=pcall(game.GetService,game,name);if ok then return value end end
+
+    local function finite(value)return type(value)=="number" and value==value and value~=math.huge and value~=-math.huge end
+    local function color(kind)
+        local values={Natural={255,255,255},Warm={255,220,190},Cool={200,225,255},Pink={255,200,220}}
+        local rgb=values[kind]
+        if Color3 and Color3.fromRGB then return Color3.fromRGB(rgb[1],rgb[2],rgb[3]) end
+        return {R=rgb[1]/255,G=rgb[2]/255,B=rgb[3]/255}
+    end
+    local function sameColor(a,b)
+        if a==b then return true end
+        return a and b and a.R==b.R and a.G==b.G and a.B==b.B
+    end
+    local function snapshotClock()
+        if originalClock~=nil then return end
+        originalClock=lighting.ClockTime
+    end
+    local function snapshotEnvironment()
+        snapshotClock()
+        if originalLighting~=nil then return end
+        originalLighting={FogStart=lighting.FogStart,FogEnd=lighting.FogEnd,FogColor=lighting.FogColor}
+    end
+    local function rememberAtmosphere(object)
+        for _,entry in ipairs(atmosphereEntries) do if entry.object==object then return end end
+        atmosphereEntries[#atmosphereEntries+1]={object=object,parent=object.Parent}
+    end
 
     local function id(value)
         if type(value)=="number" then
@@ -57,23 +86,74 @@ return function(game)
         if boundRun then pcall(function()boundRun:UnbindFromRenderStep(renderName)end);boundRun=nil end
     end
     local function removeCompeting(child)
-        if not custom or destroyed or child==custom or not child:IsA("Sky") then return end
+        if destroyed then return end
+        if environmentSettings and child:IsA("Atmosphere") then
+            rememberAtmosphere(child);child.Parent=nil;repairs=repairs+1;return
+        end
+        if not custom or child==custom or not child:IsA("Sky") then return end
         local known=false
         for _,entry in ipairs(originals) do if entry.object==child then known=true;break end end
         if not known then originals[#originals+1]={object=child,parent=lighting} end
         child.Parent=nil;repairs=repairs+1
     end
+    local function ensureTint()
+        if not environmentSettings then return end
+        local usable=false
+        if tint then
+            local ok=pcall(function()return tint.Parent end)
+            if ok then usable=pcall(function()tint.Parent=lighting end) end
+        end
+        if not usable then tint=nil end
+        if not tint then
+            tint=Instance.new("ColorCorrectionEffect")
+            tint.Name="LarpbloxEnvironmentTint"
+            tint.Parent=lighting
+        elseif tint.Parent~=lighting then tint.Parent=lighting end
+        if not tint.Enabled then tint.Enabled=true end
+        local wanted=color(environmentSettings.color)
+        if not sameColor(tint.TintColor,wanted) then tint.TintColor=wanted end
+    end
+    local function enforceEnvironment()
+        if not environmentSettings then return end
+        local fog=({Off={100000,100000},Light={100,1800},Thick={0,300}})[environmentSettings.fog]
+        if lighting.ClockTime~=environmentSettings.time then lighting.ClockTime=environmentSettings.time end
+        if lighting.FogStart~=fog[1] then lighting.FogStart=fog[1] end
+        if lighting.FogEnd~=fog[2] then lighting.FogEnd=fog[2] end
+        local fogColor=color(environmentSettings.color)
+        if not sameColor(lighting.FogColor,fogColor) then lighting.FogColor=fogColor end
+        ensureTint()
+    end
     local function enforceSky()
-        if not custom or destroyed then return end
-        if daylight and lighting.ClockTime~=14 then lighting.ClockTime=14 end
-        for _,child in ipairs(lighting:GetChildren()) do removeCompeting(child) end
-        local ok=pcall(function()
-            custom.Parent=lighting
-            for _,property in ipairs(skyProperties) do
-                if custom[property]~=blueprint[property] then custom[property]=blueprint[property] end
-            end
-        end)
-        if not ok then custom=blueprint:Clone();custom.Parent=lighting end
+        if destroyed then return end
+        if environmentSettings then enforceEnvironment() end
+        if custom then
+            if not environmentSettings and daylight and lighting.ClockTime~=14 then lighting.ClockTime=14 end
+            for _,child in ipairs(lighting:GetChildren()) do removeCompeting(child) end
+            local ok=pcall(function()
+                custom.Parent=lighting
+                for _,property in ipairs(skyProperties) do
+                    if custom[property]~=blueprint[property] then custom[property]=blueprint[property] end
+                end
+            end)
+            if not ok then custom=blueprint:Clone();custom.Parent=lighting end
+        else
+            for _,child in ipairs(lighting:GetChildren()) do removeCompeting(child) end
+        end
+    end
+    local function startOverride()
+        if skyAdded or keeper or boundRun then return end
+        if lighting.ChildAdded then skyAdded=lighting.ChildAdded:Connect(removeCompeting) end
+        local run=service("RunService")
+        if run then
+            local priority=2001
+            pcall(function()priority=Enum.RenderPriority.Last.Value+1 end)
+            local bound=false
+            if run.BindToRenderStep then bound=pcall(function()run:BindToRenderStep(renderName,priority,enforceSky)end) end
+            if bound then boundRun=run
+            elseif run.RenderStepped then keeper=run.RenderStepped:Connect(enforceSky)
+            elseif run.Heartbeat then keeper=run.Heartbeat:Connect(enforceSky) end
+        end
+        enforceSky()
     end
 
     function api.apply(value)
@@ -137,7 +217,7 @@ return function(game)
         end
 
         if not custom then
-            originalClock=lighting.ClockTime
+            snapshotClock()
             originals={}
             for _,child in ipairs(lighting:GetChildren()) do
                 if child:IsA("Sky") then originals[#originals+1]={object=child,parent=child.Parent} end
@@ -148,50 +228,82 @@ return function(game)
         if custom then custom.Parent = nil; custom:Destroy() end
         custom = replacement
         replacement.Parent = lighting
-        if daylight then lighting.ClockTime=14 end
+        if daylight and not environmentSettings then lighting.ClockTime=14 end
         appliedId=assetId;lastFailure=nil;repairs=0
         if blueprint then blueprint:Destroy() end
         blueprint=replacement:Clone()
-        if lighting.ChildAdded then skyAdded=lighting.ChildAdded:Connect(removeCompeting) end
-        local run=service("RunService")
-        if run then
-            local priority=2001
-            pcall(function()priority=Enum.RenderPriority.Last.Value+1 end)
-            local bound=false
-            if run.BindToRenderStep then
-                bound=pcall(function()run:BindToRenderStep(renderName,priority,enforceSky)end)
-            end
-            if bound then boundRun=run
-            elseif run.RenderStepped then keeper=run.RenderStepped:Connect(enforceSky)
-            else keeper=run.Heartbeat:Connect(enforceSky) end
-        end
+        startOverride()
+        return true
+    end
+
+    function api.applyEnvironment(settings)
+        if destroyed then return false,"Atmosphere customizer has been destroyed." end
+        if type(settings)~="table" then return false,"Environment settings are required." end
+        local time,fog,kind=settings.time,settings.fog,settings.color
+        if not finite(time) or time<0 or time>24 then return false,"Environment time must be a finite number from 0 to 24." end
+        if fog~="Off" and fog~="Light" and fog~="Thick" then return false,"Environment fog must be Off, Light, or Thick." end
+        if kind~="Natural" and kind~="Warm" and kind~="Cool" and kind~="Pink" then return false,"Environment color must be Natural, Warm, Cool, or Pink." end
+        snapshotEnvironment()
+        environmentSettings={time=time,fog=fog,color=kind}
+        for _,child in ipairs(lighting:GetChildren()) do removeCompeting(child) end
+        startOverride()
         enforceSky()
+        return true
+    end
+
+    function api.environment()
+        if not environmentSettings then return nil end
+        return {time=environmentSettings.time,fog=environmentSettings.fog,color=environmentSettings.color}
+    end
+
+    function api.restoreEnvironment()
+        if not environmentSettings then return true end
+        environmentSettings=nil
+        if tint then pcall(function()tint.Parent=nil;tint:Destroy()end);tint=nil end
+        for _,entry in ipairs(atmosphereEntries) do pcall(function()entry.object.Parent=entry.parent end) end
+        atmosphereEntries={}
+        if custom then
+            if daylight then lighting.ClockTime=14 elseif originalClock~=nil then lighting.ClockTime=originalClock end
+        elseif originalClock~=nil then lighting.ClockTime=originalClock end
+        if originalLighting then
+            lighting.FogStart=originalLighting.FogStart;lighting.FogEnd=originalLighting.FogEnd;lighting.FogColor=originalLighting.FogColor
+            originalLighting=nil
+        end
+        if not custom then stopOverride() end
+        if not custom and originalClock~=nil then originalClock=nil;originalLighting=nil end
         return true
     end
 
     function api.restore()
         generation = generation + 1
-        stopOverride()
+        local hadEnvironment=environmentSettings~=nil
+        if not hadEnvironment then stopOverride() end
         if blueprint then blueprint:Destroy();blueprint=nil end
         if custom then custom.Parent = nil; custom:Destroy(); custom = nil end
         for _, entry in ipairs(originals) do pcall(function()entry.object.Parent = entry.parent end) end
         originals={}
-        if originalClock~=nil then lighting.ClockTime=originalClock;originalClock=nil end
+        if not hadEnvironment and originalClock~=nil then lighting.ClockTime=originalClock;originalClock=nil;originalLighting=nil end
+        if hadEnvironment then enforceEnvironment() end
         return true
     end
 
     function api.currentAsset()return custom and appliedId end
-    function api.previewImage()return custom and custom.SkyboxFt end
+    function api.previewImage()
+        if custom then return custom.SkyboxFt end
+        local sky=lighting:FindFirstChildOfClass("Sky")
+        return sky and sky.SkyboxFt
+    end
 
     function api.daylightEnabled()return daylight end
     function api.setDaylight(value)
         daylight=value==true
-        if custom then lighting.ClockTime=daylight and 14 or originalClock end
+        if custom and not environmentSettings then lighting.ClockTime=daylight and 14 or originalClock end
         return daylight and "Daylight enabled for the custom sky." or "Game time restored; the sky may look dark at night."
     end
 
     function api.report()
         local lines={"Atmosphere build: immediate sky override V4","Requested asset="..tostring(appliedId or "none"),"Daylight="..tostring(daylight).." original clock="..tostring(originalClock),
+            "Environment="..(environmentSettings and ("time="..tostring(environmentSettings.time).." fog="..environmentSettings.fog.." color="..environmentSettings.color) or "none"),
             "Custom sky parent="..tostring(custom and custom.Parent and custom.Parent.Name or "none"),
             "Override active="..tostring(keeper~=nil or boundRun~=nil).." competing sky removals="..repairs,
             "Last load failure="..tostring(lastFailure or "none")}
@@ -223,6 +335,7 @@ return function(game)
     function api.destroy()
         if destroyed then return end
         api.restore()
+        if environmentSettings then api.restoreEnvironment() end
         destroyed = true
     end
 

@@ -18,6 +18,7 @@ local function signal()
 end
 local meta = {__index = function(o, k) return methods[k] or o.props[k] end,
     __newindex = function(o, k, v)
+        if o.destroyed and k == "Parent" then error("destroyed instance") end
         local old = o.props[k]
         o.props[k] = v
         if k == "Parent" and v and v ~= old and v.props and v.props.ChildAdded then
@@ -45,9 +46,9 @@ function methods:FindFirstChildOfClass(class)
 end
 function methods:Destroy()
     if self.destroyed then return end
-    self.destroyed = true
     for _, child in ipairs(self:GetChildren()) do child:Destroy() end
     self.Parent = nil
+    self.destroyed = true
 end
 function methods:Clone()
     local copy = Instance.new(self.ClassName)
@@ -144,6 +145,24 @@ local late = sky("Late"); local lateWrapper = model("LateWrapper", {late}); game
 assert(not api.apply(123), "a replacement cancelled during loading is rejected")
 assert(lateWrapper.destroyed, "cancelled replacement cleans wrappers")
 assert(original.Parent == lighting, "cancelled replacement preserves originals")
+
+local beforeEnvironment = api.environment()
+assert(not beforeEnvironment, "No environment is active before applying one")
+assert(not api.applyEnvironment({time=25,fog="Light",color="Natural"}), "Environment rejects out-of-range time")
+assert(not api.environment(), "Invalid environment settings do not mutate state")
+local nativeAtmosphere=Instance.new("Atmosphere",lighting)
+assert(api.applyEnvironment({time=7.5,fog="Light",color="Warm"}), "Environment applies without a custom sky")
+assert(api.environment().time==7.5 and api.environment().fog=="Light" and api.environment().color=="Warm", "Environment returns a copy of active settings")
+assert(nativeAtmosphere.Parent==nil and lighting.FogStart==100 and lighting.FogEnd==1800 and lighting.ClockTime==7.5, "Environment detaches native atmosphere and enforces lighting")
+local ownTint=lighting:FindFirstChild("LarpbloxEnvironmentTint")
+assert(ownTint and #lighting:GetChildren()>=2, "Environment creates one owned color correction effect")
+assert(api.applyEnvironment({time=8,fog="Thick",color="Cool"}) and lighting.ClockTime==8 and lighting.FogStart==0 and lighting.FogEnd==300, "Replacing an active environment applies immediately")
+ownTint:Destroy();lighting.ClockTime=1;lighting.FogEnd=2;tick(1/240)
+assert(lighting:FindFirstChild("LarpbloxEnvironmentTint") and lighting.ClockTime==8 and lighting.FogEnd==300, "Environment repairs deleted tint and game property changes")
+assert(api.restoreEnvironment() and nativeAtmosphere.Parent==lighting, "Environment restore returns native atmosphere")
+assert(not api.environment() and lighting.FogStart==nil and lighting.FogEnd==nil, "Environment restore returns baseline fog")
+lighting.FogStart=33;lighting.FogEnd=44;api.restoreEnvironment()
+assert(lighting.FogStart==33 and lighting.FogEnd==44, "Restoring without an active environment is a no-op")
 api.destroy();local afterRestore=sky("After destroy");afterRestore.Parent=lighting;tick(1/240)
 assert(afterRestore.Parent==lighting,"Restore and destroy disconnect the active override")
 assert(original.Parent == lighting and api.apply(123) == false, "destroy restores and disables API")
@@ -164,5 +183,42 @@ assert(fallbackCustom.SkyboxBk=="Fallback source","Heartbeat fallback repairs on
 assert(fallbackApi.restore() and fallbackOriginal.Parent==fallbackLighting,"Heartbeat fallback restores originals")
 local fallbackLate=sky("Fallback late");fallbackLate.Parent=fallbackLighting;tick(1/240)
 assert(fallbackLate.Parent==fallbackLighting,"Heartbeat fallback disconnects on restore")
+
+local function freshGame(clock)
+    local world=Instance.new("Lighting");world.ClockTime=clock;world.FogStart=11;world.FogEnd=22;world.FogColor="baseline"
+    local originalSky=sky("Fresh original");originalSky.Parent=world
+    local fresh={Lighting=world,assets={},provider={PreloadAsync=function(_,assets,callback)callback("valid-image","Success")end}}
+    function fresh:GetService(name)if name=="Lighting" then return self.Lighting elseif name=="RunService" then return renderService elseif name=="ContentProvider" then return self.provider end end
+    function fresh:GetObjects(uri)assert(uri=="rbxassetid://123");return self.assets end
+    local source=sky("Fresh custom");fresh.assets={model("Fresh wrapper",{source})}
+    return fresh,world,originalSky
+end
+
+local skyFirst,skyFirstLighting,skyFirstOriginal=freshGame(0)
+local skyFirstApi=module(skyFirst)
+assert(skyFirstApi.apply(123) and skyFirstLighting.ClockTime==14,"Sky-first lifecycle applies daylight")
+assert(skyFirstApi.applyEnvironment({time=8,fog="Light",color="Natural"}) and skyFirstLighting.ClockTime==8,"Sky-first environment takes time ownership")
+local copy=skyFirstApi.environment();copy.time=2;assert(skyFirstApi.environment().time==8,"Environment returns an isolated copy")
+assert(skyFirstApi.restoreEnvironment() and skyFirstLighting.ClockTime==14,"Restoring environment returns sky daylight")
+assert(skyFirstApi.restore() and skyFirstLighting.ClockTime==0 and skyFirstOriginal.Parent==skyFirstLighting,"Restoring sky returns original game clock")
+
+local envFirst,envFirstLighting,envFirstOriginal=freshGame(3)
+local envFirstApi=module(envFirst)
+local envNative=Instance.new("Atmosphere",envFirstLighting)
+assert(envFirstApi.applyEnvironment({time=8,fog="Thick",color="Cool"}) and envNative.Parent==nil,"Environment detaches native atmosphere immediately")
+assert(envFirstApi.apply(123) and envFirstLighting.ClockTime==8,"Sky preserves active environment time")
+assert(envFirstApi.restore() and envFirstLighting.ClockTime==8,"Sky restore preserves active environment")
+assert(envFirstApi.restoreEnvironment() and envFirstLighting.ClockTime==3 and envNative.Parent==envFirstLighting,"Environment restore returns game state")
+
+local destroyGame,destroyLighting,destroyOriginal=freshGame(4)
+local destroyNative=Instance.new("Atmosphere",destroyLighting)
+destroyLighting.FogStart=5;destroyLighting.FogEnd=6
+local destroyApi=module(destroyGame)
+assert(destroyApi.applyEnvironment({time=9,fog="Off",color="Pink"}) and destroyApi.apply(123),"Destroy lifecycle activates sky and environment")
+local unbindBefore=#unbindCalls
+destroyApi.destroy()
+assert(destroyLighting.ClockTime==4 and destroyLighting.FogStart==5 and destroyLighting.FogEnd==6,"Destroy restores lighting properties")
+assert(destroyOriginal.Parent==destroyLighting and destroyNative.Parent==destroyLighting,"Destroy restores sky and native atmosphere")
+assert(not destroyLighting:FindFirstChild("LarpbloxEnvironmentTint") and #unbindCalls>unbindBefore,"Destroy removes tint and render hook")
 
 print("Atmosphere validation, replacement, sanitization, failure, restore, and destroy passed.")

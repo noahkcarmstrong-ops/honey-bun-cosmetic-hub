@@ -285,17 +285,23 @@ local function savedSkies()
     local raw=uiSetting("savedSkyboxes","")
     if raw=="" then return {} end
     local entries=game:GetService("HttpService"):JSONDecode(raw)
-    assert(type(entries)=="table" and #entries<=30,"Saved skyboxes are invalid.")
+    assert(type(entries)=="table" and #entries<=30,"Saved atmospheres are invalid.")
     for _,entry in ipairs(entries) do
         assert(type(entry)=="table" and type(entry.name)=="string" and #entry.name<=40
             and type(entry.asset)=="string" and #entry.asset<=512 and type(entry.daylight)=="boolean"
             and (entry.image==nil or type(entry.image)=="string" and #entry.image<=512),"Saved skybox is invalid.")
+        if entry.environment~=nil then
+            local e=entry.environment
+            assert(type(e)=="table" and type(e.time)=="number" and e.time==e.time and e.time>=0 and e.time<=24
+                and (e.fog=="Off" or e.fog=="Light" or e.fog=="Thick")
+                and (e.color=="Natural" or e.color=="Warm" or e.color=="Cool" or e.color=="Pink"),"Saved atmosphere is invalid.")
+        end
     end
     return entries
 end
 local function storeSkies(entries)
     local raw=game:GetService("HttpService"):JSONEncode(entries)
-    assert(#raw<=8192,"Skybox library is full. Delete a saved skybox first.")
+    assert(#raw<=8192,"Atmosphere library is full. Delete a saved atmosphere first.")
     playerGui:SetAttribute("HoneyBunCosmeticUI_savedSkyboxes",raw)
 end
 local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animationBundle","")
@@ -1100,26 +1106,51 @@ render=function()
         caption("The standard wheel needs an R15 avatar and Roblox's emote menu enabled by the game. Some emotes may be restricted.",52)
     elseif activePage=="Atmosphere" then
         limits.MaxSize=Vector2.new(1050,850)
+        caption("PERSONAL ATMOSPHERE",24)
+        caption("Click a button to cycle styles. Changes apply immediately, only for you.",36)
+        local environment=atmosphereAPI and atmosphereAPI.environment()
+        local times={[8]="Morning",[14]="Day",[18]="Sunset",[0]="Night"}
+        local function cycleEnvironment(key,choices)
+            action(function()
+                local current=atmosphere().environment()
+                local nextValue=choices[1]
+                if current then
+                    for index,value in ipairs(choices) do
+                        if current[key]==value then nextValue=choices[index%#choices+1];break end
+                    end
+                end
+                local settings=current or {time=14,fog="Off",color="Natural"}
+                settings[key]=nextValue
+                local ok,message=atmosphere().applyEnvironment(settings);assert(ok,message)
+                return "Atmosphere updated."
+            end)
+        end
+        button("Time: "..(environment and (times[environment.time] or tostring(environment.time)) or "Game"),function()cycleEnvironment("time",{8,14,18,0})end)
+        button("Fog: "..(environment and environment.fog or "Game"),function()cycleEnvironment("fog",{"Off","Light","Thick"})end)
+        button("Color: "..(environment and environment.color or "Game"),function()cycleEnvironment("color",{"Natural","Warm","Cool","Pink"})end)
+        button("Restore game atmosphere",function()action(function()
+            atmosphere().restoreEnvironment();return "Game atmosphere restored. Your selected skybox stays on."
+        end)end)
         caption("CUSTOM SKYBOX",24)
         caption("Paste a Roblox skybox model link or asset ID. The model must contain a Sky; a single image ID is not a complete skybox.",64)
         local field=input("Roblox skybox model link or ID",skyboxInput,function(value)skyboxInput=value end)
         button("Apply skybox",function()
             skyboxInput=field.Text;saveUI()
-            action(function()local ok,message=atmosphere().apply(skyboxInput);assert(ok,message);return "Skybox applied. "..(atmosphere().daylightEnabled() and "Daylight is on." or "Using the game time.") end)
+            action(function()local ok,message=atmosphere().apply(skyboxInput);assert(ok,message);return atmosphere().environment() and "Skybox applied with your atmosphere settings." or ("Skybox applied. "..(atmosphere().daylightEnabled() and "Daylight is on." or "Using the game time.")) end)
         end)
         button("Restore original sky",function()action(function()atmosphere().restore();return "Original sky restored." end)end)
         local daylight=not atmosphereAPI or atmosphereAPI.daylightEnabled()
-        button(daylight and "Daylight: ON" or "Daylight: OFF",function()action(function()
+        if not environment then button(daylight and "Daylight: ON" or "Daylight: OFF",function()action(function()
             return atmosphere().setDaylight(not daylight)
-        end)end)
+        end)end) end
         button("Copy sky report",function()action(function()
             local report=atmosphere().report()
             if type(setclipboard)=="function" then setclipboard(report);return "Sky report copied. Paste it into chat." end
             return report
         end)end)
-        caption("SAVED SKYBOXES",24)
-        local nameField=input("Skybox name",skyboxName,function(value)skyboxName=value end)
-        button(skyboxRename and "Save Name" or "Save skybox",function()
+        caption("SAVED ATMOSPHERES",24)
+        local nameField=input("Atmosphere name",skyboxName,function(value)skyboxName=value end)
+        button(skyboxRename and "Save Name" or "Save atmosphere",function()
             local asset=field.Text:match("^%s*(.-)%s*$")
             local label=nameField.Text:match("^%s*(.-)%s*$")
             action(function()
@@ -1129,29 +1160,36 @@ render=function()
                     assert(entries[skyboxRename],"Saved skybox no longer exists.")
                     entries[skyboxRename].name=label;storeSkies(entries)
                     skyboxRename=nil;skyboxName=""
-                    return "Skybox renamed: "..label
+                    return "Atmosphere renamed: "..label
                 end
-                assert(#asset>0 and #asset<=512,"Enter a skybox model link or ID.")
+                assert(#asset<=512,"Enter a skybox model link or ID.")
+                assert(#asset>0 or atmosphere().environment(),"Choose an atmosphere style or enter a skybox first.")
                 local index
-                for i,entry in ipairs(entries) do if entry.asset==asset then index=i;break end end
-                assert(index or #entries<30,"You can save up to 30 skyboxes. Delete one first.")
-                local ok,message=atmosphere().apply(asset);assert(ok,message)
-                entries[index or #entries+1]={name=label,asset=asset,daylight=atmosphere().daylightEnabled(),image=atmosphere().previewImage()}
+                local settings=atmosphere().environment()
+                for i,entry in ipairs(entries) do
+                    local previous=entry.environment
+                    local sameSettings=(not previous and not settings) or (previous and settings
+                        and previous.time==settings.time and previous.fog==settings.fog and previous.color==settings.color)
+                    if entry.asset==asset and sameSettings then index=i;break end
+                end
+                assert(index or #entries<30,"You can save up to 30 atmospheres. Delete one first.")
+                if #asset>0 then local ok,message=atmosphere().apply(asset);assert(ok,message) end
+                entries[index or #entries+1]={name=label,asset=asset,daylight=atmosphere().daylightEnabled(),image=atmosphere().previewImage(),environment=atmosphere().environment()}
                 storeSkies(entries);skyboxInput=asset;skyboxName="";saveUI()
-                return "Skybox saved: "..label
+                return "Atmosphere saved: "..label
             end)
         end)
         if skyboxRename then button("Cancel",function()if not busy then skyboxRename=nil;skyboxName="";render() end end) end
         local loaded,entries=pcall(savedSkies)
-        if not loaded then caption("Saved skyboxes could not load: "..tostring(entries),48)
-        elseif #entries==0 then caption("No saved skyboxes yet. Enter a name above and press Save skybox.",44)
+        if not loaded then caption("Saved atmospheres could not load: "..tostring(entries),48)
+        elseif #entries==0 then caption("No saved atmospheres yet. Choose your styles, enter a name, and press Save atmosphere.",44)
         else
-            local search=input("Search saved skyboxes...",skyboxSearch,function(value)skyboxSearch=value end)
+            local search=input("Search saved atmospheres...",skyboxSearch,function(value)skyboxSearch=value end)
             local grid=row("Frame",0);grid.Name="SkyboxGrid"
             local arrangement=Instance.new("UIGridLayout",grid)
             arrangement.SortOrder=Enum.SortOrder.LayoutOrder;arrangement.CellPadding=UDim2.fromOffset(10,20)
             local cards={}
-            local empty=caption("No skyboxes found.",32)
+            local empty=caption("No atmospheres found.",32)
             local function fitGrid()
                 local width=grid.AbsoluteSize and grid.AbsoluteSize.X or 440
                 if width<=0 then width=440 end
@@ -1179,9 +1217,13 @@ render=function()
                 animateButton(image)
                 Instance.new("UICorner",image).CornerRadius=UDim.new(0,2)
                 image.Activated:Connect(function() action(function()
-                    local ok,message=atmosphere().apply(entry.asset);assert(ok,message)
-                    atmosphere().setDaylight(entry.daylight);skyboxInput=entry.asset;saveUI()
-                    return "Loaded skybox: "..name
+                    local active=atmosphere()
+                    if entry.asset~="" then local ok,message=active.apply(entry.asset);assert(ok,message) else active.restore() end
+                    active.setDaylight(entry.daylight)
+                    if entry.environment then local ok,message=active.applyEnvironment(entry.environment);assert(ok,message)
+                    else active.restoreEnvironment() end
+                    skyboxInput=entry.asset;saveUI()
+                    return "Loaded atmosphere: "..name
                 end) end)
                 local preview=Instance.new("ImageLabel",image)
                 preview.Name="SkyboxPreview_"..id;preview.Size=UDim2.new(1,0,1,0)
@@ -1236,10 +1278,10 @@ render=function()
                     else
                         option("Update",0.17,function() action(function()
                             local current=savedSkies();local active=atmosphere()
-                            local asset=active.currentAsset();assert(asset,"Apply a skybox first to update this save.")
-                            current[id].asset=asset;current[id].image=active.previewImage();current[id].daylight=active.daylightEnabled()
+                            local asset=active.currentAsset() or "";assert(asset~="" or active.environment(),"Choose an atmosphere style or skybox first.")
+                            current[id].asset=asset;current[id].image=active.previewImage();current[id].daylight=active.daylightEnabled();current[id].environment=active.environment()
                             storeSkies(current);skyboxMenu=nil
-                            return "Updated "..name.." with your current sky."
+                            return "Updated "..name.." with your current atmosphere."
                         end) end)
                         option("Rename",0.37,function()
                             if busy then return end
@@ -1253,7 +1295,7 @@ render=function()
             search:GetPropertyChangedSignal("Text"):Connect(function()skyboxSearch=search.Text;fitGrid()end)
             grid:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitGrid);fitGrid()
         end
-        caption("Only you see this change. Saved skyboxes belong to your account and load again using Load.",48)
+        caption("Only you see these changes. Saved atmospheres keep your skybox, time, fog, and color together.",48)
     elseif activePage=="Animations" then
         caption("ANIMATION BUNDLES",24)
         caption("Paste a Roblox animation bundle link to change your walk, run, idle, and the other movement animations included in that bundle.",56)
