@@ -61,6 +61,17 @@ local function createAnimations()
         destroy=function()calls.animationDestroy=true end,
     }
 end
+local function createClothes()
+    return {
+        equipShirt=function(value)calls.shirt=value;return'Equipped'end,
+        equipPants=function(value)calls.pants=value;return'Equipped'end,
+        restoreShirt=function()calls.shirtRestore=true;return'Restored'end,
+        restorePants=function()calls.pantsRestore=true;return'Restored'end,
+        restore=function()calls.clothesRestore=true;return'Restored'end,
+        reapplySaved=function()calls.clothesReplay=(calls.clothesReplay or 0)+1;return'Restored'end,
+        destroy=function()calls.clothesDestroy=true end,
+    }
+end
 local function createEditor()
     local equipped,nextKey={},0
     return {
@@ -78,7 +89,7 @@ local function createEditor()
         restoreSkin=function()calls.skinRestore=true;return'Original skin restored'end,
         applyBody=function(value)calls.body=calls.body+1;calls.package=value;return'Body applied'end,
         restore=function()calls.restore=calls.restore+1;return'Restored'end,
-        reapplySaved=function()return'Saved cosmetics restored.'end,
+        reapplySaved=function()if calls.failReplay then error('Fixture avatar unavailable')end;return'Saved cosmetics restored.'end,
         getSettings=function()return{accessories={},colors={}}end,
         destroy=function()calls.destroy=calls.destroy+1 end,
     }
@@ -92,6 +103,7 @@ function game:HttpGet(url)
     if url:find('/motion.lua',1,true)then return'motion-module'end
     if url:find('/animations.lua',1,true)then return'animations-module'end
     if url:find('/storage.lua',1,true)then return'storage-module'end
+    if url:find('/clothes.lua',1,true)then return'clothes-module'end
     if url:find('/loader.lua',1,true)then return'loader'end
     error('Unexpected request '..url)
 end
@@ -99,6 +111,7 @@ loadstring=function(source)
     if source=='editor-module'then return function()return createEditor end end
     if source=='motion-module'then return function()return createMotion end end
     if source=='animations-module'then return function()return createAnimations end end
+    if source=='clothes-module'then return function()return createClothes end end
     if source=='storage-module'then return function()return function()
         calls.storageLoaded=true
         return{status=function()return'Auto-save: on'end,destroy=function()calls.storageDestroyed=true end}
@@ -131,6 +144,14 @@ click('2. Hat 456  |  Remove')
 assert(find(gui(),'TextButton','1. Hat 123  |  Remove') and find(gui(),'TextButton','2. Hat 789  |  Remove'),'Individual removal preserves other hats')
 click('Add accessories');assert(calls.equip==3,'Empty input does not equip')
 click('Remove current Roblox accessories');assert(calls.current==1,'Original accessory button reaches backend')
+click('CLOTHES')
+field('Classic shirt catalog link or ID').Text='https://www.roblox.com/catalog/123/Classic-Shirt';click('Equip shirt')
+field('Classic pants catalog link or ID').Text='456';click('Equip pants')
+assert(calls.shirt:find('/123/',1,true) and calls.pants=='456','Separate classic shirt and pants equip actions')
+click('Restore original shirt');click('Restore original pants')
+assert(calls.shirtRestore and calls.pantsRestore and calls.restore==0,'Clothing restores do not reset other cosmetics')
+local replayCount=calls.clothesReplay;calls.failReplay=true;click('Reapply saved cosmetics');calls.failReplay=false
+assert(calls.clothesReplay==replayCount+1,'A failed saved avatar does not block clothes replay')
 click('SKIN');click('Roblox colors  >')
 click('Restore original skin');assert(calls.skinRestore and calls.restore==0,'Skin-only restore does not restore all cosmetics')
 local swatches={}
@@ -154,11 +175,12 @@ click('Equip animation bundle')
 assert(calls.animationBundle=='https://www.roblox.com/bundles/82/Robot','Animation bundle Equip action')
 assert(not find(gui(),'TextButton','Play animation') and not find(gui(),'TextButton','Loop: ON'),'Standalone playback UI removed')
 click('Restore original animations');assert(calls.animationRestore,'Animation restore action')
-click('Restore original appearance');assert(calls.restore==1 and calls.motionRestore,'Restore both editors')
+click('Restore original appearance');assert(calls.restore==1 and calls.motionRestore and calls.clothesRestore,'Restore all editors')
 local old=gui();click('Refresh');assert(old.destroyed and calls.destroy==1 and gui()~=old,'Refresh cleans the old avatar editor')
 assert(calls.motionDestroy,'Refresh cleans motion editor')
 assert(calls.animationDestroy,'Refresh cleans animation bundle editor')
 assert(calls.storageLoaded and calls.storageDestroyed,'Persistent settings load and flush on Refresh')
+assert(calls.clothesDestroy,'Refresh cleans clothing editor')
 gui():Destroy()
 for _,c in ipairs(input.InputBegan.listeners)do assert(not c.Connected,'Input listeners disconnected')end
 print('Cosmetic tabs, accessory/body actions, color validation, separate repo, Refresh and cleanup passed.')

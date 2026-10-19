@@ -3,7 +3,7 @@ local Http=game:GetService("HttpService")
 local function allowed(key,value)
     if type(key)~="string" or #key>80 then return false end
     local kind=type(value)
-    if key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" then
+    if key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" then
         return kind=="string" and #value<=131072
     end
     if key=="HoneyBunCosmeticAnimationBundle" then
@@ -58,9 +58,9 @@ return function(gui,userId,onStatus)
     end
     local changed=gui.AttributeChanged:Connect(function(key)
         local value=gui:GetAttribute(key)
-        if not allowed(key,value) and not (value==nil and (key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticAnimationBundle" or key:sub(1,19)=="HoneyBunCosmeticUI_")) then return end
+        if not allowed(key,value) and not (value==nil and (key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" or key=="HoneyBunCosmeticAnimationBundle" or key:sub(1,19)=="HoneyBunCosmeticUI_")) then return end
         dirty=true
-        if key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticAnimationBundle" then
+        if key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" or key=="HoneyBunCosmeticAnimationBundle" then
             flush()
         elseif not scheduled then
             scheduled=true

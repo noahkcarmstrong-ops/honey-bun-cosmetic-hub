@@ -20,7 +20,15 @@ The added accessory list shows your count and a separate Remove button for each 
 
 Supports compatible rigid accessories, including hats, masks, and hair. Added accessories appear in a remove list. **Remove added accessories** leaves your existing accessories alone. Asset scripts are stripped before anything is equipped. At most 20 added accessories are allowed at once.
 
-**Remove current Roblox accessories** hides the accessories your avatar is already wearing, including your account's hats. Accessories added by the hub stay equipped. **Restore original appearance**, Refresh, or re-running the hub brings the original accessories back. This does not remove anything from your Roblox inventory.
+**Remove current Roblox accessories** hides the accessories your avatar is already wearing, including your account's hats. Accessories added by the hub stay equipped. **Restore original appearance** brings the original accessories back. Refresh re-applies your saved choice. This does not remove anything from your Roblox inventory.
+
+## Clothes
+
+1. Open **CLOTHES** and paste a classic 2D shirt catalog link or ID, then click **Equip shirt**.
+2. Paste a classic 2D pants catalog link or ID, then click **Equip pants**.
+3. Use **Restore original shirt** or **Restore original pants** to reset just that garment.
+
+Shirts and pants work together and save like your other cosmetic selections, including after rejoining when file auto-save is on. These controls support classic `Shirt` and `Pants` assets; layered 3D clothing is rejected. Changing clothes keeps accessories, skin, body packages, emotes, and movement animations.
 
 ## Skin
 
@@ -57,13 +65,13 @@ The bundle changes its included walk, run, idle, jump, fall, climb, and swimming
 
 ## Controls and limits
 
-- **Restore original appearance** removes added accessories, brings back hidden original accessories, restores the captured body, colors, emote wheel and movement animations, and clears saved cosmetic selections.
+- **Restore original appearance** removes added accessories, brings back hidden original accessories, restores original clothes, the captured body, colors, emote wheel and movement animations, and clears saved cosmetic selections.
 - **Right Shift** shows/hides the menu. Hiding keeps your changes.
 - **Refresh** closes the old editor and loads the latest version from this repository, then reapplies your saved cosmetics.
 - Respawning or resetting automatically reapplies your body package, hidden original accessories, added accessories, and per-region colors after your new character finishes loading.
 - **Reapply saved cosmetics** retries saved items if an asset failed to load. Failed saved items are kept for retry.
 
-Selections and editor fields survive respawns, resets, Refresh, and re-running the launcher. When your executor supports `readfile` and `writefile`, automatic saving also stores accessories, colors, body packages, emote slots, movement bundles, and editor fields in `HoneyBunCosmeticHub_<RobloxUserId>.json`, with a `.bak` backup. Run the hub again after rejoining to load them. The file belongs to your account on that executor/device and is shared across games; it does not follow you to a different device automatically.
+Selections and editor fields survive respawns, resets, Refresh, and re-running the launcher. When your executor supports `readfile` and `writefile`, automatic saving also stores accessories, classic shirts and pants, colors, body packages, emote slots, movement bundles, and editor fields in `HoneyBunCosmeticHub_<RobloxUserId>.json`, with a `.bak` backup. Run the hub again after rejoining to load them. The file belongs to your account on that executor/device and is shared across games; it does not follow you to a different device automatically.
 
 The menu displays **Auto-save: on**, **session only**, or a file-write failure. Without executor file access, saving lasts only for the current Roblox session. Refreshing into this version saves your existing selections automatically.
 
@@ -77,6 +85,7 @@ npx --offline --package=fengari-node-cli fengari tests/menu.lua
 npx --offline --package=fengari-node-cli fengari tests/motion.lua
 npx --offline --package=fengari-node-cli fengari tests/animations.lua
 npx --offline --package=fengari-node-cli fengari tests/storage.lua
+npx --offline --package=fengari-node-cli fengari tests/clothes.lua
 ```
 
 These use Roblox stand-ins to check the editor logic; they do not prove that a game permits a particular asset.

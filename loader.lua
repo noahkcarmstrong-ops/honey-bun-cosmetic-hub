@@ -103,7 +103,7 @@ content.Parent = panel
 local layout = Instance.new("UIListLayout", content)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
-local avatarAPI,motionAPI,animationAPI
+local avatarAPI,motionAPI,animationAPI,clothesAPI
 local refresh = Instance.new("TextButton")
 refresh.Position = UDim2.new(1, -126, 0, 62)
 refresh.Size = UDim2.fromOffset(98, 26)
@@ -162,11 +162,12 @@ local function uiSetting(key,default)
     return type(value)==type(default) and value or default
 end
 local alive, busy, activePage = true, false, uiSetting("page","Accessories")
-if activePage~="Accessories" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" then activePage="Accessories" end
+if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" then activePage="Accessories" end
 local statusText = "Local avatar editor. Saved selections reapply automatically."
 local statusLabel, render
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
 local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animationBundle","")
+local shirtInput,pantsInput=uiSetting("shirt",""),uiSetting("pants","")
 local emoteSlot=uiSetting("emoteSlot",1)
 if emoteSlot<1 or emoteSlot>8 or emoteSlot%1~=0 then emoteSlot=1 end
 local rgb = {uiSetting("red","255"),uiSetting("green","204"),uiSetting("blue","153")}
@@ -177,7 +178,7 @@ local regionIndex = uiSetting("region",1)
 if regionIndex<1 or regionIndex>#regions or regionIndex%1~=0 then regionIndex=1 end
 local paletteOpen=uiSetting("palette",false)
 local function saveUI()
-    local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animationBundle=animationInput,emoteSlot=emoteSlot}
+    local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animationBundle=animationInput,emoteSlot=emoteSlot,shirt=shirtInput,pants=pantsInput}
     for key,value in pairs(values) do playerGui:SetAttribute("HoneyBunCosmeticUI_"..key,value) end
 end
 -- Exact RGB samples from the user's 5-column, 6-row Roblox palette reference.
@@ -282,6 +283,32 @@ local function animations()
     end)
     return animationAPI
 end
+local function clothes()
+    if clothesAPI then return clothesAPI end
+    api()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/clothes.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    clothesAPI=chunk()(Players.LocalPlayer,function(message)
+        if not alive then return end
+        statusText=message
+        if statusLabel then statusLabel.Text=message end
+    end)
+    return clothesAPI
+end
+local function reapplyAll(editor)
+    local failures={}
+    for _,operation in ipairs({
+        function() return editor.reapplySaved() end,
+        function() return motion().reapplySaved() end,
+        function() return animations().reapplySaved() end,
+        function() return clothes().reapplySaved() end,
+    }) do
+        local ok,message=pcall(operation)
+        if not ok then failures[#failures+1]=tostring(message):gsub("^.-:%d+:%s*","") end
+        if ok and type(message)=="string" and message:find("some could not load",1,true) then failures[#failures+1]=message end
+    end
+    return #failures==0 and "Saved selections restored." or ("Some saved selections could not load: "..failures[1])
+end
 local function action(callback)
     if busy or not alive then return end
     busy=true
@@ -347,6 +374,24 @@ render=function()
         button("Remove added accessories",function() action(function(editor) return editor.clearAccessories() end) end)
         button("Remove current Roblox accessories",function() action(function(editor) return editor.removeCurrentAccessories() end) end)
         caption("Remove current Roblox accessories hides your original hats and accessories. Restore original appearance brings them back.",48)
+    elseif activePage=="Clothes" then
+        caption("CLASSIC CLOTHES",24)
+        caption("Paste classic 2D shirt and pants catalog links. Equip each separately; your other cosmetics stay on. Layered 3D clothing is not supported.",64)
+        caption("SHIRT",22)
+        local shirt=input("Classic shirt catalog link or ID",shirtInput,function(value) shirtInput=value end)
+        button("Equip shirt",function()
+            shirtInput=shirt.Text;saveUI()
+            action(function() return clothes().equipShirt(shirtInput) end)
+        end)
+        button("Restore original shirt",function() action(function() return clothes().restoreShirt() end) end)
+        caption("PANTS",22)
+        local pants=input("Classic pants catalog link or ID",pantsInput,function(value) pantsInput=value end)
+        button("Equip pants",function()
+            pantsInput=pants.Text;saveUI()
+            action(function() return clothes().equipPants(pantsInput) end)
+        end)
+        button("Restore original pants",function() action(function() return clothes().restorePants() end) end)
+        caption("Shirts and pants save through resets, Refresh, and rejoining when file auto-save is on.",48)
     elseif activePage=="Skin" then
         caption("SKIN COLOR",24)
         button("Restore original skin",function() action(function(editor) return editor.restoreSkin() end) end)
@@ -480,23 +525,19 @@ render=function()
         end)
         caption("R6 and R15 use different body parts. Unsupported packages show a message instead of changing your avatar rig.",48)
     end
-    button("Reapply saved cosmetics",function() action(function(editor)
-        local message=editor.reapplySaved()
-        if motionAPI then motionAPI.reapplySaved() end
-        if animationAPI then animationAPI.reapplySaved() end
-        return message
-    end) end)
+    button("Reapply saved cosmetics",function() action(reapplyAll) end)
     button("Restore original appearance",function() action(function(editor)
         if motionAPI then motionAPI.restore() end
         if animationAPI then animationAPI.restore() end
+        if clothesAPI then clothesAPI.restore() end
         return editor.restore()
     end) end)
 end
-for index,name in ipairs({"Accessories", "Skin", "Body", "Emotes", "Animations"}) do
+for index,name in ipairs({"Accessories", "Clothes", "Skin", "Body", "Emotes", "Animations"}) do
     local page=name
     local item=Instance.new("TextButton")
     item.Name=page
-    item.Size=UDim2.fromOffset((index==1 or index==5) and 96 or 64,32)
+    item.Size=UDim2.fromOffset((page=="Accessories" or page=="Animations") and 96 or 64,32)
     item.LayoutOrder=index
     item.Parent=tabs
     styleButton(item,string.upper(page))
@@ -515,15 +556,11 @@ gui.Destroying:Connect(function()
     alive=false
     connection:Disconnect()
     respawn:Disconnect()
+    if persistence then persistence.destroy() end
     if avatarAPI then avatarAPI.destroy() end
     if motionAPI then motionAPI.destroy() end
     if animationAPI then animationAPI.destroy() end
-    if persistence then persistence.destroy() end
+    if clothesAPI then clothesAPI.destroy() end
 end)
 render()
-action(function(editor)
-    local message=editor.reapplySaved()
-    motion().reapplySaved()
-    animations().reapplySaved()
-    return message
-end)
+action(reapplyAll)
