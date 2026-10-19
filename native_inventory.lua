@@ -204,6 +204,7 @@ return function(playerGui,catalog,onStatus,mode)
     local rarityRanks={unique=8,ancient=7,godly=6,vintage=5,classic=5,legendary=4,rare=3,uncommon=2,common=1}
     local rarityColors={unique={255,100,0},ancient={138,43,226},godly={255,0,255},vintage={255,255,0},classic={255,255,0},legendary={255,0,0},rare={0,200,0},uncommon={0,100,255},common={179,179,179}}
     local function entryColor(entry)
+        if savedOnly and not effects then return Color3.fromRGB(table.unpack(rarityColors.ancient)) end
         if entry.rarityColor then return entry.rarityColor end
         local rgb=rarityColors[lower(entry.rarity)]
         if rgb and Color3 and Color3.fromRGB then return Color3.fromRGB(table.unpack(rgb)) end
@@ -716,21 +717,40 @@ return function(playerGui,catalog,onStatus,mode)
                     if not savedCards[id] or not alive(savedCards[id]) then
                         local card=template:Clone();savedCards[id]=card;savedEntries[card]=entry
                         local rarityColor=entryColor(entry)
+                        if not effects then
+                            card.BorderColor3=rarityColor
+                            for _,edge in ipairs(descendants(card)) do
+                                if is(edge,"UIStroke") then edge.Color=rarityColor end
+                            end
+                        end
                         card.Name="HoneyBunLocal_Saved_"..entry.kind.."_"..tostring(entry.id);card.Visible=true
                         for _,v in ipairs(texts(card)) do
                             if (is(v,"TextLabel") or is(v,"TextButton")) and (v.Text=="Default Knife" or v.Text=="Default Gun" or normalize(v.Name)=="itemname") then
                                 v.Text=entry.name
                                 if rarityColor then
                                     pcall(function()v.BackgroundColor3=rarityColor;v.BackgroundTransparency=0 end)
+                                    if not effects then
+                                        v.BorderSizePixel=0;v.BorderColor3=rarityColor
+                                        pcall(function()
+                                            v.Position=UDim2.new(0,0,v.Position.Y.Scale,v.Position.Y.Offset)
+                                            v.Size=UDim2.new(1,0,v.Size.Y.Scale,v.Size.Y.Offset)
+                                        end)
+                                        local bar=read(v,"Parent")
+                                        if bar~=card and is(bar,"GuiObject") then bar.BackgroundColor3=rarityColor;bar.BackgroundTransparency=0;bar.BorderColor3=rarityColor end
+                                        for _,decoration in ipairs(descendants(v)) do if is(decoration,"UIGradient") then decoration.Enabled=false end end
+                                    end
                                     pcall(function()v.TextColor3=Color3.fromRGB(255,255,255)end)
                                 end
                             end
-                            if (is(v,"TextLabel") or is(v,"TextButton")) and normalize(v.Name)=="rarity" then v.Text=tostring(entry.rarity or "");if rarityColor then v.TextColor3=rarityColor end end
+                            if (is(v,"TextLabel") or is(v,"TextButton")) and normalize(v.Name)=="rarity" then
+                                if not effects then v.Text="";v.Visible=false
+                                else v.Text=tostring(entry.rarity or "");if rarityColor then v.TextColor3=rarityColor end end
+                            end
                             if is(v,"LuaSourceContainer") then destroy(v) end
                         end
                         local hasRarity=false
                         for _,v in ipairs(texts(card)) do if (is(v,"TextLabel") or is(v,"TextButton")) and normalize(v.Name)=="rarity" then hasRarity=true end end
-                        if not hasRarity and entry.rarity then
+                        if effects and not hasRarity and entry.rarity then
                             local rarity=Instance.new("TextLabel");rarity.Name="Rarity";rarity.BackgroundTransparency=1;rarity.Text=tostring(entry.rarity)
                             if rarityColor then rarity.TextColor3=rarityColor end
                             rarity.Size=UDim2.fromScale(0.42,0.16);rarity.Position=UDim2.fromScale(0.58,0.02);rarity.TextScaled=true;rarity.TextStrokeTransparency=0.5

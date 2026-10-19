@@ -352,6 +352,14 @@ assert(not savedTab:FindFirstChild('NativeTabScript'),'Cloned tab never runs nat
 assert(math.abs(savedTab.Position.X.Scale-0.45)<0.001 and math.abs(savedTab.Size.X.Scale-0.15)<0.001,'Four tabs share the existing tab span without covering Search')
 assert(tabHoliday.LayoutOrder<savedTab.LayoutOrder and savedTab.LayoutOrder<headerSearch.LayoutOrder and tabLayout.SortOrder=='LayoutOrder','Saved Weapons is ordered immediately after Holiday and before Search')
 assert(#savedCardsIn(savedGrid)==2,'All saved weapons share one cloned Saved pane even with a sidebar Weapons decoy')
+for _,card in ipairs(savedCardsIn(savedGrid)) do
+    local label=card:FindFirstChild('ItemName',true)
+    assert(label.BackgroundColor3.R==138/255 and label.BackgroundColor3.G==43/255 and label.BackgroundColor3.B==226/255,'Every saved weapon uses Ancient purple regardless of catalog rarity')
+    assert(card.BorderColor3.R==138/255 and label.BorderSizePixel==0,'Saved card edges match purple without a gray name border')
+    local rarity=card:FindFirstChild('Rarity',true)
+    assert(not rarity or rarity.Visible==false and rarity.Text=='','Saved weapon cards do not display a rarity word')
+end
+
 assert(#savedCardsIn(holidayGrid)==0 and #savedCardsIn(classicGrid)==0,'Saved weapons do not enter native category grids')
 assert(#savedCardsIn(tabCurrent)==0,'A Tabs.Current button container is never mistaken for a category grid')
 assert(#savedCardsIn(currentGrid)==0,'Current category recognition maps to Season1')
