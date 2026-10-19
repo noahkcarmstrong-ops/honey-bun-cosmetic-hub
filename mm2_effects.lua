@@ -1,17 +1,18 @@
 -- Local visual previews from MM2 Effects data; no ownership changes or game remotes.
 return function(game,onStatus,library)
-    local alive=true;local generation=0
+    local alive=true;local generation=0;local applicationRevision=0
     local selected=nil
     local catalogCache
     local catalogIds={}
     local collectedIds={}
     local capturePending,captureQueued,watchEpoch={},false,0
     local connections,observed,applied={}, {}, {}
+    local suppressed={}
     local sourceCache,sourceRoots,sourceNotes={},{},{}
     local sourceErrors,lastApplyError={},""
     local madeVisuals=setmetatable({},{__mode="k"})
     local startedDormant=false
-    local function read(o,k) if not o then return nil end;local ok,v=pcall(function()return o[k]end);return ok and v or nil end
+    local function read(o,k) if not o then return nil end;local ok,v=pcall(function()return o[k]end);if ok then return v end;return nil end
     local function isA(o,c) local f=read(o,"IsA");if type(f)=="function"then local ok,v=pcall(f,o,c);return ok and v==true end;return read(o,"ClassName")==c end
     local function children(o) local f=read(o,"GetChildren");if type(f)=="function"then local ok,v=pcall(f,o);if ok and type(v)=="table"then return v end end;return{} end
     local function descendants(o)local f=read(o,"GetDescendants");if type(f)=="function"then local ok,v=pcall(f,o);if ok and type(v)=="table"then return v end end;local out={};local function walk(p)for _,x in ipairs(children(p))do out[#out+1]=x;walk(x)end end;walk(o);return out end
@@ -194,16 +195,34 @@ return function(game,onStatus,library)
         for _,o in ipairs(made)do applied[target][#applied[target]+1]=o end
         return true
     end
-    local function clearApplied()startedDormant=false;for target,list in pairs(applied)do for _,o in ipairs(list)do destroy(o)end;applied[target]=nil end end
+    local function drain(o)
+        pcall(function()o.Enabled=false end)
+        pcall(function()o:Clear()end)
+    end
+    local function suppressNative(target)
+        for _,o in ipairs(descendants(target)) do
+            if visual(o) and not generated(o) and suppressed[o]==nil then
+                local enabled=read(o,"Enabled")
+                if type(enabled)=="boolean" then suppressed[o]=enabled;drain(o) end
+            end
+        end
+    end
+    local function clearApplied()
+        applicationRevision=applicationRevision+1
+        startedDormant=false
+        for target,list in pairs(applied)do for _,o in ipairs(list)do drain(o);destroy(o)end;applied[target]=nil end
+        for o,enabled in pairs(suppressed)do pcall(function()o.Enabled=enabled end)end
+        suppressed={}
+    end
     local function apply()
         if not alive or not selected then return false,"No effect selected." end
-        local token=generation
+        local token,revision=generation,applicationRevision
         local e=find(selected);local source=e and sourceFor(e)
-        if not alive or token~=generation then return false,"Effect application was cancelled." end
+        if not alive or token~=generation or revision~=applicationRevision then return false,"Effect application was cancelled." end
         if not source then return false,"Effect has no supported local visual source." end
         local count=0;for _,target in ipairs(targets())do
-            if not alive or token~=generation then return false,"Effect application was cancelled." end
-            if cloneVisuals(source,target)then count=count+1 end
+            if not alive or token~=generation or revision~=applicationRevision then return false,"Effect application was cancelled." end
+            if cloneVisuals(source,target)then suppressNative(target);count=count+1 end
         end
         if count==0 then return false,"No original visuals could attach to the knife. See visual details in Copy MM2 report." end
         return true,"Equipped effect locally: "..e.name.." (original visuals)"
@@ -217,6 +236,7 @@ return function(game,onStatus,library)
         if not handle or observed[handle] then return end
         observed[handle]=true
         local function changed(object)
+            if generated(object) then return end
             if read(object,"Name")=="HoneyBunCosmeticVisual" then refreshEffect() end
         end
         connect(read(handle,"ChildAdded"),changed)
@@ -368,7 +388,7 @@ return function(game,onStatus,library)
         local ids={};for id in pairs(collectedIds)do ids[#ids+1]=id end;table.sort(ids)
         return "Automatically collected originals: "..(#ids>0 and table.concat(ids,",")or"none yet")
     end
-    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=sourceErrors[selected]or sourceNotes[selected]or"resolved" end;return"MM2 Effects build: Bats and saved player originals V10\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails().."\n"..visualDetails().."\n"..collectionReport() end
+    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=sourceErrors[selected]or sourceNotes[selected]or"resolved" end;return"MM2 Effects build: exclusive original effect switching V11\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails().."\n"..visualDetails().."\n"..collectionReport() end
     if library and library.getSelected then
         local saved=library.getSelected()
         if saved then local ok,message=pcall(api.equip,saved,"Effect");if not ok then lastApplyError=tostring(message) end end

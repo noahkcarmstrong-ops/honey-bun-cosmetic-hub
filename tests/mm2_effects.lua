@@ -78,3 +78,18 @@ assert(count(nextDisplay,'ParticleEmitter')==1 and #display:GetChildren()==0,'Ca
 api.restore();assert(#nextDisplay:GetChildren()==0 and #held:GetChildren()==0,'Turning off Bats removes its visuals')
 api.destroy()
 print('Original Bats-only catalog, back and held knife playback, display replacement and cleanup passed.')
+
+-- A selected local effect replaces native knife particles rather than layering.
+local native=node('ParticleEmitter','NativeEffect',nextDisplay);native.Enabled=true
+local savedA=node('Folder','SavedA');local a=node('ParticleEmitter','A',savedA);a.Enabled=true;a.Rate=5
+local savedB=node('Folder','SavedB');local b=node('ParticleEmitter','B',savedB);b.Enabled=true;b.Rate=5
+local library={list=function()return{{id='SavedA',name='A',kind='Effect',definition={Effect=savedA}},{id='SavedB',name='B',kind='Effect',definition={Effect=savedB}}}end}
+local switching=dofile('mm2_effects.lua')(game,nil,library)
+switching.equip('SavedA','Effect')
+assert(native.Enabled==false,'Selected effects hide the original knife particles locally')
+switching.equip('SavedB','Effect')
+local enabled=0;for _,o in ipairs(nextDisplay:GetDescendants())do if o:IsA('ParticleEmitter') and o.Enabled then enabled=enabled+1;assert(o.Name=='B','Previous effect is removed when switching')end end
+assert(enabled==1,'Only the newly selected effect remains active')
+switching.restore();assert(native.Enabled==true and count(nextDisplay,'ParticleEmitter')==1,'Restoring returns the original native effect')
+switching.destroy()
+print('Exclusive effect switching and native visual restoration passed.')
