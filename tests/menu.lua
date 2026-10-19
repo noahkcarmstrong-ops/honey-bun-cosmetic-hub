@@ -135,7 +135,7 @@ function game:HttpGet(url)
     error('Unexpected request '..url)
 end
 loadstring=function(source)
-    if source=='native-mm2-module'then return function()return function(_gui,_catalog,_status,mode)local key=mode=='effects' and 'nativeEffectsEnabled' or mode=='saved' and 'savedNativeEnabled' or 'nativeEnabled';return{refreshSaved=function()calls.savedInventoryRefreshed=true end,enable=function()if calls.nativeFail and mode~='saved' then return false,'Open MM2 inventory first' end;calls[key]=true;return'Enabled'end,disable=function()calls[key]=false end,destroy=function()calls[key]=false;calls.nativeDestroyed=true end,report=function()return'Native fixture report'end}end end end
+    if source=='native-mm2-module'then return function()return function(_gui,_catalog,_status,mode)local key=(mode=='effects' or mode=='saved-effects') and 'nativeEffectsEnabled' or mode=='saved' and 'savedNativeEnabled' or 'nativeEnabled';return{refreshSaved=function()calls.savedInventoryRefreshed=true end,enable=function()if calls.nativeFail and mode~='saved' and mode~='saved-effects' then return false,'Open MM2 inventory first' end;calls[key]=true;return'Enabled'end,disable=function()calls[key]=false end,destroy=function()calls[key]=false;calls.nativeDestroyed=true end,report=function()return'Native fixture report'end}end end end
     if source=='accessory-sounds-module'then return function()return function(_player,_gui)local enabled=_gui:GetAttribute('HoneyBunCosmeticUI_HatSounds')~=false;return{isEnabled=function()return enabled end,setEnabled=function(v)enabled=v;_gui:SetAttribute('HoneyBunCosmeticUI_HatSounds',v);calls.hatSounds=v;return'Sound toggle'end,playNow=function()calls.playHatSounds=true;return'Played'end,destroy=function()calls.hatSoundsDestroyed=true end}end end end
     if source=='gun-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Weapon library uses persistent PlayerGui');return{}end end end
     if source=='effect-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Effect library uses persistent PlayerGui');return{list=function()return{{id='Effect1',name='Effect from PlayerOne'}}end,capturePlayer=function(name)calls.capturePlayer=name;return'Captured player',{'Effect1'}end,captureServer=function(name)calls.capturePriority=name;return'Captured server'end,report=function()return'Library fixture'end,destroy=function()calls.libraryDestroyed=true end}end end end
@@ -298,7 +298,7 @@ assert(guiRoot:GetAttribute('HoneyBunCosmeticUI_copyPlayer')=='PlayerOne','Usern
 click("Save and equip player's knife")
 assert(calls.captureKind=='Knife','Knife uses the same entered username')
 click("Save and equip player's effect")
-assert(calls.capturePlayer=='PlayerOne' and calls.libraryReloaded and calls.savedEffect=='Effect1' and not calls.nativeEffectsEnabled,'Effects save and equip without native inventory')
+assert(calls.capturePlayer=='PlayerOne' and calls.libraryReloaded and calls.savedEffect=='Effect1' and calls.nativeEffectsEnabled,'Saving effects automatically adds native inventory cards')
 click('Refresh saved weapons in MM2 inventory')
 assert(calls.savedNativeEnabled and calls.savedInventoryRefreshed and not calls.nativeEnabled,'Saved models appear in native inventory without all-weapons overlay')
 assert(not find(gui(),'TextButton','Equip Gun from PlayerOne') and not find(gui(),'TextButton','Equip Knife from PlayerOne'),'Saved weapon equip buttons are removed from hub')
@@ -313,9 +313,9 @@ assert(calls.nativeEnabled and find(gui(),'TextButton','Show all weapons: ON'),'
 assert(not calls.savedNativeEnabled,'Full overlay temporarily disables additive saved cards')
 click('Show all weapons: ON');assert(not calls.nativeEnabled and not calls.mm2Restored,'Hiding optional inventory does not clear saved weapon appearance')
 assert(calls.savedNativeEnabled,'Disabling full overlay restores saved native cards')
-click('Saved effects: OFF');assert(calls.nativeEffectsEnabled and calls.effectsCollecting,'Optional effects display enables')
+click('Refresh saved effects in MM2 inventory');assert(calls.nativeEffectsEnabled and calls.effectsCollecting,'Saved effects inventory refreshes without a toggle')
 click('Collect server effects');assert(calls.capturePriority=='PlayerOne','Server capture prioritizes entered username')
-click('Saved effects: ON');assert(not calls.effectsRestored and not calls.nativeEffectsEnabled,'Hiding optional effects inventory does not clear saved effect')
+assert(not calls.effectsRestored and calls.nativeEffectsEnabled,'Saved effects stay visible and equipped')
 click('Remove saved weapon appearances');assert(calls.mm2Restored,'Explicit remove clears only equipped weapon appearances')
 click('Remove knife effect');assert(calls.effectsRestored,'Explicit effect remove reaches backend')
 click('Back');assert(find(gui(),'TextButton','Open MM2 menu'),'Back returns to the MM2 entry')
@@ -330,7 +330,7 @@ dofile('loader.lua');
 assert(guiRoot:GetAttribute('HoneyBunCosmeticGuns')=='legacy-weapons' and guiRoot:GetAttribute('HoneyBunCosmeticEffects')=='legacy-effects','Refresh migrates old temporary collections to persistent PlayerGui')
 assert(calls.weaponLoads==weaponLoads+1 and calls.effectLoads==effectLoads+1,'Saved collections load automatically when script runs in MM2')
 assert(find(gui(),'TextButton','MM2'),'MM2 main place is recognized')
-assert(calls.effectsDestroyed and not calls.nativeEffectsEnabled,'Refreshing the hub destroys effects and their inventory overlay')
+assert(calls.effectsDestroyed and calls.nativeEffectsEnabled and calls.savedNativeEnabled,'Refresh cleans up old displays and automatically restores saved collections')
 assert(calls.hatSoundsDestroyed,'Refreshing the hub also cleans up accessory sound playback')
 game.PlaceId=0
 dofile('loader.lua');assert(not find(gui(),'TextButton','MM2'),'MM2 entry is absent outside MM2')

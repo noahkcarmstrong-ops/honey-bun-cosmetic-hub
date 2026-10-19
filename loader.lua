@@ -6,7 +6,7 @@ local mm2MenuOpen = false
 local mm2API,mm2NativeAPI,mm2SavedNativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
 local mm2GunLibraryAPI
 local accessorySoundsAPI
-local mm2Enabled,mm2EffectsEnabled=false,false
+local mm2Enabled=false
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 for _, name in ipairs({"HoneyBunCosmeticHub"}) do
     local old = playerGui:FindFirstChild(name)
@@ -446,7 +446,7 @@ local function nativeEffectsMM2()
     local chunk,message=loadstring(source);assert(chunk,message)
     mm2EffectsNativeAPI=chunk()(playerGui,catalog,function(message)
         if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
-    end,"effects")
+    end,"saved-effects")
     return mm2EffectsNativeAPI
 end
 render=function()
@@ -495,11 +495,7 @@ render=function()
                 local message,ids=mm2EffectsLibraryAPI.capturePlayer(username())
                 mm2EffectsAPI.reloadLibrary()
                 if ids and ids[1] then message=message.." "..mm2EffectsAPI.equip(ids[1],"Effect") end
-                if mm2EffectsEnabled then
-                    nativeEffectsMM2().disable()
-                    local ok=nativeEffectsMM2().enable()
-                    if not ok then mm2EffectsEnabled=false end
-                end
+                nativeEffectsMM2().enable();nativeEffectsMM2().refreshSaved()
                 return message
             end
             button("Save and equip player's gun",function() action(function() return copyWeapon("Gun") end) end)
@@ -543,21 +539,17 @@ render=function()
                 assert(ok~=false,message or "MM2 inventory could not be detected.")
                 mm2Enabled=true;return type(ok)=="string" and ok or message
             end) end)
-            button(mm2EffectsEnabled and "Saved effects: ON" or "Saved effects: OFF",function() action(function()
-                if mm2EffectsEnabled then
-                    nativeEffectsMM2().disable();mm2EffectsEnabled=false
-                    return "Original effects inventory restored. Your saved effect stays equipped."
-                end
-                local ok,message=nativeEffectsMM2().enable()
-                assert(ok~=false,message or "Open MM2's Effects inventory first.")
+            button("Refresh saved effects in MM2 inventory",function() action(function()
+                nativeEffectsMM2().enable();nativeEffectsMM2().refreshSaved()
                 effectsMM2().collectOriginals()
-                mm2EffectsEnabled=true;return type(ok)=="string" and ok or message
+                return "Saved effects appear automatically in MM2's Effects inventory."
             end) end)
 
             button("Collect server effects",function() action(function()
                 effectsMM2()
                 local message=mm2EffectsLibraryAPI.captureServer(copyPlayerInput)
                 mm2EffectsAPI.reloadLibrary()
+                nativeEffectsMM2().enable();nativeEffectsMM2().refreshSaved()
                 return message
             end) end)
 
@@ -990,6 +982,6 @@ action(function(editor)
     if not soundsLoaded then message=message.." Hat sounds could not load; try their control in Accessories." end
     if activePage=="Characters" then characterModules() end
     if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticGuns") then mm2();savedNativeMM2().enable() end
-    if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticEffects") then effectsMM2() end
+    if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticEffects") then effectsMM2();nativeEffectsMM2().enable() end
     return message
 end)

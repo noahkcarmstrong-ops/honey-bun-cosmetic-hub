@@ -282,6 +282,9 @@ notOpened.destroy()
 print('Unopened inventory guidance and separate diagnostic report passed.')
 
 -- Saved-only mode adds cards directly to native category grids and preserves the game collection.
+-- Recreate the optional native layout after the earlier manual-layout test;
+-- production MM2 may omit it, which the nested plain-container case covers.
+if not seasonPane:FindFirstChildOfClass('UIGridLayout') then node('UIGridLayout','LayoutRestored',seasonPane) end
 local savedDefs={{id='holiday-saved',kind='Gun',name='Saved Holiday Gun',image=987,category='holiday',rarity='Godly'}}
 local savedChoice
 local savedCatalog={list=function(kind)local out={};for _,e in ipairs(savedDefs)do if e.kind==kind then out[#out+1]=e end end;return out end,
@@ -324,9 +327,17 @@ inventory:Destroy()
 local nestedInventory=node('Frame','Inventory',playerGui)
 local weapons=node('Frame','Weapons',nestedInventory);local items=node('Frame','Items',weapons);local container=node('Frame','Container',items)
 local function nestedCategory(name,withLayout)
-    local branch=node('Frame',name,container);local inner=node('Frame','Inner',branch);local scroll=node('ScrollingFrame','Scrolling',inner)
-    if withLayout then node('UIGridLayout','NativeGrid',scroll)end
-    return branch,scroll
+    local branch=node('Frame',name,container);local inner=node('Frame','Inner',branch)
+    local target
+    if name=='Holiday' then
+        -- Live MM2 can expose a category as Weapons.Items.Container.Holiday.Container:
+        -- plain Frames, with neither ScrollingFrame nor UIGridLayout.
+        target=node('Frame','Container',inner)
+    else
+        target=node('ScrollingFrame','Scrolling',inner)
+        if withLayout then node('UIGridLayout','NativeGrid',target)end
+    end
+    return branch,target
 end
 local currentBranch,currentGrid=nestedCategory('Current',true)
 local classicBranch,classicGrid=nestedCategory('Classic',true)
@@ -349,10 +360,10 @@ assert(#savedCardsIn(tabCurrent)==0,'A Tabs.Current button container is never mi
 assert(#savedCardsIn(currentGrid)==0,'Current category recognition maps to Season1')
 assert(nestedApi.report():find('Generated=2',1,true) and nestedApi.report():find('holiday='..holidayGrid:GetFullName(),1,true),'Saved report includes the count and exact Holiday grid path')
 assert(holidayGrid:FindFirstChildOfClass('UIGridLayout'),'Manual category gets a local grid for non-overlapping cards')
-assert(holidayGrid.AutomaticCanvasSize=='AutoY','Manual category scroll expands for saved cards')
+assert(holidayGrid.AutomaticCanvasSize=='None','Plain category containers do not require scrolling settings')
 gameTab.Activated:Fire();assert(tabCount==1,'Existing game tab remains usable')
 nestedApi.disable()
-assert(not holidayGrid:FindFirstChildOfClass('UIGridLayout') and holidayGrid.AutomaticCanvasSize=='None','Disable removes its temporary grid and restores scrolling settings')
+assert(not holidayGrid:FindFirstChildOfClass('UIGridLayout') and holidayGrid.AutomaticCanvasSize=='None','Disable removes its temporary grid and preserves plain containers')
 assert(nestedApi.enable(),'Saved mode can be enabled again');flush()
 inventory=nestedInventory;nestedInventory:Destroy();flush()
 inventory,host,seasonPane,classicPane,holidayPane,knife,gun,search,buttons,layout,equipped=nativeInventory();flush()
@@ -371,3 +382,29 @@ assert(#savedDefs==1 and #savedCardsIn(holidayPane)==0,'Confirmed deletion remov
 assert(knife.Parent==seasonPane and gun.Parent==seasonPane,'Deleting a saved weapon preserves native items')
 nestedApi.disable()
 print('Nested native category grids, tabs and reversible manual layout passed.')
+
+-- Saved-effects mode uses the Effects pane and its Effect catalog, including
+-- the lazy plain-Frame container shape used by the live game.
+local savedEffectsPane=node('Frame','Effects',inventory)
+local savedEffectsItems=node('Frame','Items',savedEffectsPane)
+local savedEffectsContainer=node('Frame','Container',savedEffectsItems)
+local savedEffectNative=node('Frame','NativeEffect',savedEffectsContainer)
+node('TextLabel','ItemName',savedEffectNative).Text='None'
+node('ImageLabel','Icon',savedEffectNative).Image='native-effect'
+node('TextLabel','Equipped',savedEffectNative).Visible=false
+local savedEffectDefs={{id='Bats',kind='Effect',name='Bats',image=321,rarity='Godly'}}
+local savedEffectCatalog={list=function(kind)
+    assert(kind=='Effect','Saved-effects mode requests only Effect entries')
+    return savedEffectDefs
+end,getEquipped=function()return{}end,equip=function()return 'Saved effect selected'end}
+local savedEffectsApi=create(playerGui,savedEffectCatalog,nil,'saved-effects')
+assert(savedEffectsApi.enable(),'Saved-effects mode waits for the native Effects pane');flush()
+local savedEffectCard=savedEffectsContainer:FindFirstChild('HoneyBunLocal_Saved_Effect_Bats')
+assert(savedEffectCard and savedEffectCard:FindFirstChild('ItemName').Text=='Bats','Saved effect is inserted into the native Effects container')
+assert(savedEffectsContainer:FindFirstChildOfClass('UIGridLayout'),'Plain Effects container receives a reversible local grid')
+savedEffectCard:Destroy();flush()
+savedEffectCard=savedEffectsContainer:FindFirstChild('HoneyBunLocal_Saved_Effect_Bats')
+assert(savedEffectCard,'Saved effects return when the game clears collection cards')
+savedEffectsApi.disable();assert(not savedEffectCard.Parent and not savedEffectsContainer:FindFirstChildOfClass('UIGridLayout'),'Disabling saved-effects removes only local effects')
+savedEffectsApi.destroy()
+print('Saved-effects native pane and plain container passed.')

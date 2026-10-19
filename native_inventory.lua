@@ -1,7 +1,7 @@
 -- Local cards in the existing MM2 Weapons/Effects inventory; no ownership or remote changes.
 return function(playerGui,catalog,onStatus,mode)
-    local effects=mode=="effects"
-    local savedOnly=mode=="saved"
+    local effects=mode=="effects" or mode=="saved-effects"
+    local savedOnly=mode=="saved" or mode=="saved-effects"
     local initialCategory=effects and "effects" or "season1"
     local api={}
     local enabled,dead=false,false
@@ -93,6 +93,7 @@ return function(playerGui,catalog,onStatus,mode)
                 end
             end
         end
+
     end
     local function detect()
         if not effects then return detectWeapon() end
@@ -109,7 +110,7 @@ return function(playerGui,catalog,onStatus,mode)
                         ancestor=ancestor.Parent
                     end
                     if not excluded and is(container,"GuiObject") and not is(container,"GuiButton") then
-                        local structural=is(candidate,"UIGridLayout") or is(container,"ScrollingFrame")
+                        local structural=is(candidate,"UIGridLayout") or is(container,"ScrollingFrame") or normalize(container.Name)=="container"
                         if structural then
                             for _,card in ipairs(children(container)) do
                                 if is(card,"GuiObject") and card:FindFirstChild("ItemName",true) then return branch,container,card end
@@ -322,7 +323,7 @@ return function(playerGui,catalog,onStatus,mode)
     local function findSavedGrids(inventory)
         local found={}
         local function addCategory(branch,key)
-            local gridTarget,scrollTarget
+            local gridTarget,scrollTarget,plainTarget
             for _,o in ipairs(texts(branch)) do
                 local excluded=false;local ancestor=o
                 while ancestor and ancestor~=inventory do
@@ -333,15 +334,23 @@ return function(playerGui,catalog,onStatus,mode)
                 if not excluded and o~=branch and is(o,"GuiObject") and not is(o,"GuiButton") then
                     if o:FindFirstChildOfClass("UIGridLayout") then gridTarget=o end
                     if is(o,"ScrollingFrame") then scrollTarget=o end
+                    -- MM2's live Weapons tree sometimes uses plain Frames all
+                    -- the way down to Current.Container (no scrolling frame or
+                    -- UIGridLayout). Keep cards in that innermost container.
+                    if normalize(o.Name)=="container" then plainTarget=o end
                 end
             end
             if not gridTarget and branch:FindFirstChildOfClass("UIGridLayout") then gridTarget=branch end
             if not scrollTarget and is(branch,"ScrollingFrame") then scrollTarget=branch end
-            local target=gridTarget or scrollTarget
+            local target=gridTarget or scrollTarget or plainTarget
             if target then found[key]=target end
         end
         local area
-        for _,o in ipairs(descendants(inventory)) do
+        local weaponBranch=inventory
+        for _,branch in ipairs(descendants(inventory)) do
+            if normalize(branch.Name)=="weapons" and is(branch,"GuiObject") and not is(branch,"GuiButton") then weaponBranch=branch;break end
+        end
+        for _,o in ipairs(descendants(weaponBranch)) do
             if normalize(o.Name)=="items" then
                 for _,nested in ipairs(descendants(o)) do if normalize(nested.Name)=="container" then area=nested;break end end
                 if area then break end
@@ -396,7 +405,8 @@ return function(playerGui,catalog,onStatus,mode)
     local renderSaved
     renderSaved=function()
         if not enabled or dead then return end
-        local inventory,_,detectedTemplate=detectWeapon()
+        local inventory,detectedGrid,detectedTemplate
+        if effects then inventory,detectedGrid,detectedTemplate=detect() else inventory,detectedGrid,detectedTemplate=detectWeapon() end
         if not inventory then status("Waiting for MM2 Weapons inventory to load.");return end
         if savedRoot and savedRoot~=inventory then
             for _,connectionsForCard in pairs(savedCardConnections) do disconnect(connectionsForCard) end
@@ -406,12 +416,12 @@ return function(playerGui,catalog,onStatus,mode)
         root=inventory
         if not template then template=detectedTemplate and detectedTemplate:Clone() end
         if not template then status("Waiting for native weapon cards to load.");return end
-        local grids=findSavedGrids(inventory);savedGrids=grids
+        local grids=effects and {effects=detectedGrid} or findSavedGrids(inventory);savedGrids=grids
         for _,target in pairs(grids) do prepareSavedGrid(target) end
         bindSideSlots()
         local wanted={}
         local pending={}
-        for _,kind in ipairs({"Knife","Gun"}) do
+        for _,kind in ipairs(effects and {"Effect"} or {"Knife","Gun"}) do
             for _,entry in ipairs(catalog.list(kind) or {}) do
                 local key=entryCategory(entry);local target=grids[key]
                 if target then
@@ -499,7 +509,7 @@ return function(playerGui,catalog,onStatus,mode)
         savedSelection(equipped)
         updateSideSlots(equipped)
         local count=0;for _ in pairs(savedCards) do count=count+1 end
-        status("MM2 native collection: "..count.." saved weapon cards.")
+        status("MM2 native collection: "..count.." saved "..(effects and "effect" or "weapon").." cards.")
     end
     local render
     render=function()
@@ -714,7 +724,10 @@ return function(playerGui,catalog,onStatus,mode)
             if not localObject(o) and (inventoryAncestor(o) or lower(o.Name):find("inventory",1,true)) then schedule() end
         end
         watchers[#watchers+1]=playerGui.DescendantAdded:Connect(changed)
-        watchers[#watchers+1]=playerGui.DescendantRemoving:Connect(changed)
+        watchers[#watchers+1]=playerGui.DescendantRemoving:Connect(function(o)
+            changed(o)
+            if enabled then for _,card in pairs(savedCards) do if card==o then schedule();break end end end
+        end)
     end
     function api.refreshSaved()
         assert(savedOnly,"refreshSaved is available only in saved mode")
