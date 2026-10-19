@@ -79,10 +79,15 @@ assert(api.equip('TrailFx','Effect'):find('Equipped effect'),'Exact catalog-key 
 local copiedTrail=first(display,'Trail')
 assert(oldGlow.destroyed and copiedTrail and copiedTrail.Attachment0~=a and copiedTrail.Attachment1~=b,'Switching removes previous visuals and remaps trail attachments')
 assert(copiedTrail.Attachment0.Parent==display and copiedTrail.Attachment1.Parent==display,'Trail endpoints attach to the actual display')
-for _,id in ipairs({'ServerOnly','Burst','Broken','Ambiguous'})do
+for _,id in ipairs({'ServerOnly','Broken','Ambiguous'})do
     assert(api.equip(id,'Effect'):find('unavailable locally'),'Unavailable, burst-only and ambiguous effects cannot claim visible equip')
     assert(#display:GetChildren()==0 and #handle:GetChildren()==0,'Failed effect leaves no partial clones')
 end
+assert(api.equip('Burst','Effect'):find('Equipped effect'),'Dormant original particles get local playback on the back knife')
+local playingBurst=first(display,'ParticleEmitter')
+assert(playingBurst and playingBurst.Enabled and playingBurst.Rate>0,'Original zero-rate particles emit on the display')
+assert(burst.Rate==0,'Local playback never modifies the original source')
+assert(api.report():find('started dormant original particles',1,true),'Report identifies locally started original particle playback')
 api.equip('Spark','Effect')
 local previous=first(display,'ParticleEmitter')
 local fresh=node('Model','Respawn');player.Character=fresh;player.CharacterAdded:Fire(fresh)

@@ -8,6 +8,7 @@ return function(game,onStatus)
     local sourceErrors,lastApplyError={},""
     local madeVisuals=setmetatable({},{__mode="k"})
     local scanSummary="Original effects have not been checked."
+    local startedDormant=false
     local function read(o,k) if not o then return nil end;local ok,v=pcall(function()return o[k]end);return ok and v or nil end
     local function isA(o,c) local f=read(o,"IsA");if type(f)=="function"then local ok,v=pcall(f,o,c);return ok and v==true end;return read(o,"ClassName")==c end
     local function children(o) local f=read(o,"GetChildren");if type(f)=="function"then local ok,v=pcall(f,o);if ok and type(v)=="table"then return v end end;return{} end
@@ -172,8 +173,15 @@ return function(game,onStatus)
         for original,copy in pairs(attachmentMap) do copy.Parent=attachmentMap[read(original,"Parent")] or target end
         local count=0
         for _,o in ipairs(all) do
-            if visual(o) and not (isA(o,"ParticleEmitter") and type(read(o,"Rate"))=="number" and read(o,"Rate")<=0) then
+            if visual(o) then
                 local c=cleanClone(o);if not c then return fail() end
+                if isA(o,"ParticleEmitter") and type(read(o,"Rate"))=="number" and read(o,"Rate")<=0 then
+                    -- Preserve the original texture and particle settings; start a gentle
+                    -- local preview when the game normally triggers this emitter in code.
+                    local ok=pcall(function()c.Rate=2 end)
+                    if not ok then return fail()end
+                    startedDormant=true
+                end
                 if isA(o,"Trail") or isA(o,"Beam") then
                     local a,b=attachmentMap[read(o,"Attachment0")],attachmentMap[read(o,"Attachment1")]
                     if not a or not b then return fail() end
@@ -190,7 +198,7 @@ return function(game,onStatus)
         for _,o in ipairs(made)do applied[target][#applied[target]+1]=o end
         return true
     end
-    local function clearApplied()for target,list in pairs(applied)do for _,o in ipairs(list)do destroy(o)end;applied[target]=nil end end
+    local function clearApplied()startedDormant=false;for target,list in pairs(applied)do for _,o in ipairs(list)do destroy(o)end;applied[target]=nil end end
     local function apply()
         if not alive or not selected then return false,"No effect selected." end
         local token=generation
@@ -201,7 +209,7 @@ return function(game,onStatus)
             if not alive or token~=generation then return false,"Effect application was cancelled." end
             if cloneVisuals(source,target)then count=count+1 end
         end
-        if count==0 then return false,"No compatible knife target or continuous visual is available. Burst-only effects need game behavior." end
+        if count==0 then return false,"No original visuals could attach to the knife. See visual details in Copy MM2 report." end
         return true,"Equipped effect locally: "..e.name..(sourceNotes[e.id]=="built-in blue flame recreation" and " (local recreation)" or " (original visuals)")
     end
     local function refreshEffect()
@@ -288,6 +296,36 @@ return function(game,onStatus)
         end
         return e.id.."{"..table.concat(fields,";").."} loaded effect containers="..table.concat(roots,"|")
     end
-    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=sourceErrors[selected]or sourceNotes[selected]or"resolved" end;return"MM2 Effects build: indexed original knife sources V5\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails().."\n"..scanSummary end
+    local function visualDetails()
+        local lines={}
+        local function describe(o)
+            local fields={tostring(read(o,"Name")).."["..tostring(read(o,"ClassName")).."]"}
+            for _,key in ipairs({"Enabled","Rate","Texture","Lifetime","Transparency","Size","Position","Orientation","Attachment0","Attachment1"})do
+                local value=read(o,key);if value~=nil then fields[#fields+1]=key.."="..tostring(value):sub(1,130)end
+            end
+            local parent=read(o,"Parent");fields[#fields+1]="parent="..tostring(read(parent,"Name"))
+            return table.concat(fields,";")
+        end
+        local source=selected and sourceCache[selected]
+        if source then
+            local all=descendants(source);table.insert(all,1,source)
+            for _,o in ipairs(all)do
+                if visual(o)or isA(o,"Attachment")or isA(o,"ModuleScript")or isA(o,"LocalScript")or isA(o,"Script")then
+                    lines[#lines+1]="source "..describe(o);if #lines>=24 then break end
+                end
+            end
+        end
+        for _,target in ipairs(targets())do
+            local path=read(target,"GetFullName");local ok,name=false,nil;if type(path)=="function"then ok,name=pcall(path,target)end
+            lines[#lines+1]="target "..(ok and name or tostring(read(target,"Name"))).." transparency="..tostring(read(target,"Transparency")).." localTransparency="..tostring(read(target,"LocalTransparencyModifier"))
+            local count=0;for _,o in ipairs(applied[target]or{})do if visual(o)then
+                lines[#lines+1]="copy "..describe(o);count=count+1;if count>=8 then break end
+            end end
+            if #lines>=50 then break end
+        end
+        if startedDormant then lines[#lines+1]="Playback: started dormant original particles at 2 particles/second."end
+        return table.concat(lines,"\n")
+    end
+    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=sourceErrors[selected]or sourceNotes[selected]or"resolved" end;return"MM2 Effects build: original particle playback V6\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails().."\n"..scanSummary.."\n"..visualDetails() end
     return api
 end
