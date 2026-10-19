@@ -6,6 +6,9 @@ local function allowed(key,value)
     if key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" then
         return kind=="string" and #value<=131072
     end
+    if key=="HoneyBunCosmeticCharacters" then
+        return kind=="string" and #value<=1400000
+    end
     if key=="HoneyBunCosmeticAnimationBundle" then
         return kind=="number" and value>0 and value%1==0 and value<9007199254740992
     end
@@ -26,7 +29,7 @@ return function(gui,userId,onStatus)
     end
     local function read(pathToRead)
         local ok,raw=pcall(readfile,pathToRead)
-        if not ok or type(raw)~="string" or #raw>262144 then return nil end
+        if not ok or type(raw)~="string" or #raw>8388608 then return nil end
         local decoded,saved=pcall(function() return Http:JSONDecode(raw) end)
         if decoded and type(saved)=="table" and saved.version==1 and type(saved.values)=="table" then return saved,raw end
     end
@@ -45,6 +48,7 @@ return function(gui,userId,onStatus)
         for key,value in pairs(gui:GetAttributes()) do if allowed(key,value) then values[key]=value end end
         local ok,message=pcall(function()
             local raw=Http:JSONEncode({version=1,values=values})
+            assert(#raw<=8388608,"Saved settings exceed the file size limit.")
             writefile(path..".bak",lastValid or raw)
             writefile(path,raw)
             lastValid=raw
@@ -58,9 +62,9 @@ return function(gui,userId,onStatus)
     end
     local changed=gui.AttributeChanged:Connect(function(key)
         local value=gui:GetAttribute(key)
-        if not allowed(key,value) and not (value==nil and (key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" or key=="HoneyBunCosmeticAnimationBundle" or key:sub(1,19)=="HoneyBunCosmeticUI_")) then return end
+        if not allowed(key,value) and not (value==nil and (key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" or key=="HoneyBunCosmeticAnimationBundle" or key=="HoneyBunCosmeticCharacters" or key:sub(1,19)=="HoneyBunCosmeticUI_")) then return end
         dirty=true
-        if key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" or key=="HoneyBunCosmeticAnimationBundle" then
+        if key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" or key=="HoneyBunCosmeticAnimationBundle" or key=="HoneyBunCosmeticCharacters" then
             flush()
         elseif not scheduled then
             scheduled=true

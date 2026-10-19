@@ -65,6 +65,14 @@ Wheel assignments save for the session and reapply after respawning or Refresh. 
 
 The bundle changes its included walk, run, idle, jump, fall, climb, and swimming animations while keeping your current appearance. Idle variants and swimming idle are preserved when included. The equipped bundle saves for the session and returns after resets or Refresh. This requires an R15 avatar with Roblox's standard Animate controls; games with custom movement systems may not support it. A bundle that fails to load leaves your equipped movement set in place. Tabs scroll sideways on narrow screens.
 
+## Saved characters
+
+1. Put together your look using the cosmetic tabs.
+2. Open **CHARACTERS**, enter a name, and click **Save current character**.
+3. Each card shows a static preview with **Equip** and **Delete** underneath. Delete asks for confirmation and leaves your equipped look alone.
+
+Save up to 12 looks. Each snapshot keeps your hub accessories, skin colors, body package and individual parts, classic clothes, emote slots, and movement bundle. Equipping replaces all those selections and makes that look the one that returns after resets and rejoining. Saved looks use your current account avatar as their original base; they do not change your Roblox account. File access is required to keep the wardrobe after leaving, just like the other saved settings. Previews are local visual snapshots; asset permissions and unusual game characters can limit rendering.
+
 ## Controls and limits
 
 - **Restore original appearance** removes added accessories, brings back hidden original accessories, restores original clothes, the captured body, colors, emote wheel and movement animations, and clears saved cosmetic selections.
@@ -88,6 +96,8 @@ npx --offline --package=fengari-node-cli fengari tests/motion.lua
 npx --offline --package=fengari-node-cli fengari tests/animations.lua
 npx --offline --package=fengari-node-cli fengari tests/storage.lua
 npx --offline --package=fengari-node-cli fengari tests/clothes.lua
+npx --offline --package=fengari-node-cli fengari tests/characters.lua
+npx --offline --package=fengari-node-cli fengari tests/previews.lua
 ```
 
 These use Roblox stand-ins to check the editor logic; they do not prove that a game permits a particular asset.

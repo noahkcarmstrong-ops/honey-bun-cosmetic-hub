@@ -180,4 +180,17 @@ local retriedGui, retried = rejoin(505)
 assert(value(retriedGui, 'HoneyBunCosmeticSettings') == 'kept-in-memory' and value(retriedGui, 'HoneyBunCosmeticUI_Theme') == 'retry-succeeded', 'next change retries failed write')
 retried:destroy()
 
+-- Character documents are allowlisted, flushed immediately, and removed on nil.
+local characterGui, characterStorage = rejoin(808)
+characterGui:SetAttribute('HoneyBunCosmeticCharacters', '{"version":1,"nextId":1,"profiles":[]}')
+local characterRejoinGui, characterRejoinStorage = rejoin(808)
+assert(value(characterRejoinGui, 'HoneyBunCosmeticCharacters') == '{"version":1,"nextId":1,"profiles":[]}', 'character library restores after rejoin')
+characterRejoinGui:SetAttribute('HoneyBunCosmeticCharacters', nil)
+local characterDeletedGui, characterDeletedStorage = rejoin(808)
+assert(value(characterDeletedGui, 'HoneyBunCosmeticCharacters') == nil, 'character library deletion persists')
+characterStorage:destroy(); characterRejoinStorage:destroy(); characterDeletedStorage:destroy()
+
+_G.characterRejoin = rejoin
+_G.characterFlush = flush
+
 print('Storage restore, precedence, account isolation, removals, backup fallback, and session-only checks passed.')

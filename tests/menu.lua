@@ -73,6 +73,7 @@ local function createClothes()
     }
 end
 local function createEditor()
+    calls.loadedCharacterSettings=guiRoot:GetAttribute('HoneyBunCosmeticSettings')
     local equipped,nextKey={},0
     return {
         equipAccessory=function(value)
@@ -96,7 +97,14 @@ local function createEditor()
         destroy=function()calls.destroy=calls.destroy+1 end,
     }
 end
-game={GetService=function(_,name)return({Players={LocalPlayer=player},UserInputService=input,HttpService={JSONDecode=function()return{sha=string.rep('a',40)}end}})[name]end}
+local documents,nextDocument={},0
+local http={JSONEncode=function(_,value)
+    nextDocument=nextDocument+1;local token='document-'..nextDocument;documents[token]=value;return token
+end,JSONDecode=function(_,raw)
+    if raw=='revision' then return{sha=string.rep('a',40)}end
+    return assert(documents[raw],'Invalid fixture JSON')
+end}
+game={GetService=function(_,name)return({Players={LocalPlayer=player},UserInputService=input,HttpService=http})[name]end}
 function game:HttpGet(url)
     assert(url:find('/honey-bun-cosmetic-hub/',1,true),'Only the separate cosmetic repo is contacted')
     if url:find('/commits/main',1,true)then return'revision'end
@@ -106,6 +114,8 @@ function game:HttpGet(url)
     if url:find('/animations.lua',1,true)then return'animations-module'end
     if url:find('/storage.lua',1,true)then return'storage-module'end
     if url:find('/clothes.lua',1,true)then return'clothes-module'end
+    if url:find('/characters.lua',1,true)then return'characters-module'end
+    if url:find('/previews.lua',1,true)then return'previews-module'end
     if url:find('/loader.lua',1,true)then return'loader'end
     error('Unexpected request '..url)
 end
@@ -114,6 +124,11 @@ loadstring=function(source)
     if source=='motion-module'then return function()return createMotion end end
     if source=='animations-module'then return function()return createAnimations end end
     if source=='clothes-module'then return function()return createClothes end end
+    if source=='characters-module'then return function()return dofile('characters.lua')end end
+    if source=='previews-module'then return function()return function()return{
+        capture=function()return{version=1,parts={}}end,
+        show=function(viewport,data)calls.characterPreview=data;assert(viewport.ClassName=='ViewportFrame')end,
+    }end end end
     if source=='storage-module'then return function()return function()
         calls.storageLoaded=true
         return{status=function()return'Auto-save: on'end,destroy=function()calls.storageDestroyed=true end}
@@ -190,6 +205,34 @@ assert(calls.storageLoaded and calls.storageDestroyed,'Persistent settings load 
 assert(calls.clothesDestroy,'Refresh cleans clothing editor')
 click('BODY')
 assert(field('Head catalog or bundle link / asset ID').Text=='https://www.roblox.com/catalog/123/Head','Custom part editor links survive Refresh')
+guiRoot:SetAttribute('HoneyBunCosmeticSettings','saved-cat-look')
+guiRoot:SetAttribute('HoneyBunCosmeticClothes','saved-shirt')
+guiRoot:SetAttribute('HoneyBunCosmeticAnimationBundle',82)
+click('CHARACTERS')
+assert(find(gui(),'TextLabel','YOUR CHARACTERS (0 / 12)'),'Empty wardrobe explains its state')
+click('Save current character')
+assert(find(gui(),'TextLabel','YOUR CHARACTERS (0 / 12)'),'Blank names cannot save')
+field('Name your character (for example: Cat outfit)').Text='Cat outfit';click('Save current character')
+assert(find(gui(),'TextLabel','YOUR CHARACTERS (1 / 12)') and calls.characterPreview,'Saved character card includes preview')
+guiRoot:SetAttribute('HoneyBunCosmeticSettings','different-look')
+guiRoot:SetAttribute('HoneyBunCosmeticEmotes','different-wheel')
+guiRoot:SetAttribute('HoneyBunCosmeticAnimationBundle',99)
+click('Equip')
+assert(calls.loadedCharacterSettings=='saved-cat-look','Equip rebuilds cached editor with saved settings')
+assert(guiRoot:GetAttribute('HoneyBunCosmeticClothes')=='saved-shirt' and guiRoot:GetAttribute('HoneyBunCosmeticAnimationBundle')==82,'Equip restores other cosmetic selections')
+assert(guiRoot:GetAttribute('HoneyBunCosmeticEmotes')==nil,'Unassigned saved categories clear previous selections')
+guiRoot:SetAttribute('HoneyBunCosmeticSettings','previous-look')
+calls.failReplay=true;click('Equip');calls.failReplay=false
+assert(guiRoot:GetAttribute('HoneyBunCosmeticSettings')=='previous-look','Failed equip puts previous selections back')
+assert(find(gui(),'TextLabel','YOUR CHARACTERS (1 / 12)'),'Failed equip preserves the saved character')
+click('Equip')
+click('Delete');assert(find(gui(),'TextButton','Confirm delete'),'Deletion requires confirmation')
+click('Cancel deleting Cat outfit');assert(find(gui(),'TextButton','Delete'),'Deletion can be cancelled')
+click('Refresh')
+assert(find(gui(),'TextLabel','YOUR CHARACTERS (1 / 12)'),'Saved cards and active Characters tab survive Refresh')
+click('Delete');click('Confirm delete')
+assert(find(gui(),'TextLabel','YOUR CHARACTERS (0 / 12)'),'Confirmed deletion removes card')
+assert(guiRoot:GetAttribute('HoneyBunCosmeticSettings')=='saved-cat-look','Deleting a character leaves equipped look intact')
 gui():Destroy()
 for _,c in ipairs(input.InputBegan.listeners)do assert(not c.Connected,'Input listeners disconnected')end
 print('Cosmetic tabs, accessory/body actions, color validation, separate repo, Refresh and cleanup passed.')

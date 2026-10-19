@@ -103,7 +103,7 @@ content.Parent = panel
 local layout = Instance.new("UIListLayout", content)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
-local avatarAPI,motionAPI,animationAPI,clothesAPI
+local avatarAPI,motionAPI,animationAPI,clothesAPI,charactersAPI,previewsAPI
 local refresh = Instance.new("TextButton")
 refresh.Position = UDim2.new(1, -126, 0, 62)
 refresh.Size = UDim2.fromOffset(98, 26)
@@ -162,12 +162,15 @@ local function uiSetting(key,default)
     return type(value)==type(default) and value or default
 end
 local alive, busy, activePage = true, false, uiSetting("page","Accessories")
-if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" then activePage="Accessories" end
+local actionRunning=false
+if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" and activePage~="Characters" then activePage="Accessories" end
 local statusText = "Local avatar editor. Saved selections reapply automatically."
-local statusLabel, render
+local statusLabel, render,lastRenderedPage
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
 local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animationBundle","")
 local shirtInput,pantsInput=uiSetting("shirt",""),uiSetting("pants","")
+local characterName=uiSetting("characterName","")
+local deleteCharacter
 local bodyPartRegions={"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"}
 local bodyPartNames={"Head","Torso","Left arm","Right arm","Left leg","Right leg"}
 local bodyPartInputs={}
@@ -185,6 +188,7 @@ local paletteOpen=uiSetting("palette",false)
 local function saveUI()
     local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animationBundle=animationInput,emoteSlot=emoteSlot,shirt=shirtInput,pants=pantsInput}
     values.bodyPartsOpen=bodyPartsOpen
+    values.characterName=characterName
     for _,region in ipairs(bodyPartRegions) do values["part_"..region]=bodyPartInputs[region] end
     for key,value in pairs(values) do playerGui:SetAttribute("HoneyBunCosmeticUI_"..key,value) end
 end
@@ -261,7 +265,7 @@ local function api()
     assert(alive,"Menu was closed.")
     avatarAPI=create(Players.LocalPlayer,function(message,working)
         if not alive then return end
-        busy=working;statusText=message
+        busy=working or actionRunning;statusText=message
         if render then render() end
     end)
     return avatarAPI
@@ -302,6 +306,17 @@ local function clothes()
     end)
     return clothesAPI
 end
+local function characterModules()
+    api()
+    local function load(name)
+        local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/"..name..".lua",false)
+        local chunk,message=loadstring(source);assert(chunk,message)
+        assert(alive,"Menu was closed.")
+        return chunk()
+    end
+    if not charactersAPI then charactersAPI=load("characters")(playerGui) end
+    if not previewsAPI then previewsAPI=load("previews")(Players.LocalPlayer) end
+end
 local function reapplyAll(editor)
     local failures={}
     for _,operation in ipairs({
@@ -314,16 +329,39 @@ local function reapplyAll(editor)
         if not ok then failures[#failures+1]=tostring(message):gsub("^.-:%d+:%s*","") end
         if ok and type(message)=="string" and message:find("some could not load",1,true) then failures[#failures+1]=message end
     end
-    return #failures==0 and "Saved selections restored." or ("Some saved selections could not load: "..failures[1])
+    return #failures==0 and "Saved selections restored." or ("Some saved selections could not load: "..failures[1]),#failures==0
+end
+local characterKeys={"HoneyBunCosmeticSettings","HoneyBunCosmeticEmotes","HoneyBunCosmeticClothes","HoneyBunCosmeticAnimationBundle"}
+local function currentCharacterValues()
+    local values={}
+    for _,key in ipairs(characterKeys) do values[key]=playerGui:GetAttribute(key) end
+    return values
+end
+local function loadCharacterValues(values)
+    -- Recreate editors so their cached settings and original appearance agree.
+    for _,editor in pairs({clothesAPI,motionAPI,animationAPI}) do editor.destroy() end
+    if avatarAPI then avatarAPI.destroy() end
+    avatarAPI,motionAPI,animationAPI,clothesAPI=nil,nil,nil,nil
+    for _,key in ipairs(characterKeys) do playerGui:SetAttribute(key,values[key]) end
+    return reapplyAll(api())
+end
+local function equipCharacter(id)
+    local saved=charactersAPI.get(id)
+    assert(saved,"That saved character is no longer available.")
+    local previous=currentCharacterValues()
+    local ok,message,complete=pcall(loadCharacterValues,saved.values)
+    if ok and complete then return "Equipped "..saved.name..". This is now your saved look for resets and rejoining." end
+    local restored,_,all=pcall(loadCharacterValues,previous)
+    error((ok and message or tostring(message))..((restored and all) and " Your previous look was restored." or " Use Reapply saved cosmetics after your avatar finishes loading."))
 end
 local function action(callback)
     if busy or not alive then return end
-    busy=true
+    actionRunning=true;busy=true
     statusText="Working..."
     if statusLabel then statusLabel.Text=statusText end
     task.spawn(function()
         local ok,message=pcall(function() return callback(api()) end)
-        busy=false
+        actionRunning=false;busy=false
         if not alive then return end
         statusText=ok and (message or "Done.") or ("Could not apply: "..tostring(message):gsub("^.-:%d+:%s*",""))
         render()
@@ -331,6 +369,8 @@ local function action(callback)
 end
 render=function()
     if not alive then return end
+    local savedScroll=activePage=="Characters" and lastRenderedPage==activePage and content.CanvasPosition
+    lastRenderedPage=activePage
     for _,item in ipairs(content:GetChildren()) do if item~=layout then item:Destroy() end end
     content.CanvasPosition=Vector2.new(0,0)
     order=0
@@ -341,7 +381,58 @@ render=function()
     statusLabel=caption(statusText,56)
     statusLabel.AutomaticSize=Enum.AutomaticSize.Y
     persistenceLabel=caption(persistence and persistence.status() or persistenceNotice,44)
-    if activePage=="Accessories" then
+    if activePage=="Characters" then
+        caption("SAVED CHARACTERS",24)
+        caption("Save your current hub look, then equip it with one click. Includes accessories, skin, body, clothes, emotes, and movement animations.",62)
+        local field=input("Name your character (for example: Cat outfit)",characterName,function(value) characterName=value end)
+        button("Save current character",function()
+            if busy then return end
+            characterName=field.Text;saveUI()
+            action(function()
+                characterModules()
+                local saved=charactersAPI.save(characterName,previewsAPI.capture())
+                characterName="";deleteCharacter=nil;saveUI()
+                return "Saved "..saved.name.."."
+            end)
+        end)
+        if charactersAPI then
+            local saved=charactersAPI.list()
+            caption(string.format("YOUR CHARACTERS (%d / 12)",#saved),24)
+            if #saved==0 then caption("Your wardrobe is empty. Put together a look in the other tabs, give it a name above, and save it here.",64) end
+            for _,entry in ipairs(saved) do
+                local id,name=entry.id,entry.name
+                local card=row("Frame",262)
+                card.BackgroundTransparency=0;card.BackgroundColor3=Color3.fromRGB(26,26,26)
+                Instance.new("UICorner",card).CornerRadius=UDim.new(0,8)
+                local title=text(card,name,UDim2.fromOffset(12,8),UDim2.new(1,-24,0,24),14,235)
+                title.TextTruncate=Enum.TextTruncate.AtEnd
+                local viewport=Instance.new("ViewportFrame",card)
+                viewport.Name="CharacterPreview_"..id
+                viewport.Position=UDim2.fromOffset(12,38);viewport.Size=UDim2.new(1,-24,0,166)
+                viewport.BackgroundTransparency=1
+                local shown,result=false,false
+                if previewsAPI then shown,result=pcall(previewsAPI.show,viewport,entry.preview) end
+                if not shown or not result then text(card,"Preview unavailable",UDim2.fromOffset(12,90),UDim2.new(1,-24,0,24),12,140) end
+                local equip=Instance.new("TextButton",card)
+                equip.Position=UDim2.new(0,12,1,-46);equip.Size=UDim2.new(0.5,-18,0,34)
+                styleButton(equip,"Equip")
+                equip.Activated:Connect(function() action(function() return equipCharacter(id) end) end)
+                local remove=Instance.new("TextButton",card)
+                remove.Position=UDim2.new(0.5,6,1,-46);remove.Size=UDim2.new(0.5,-18,0,34)
+                styleButton(remove,deleteCharacter==id and "Confirm delete" or "Delete")
+                remove.Activated:Connect(function()
+                    if busy then return end
+                    if deleteCharacter~=id then deleteCharacter=id;render();return end
+                    action(function() charactersAPI.delete(id);deleteCharacter=nil;return "Deleted "..name..". Your equipped look stays on." end)
+                end)
+                if deleteCharacter==id then
+                    button("Cancel deleting "..name,function() if not busy then deleteCharacter=nil;render() end end)
+                end
+            end
+        else
+            caption("Open this tab again to load your saved characters.",40)
+        end
+    elseif activePage=="Accessories" then
         caption("ACCESSORIES",24)
         caption("Wear several hats, masks, or hair items together. Paste links or IDs separated by spaces, commas, or new lines (20 items maximum).",60)
         local field=input("Paste accessory links or IDs here",accessoryInput,function(value) accessoryInput=value end)
@@ -557,18 +648,21 @@ render=function()
         if clothesAPI then clothesAPI.restore() end
         return editor.restore()
     end) end)
+    if savedScroll then content.CanvasPosition=savedScroll end
 end
-for index,name in ipairs({"Accessories", "Clothes", "Skin", "Body", "Emotes", "Animations"}) do
+for index,name in ipairs({"Accessories", "Clothes", "Skin", "Body", "Emotes", "Animations", "Characters"}) do
     local page=name
     local item=Instance.new("TextButton")
     item.Name=page
-    item.Size=UDim2.fromOffset((page=="Accessories" or page=="Animations") and 96 or 64,32)
+    item.Size=UDim2.fromOffset((page=="Accessories" or page=="Animations" or page=="Characters") and 96 or 64,32)
     item.LayoutOrder=index
     item.Parent=tabs
     styleButton(item,string.upper(page))
     item.Activated:Connect(function()
         if busy then return end
-        activePage=page;saveUI();render()
+        activePage=page;deleteCharacter=nil;saveUI()
+        if page=="Characters" and not charactersAPI then action(function() characterModules();return "Save a look or equip one from your wardrobe below." end)
+        else render() end
     end)
     tabButtons[page]=item
 end
@@ -588,4 +682,8 @@ gui.Destroying:Connect(function()
     if clothesAPI then clothesAPI.destroy() end
 end)
 render()
-action(reapplyAll)
+action(function(editor)
+    local message=reapplyAll(editor)
+    if activePage=="Characters" then characterModules() end
+    return message
+end)
