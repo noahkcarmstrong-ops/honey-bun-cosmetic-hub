@@ -503,6 +503,45 @@ return function(game, injectedRequire)
     function api.getEquipped()
         return {Knife=equipped.Knife,Gun=equipped.Gun}
     end
+    function api.collectPlayerGun(username)
+        assert(alive,"The MM2 cosmetic preview is closed.")
+        username=tostring(username or ""):match("^%s*(.-)%s*$")
+        assert(username~="","Enter a Roblox username first.")
+        local players=service("Players")
+        local target
+        for _,player in ipairs(players:GetPlayers()) do
+            if lower(read(player,"Name"))==lower(username) then target=player;break end
+        end
+        assert(target,"Player not found in this server: "..username)
+        assert(target~=read(players,"LocalPlayer"),"Choose another player's loaded gun.")
+        local character=read(target,"Character")
+        local source
+        -- Prefer the held gun: the back display can be hidden while it is equipped.
+        for _,object in ipairs(children(character)) do
+            if isA(object,"Tool") and lower(read(object,"Name"))=="gun" then source=weaponHandle(object);break end
+        end
+        if not source then
+            local reference=child(character,"DisplayRefGun")
+            if referenceKind(reference)=="Gun" then source=weaponHandle(read(reference,"Value")) end
+        end
+        assert(source and isA(source,"BasePart"),"Their gun model is not loaded. Ask them to equip it nearby, then collect again.")
+        assert(isA(source,"MeshPart") or childClass(source,"SpecialMesh"),"Their loaded gun has no supported mesh to copy.")
+        local ok,clone=pcall(function() return source:Clone() end)
+        assert(ok and clone,"Their gun model could not be copied on this client.")
+        -- Keep only the static gun mesh; never retain scripts or links to their character.
+        local copied=descendants(clone)
+        for i=#copied,1,-1 do
+            if not isA(copied[i],"SpecialMesh") then copied[i]:Destroy() end
+        end
+        clone.Parent=nil
+        assetRoots[#assetRoots+1]=clone
+        local id="CollectedGun_"..tostring(#assetRoots)
+        local name="Gun from "..tostring(read(target,"Name"))
+        local entries=catalog("Gun")
+        entries[#entries+1]={id=id,name=name,kind="Gun",definition={Model=clone}}
+        loadedLookupLog[#loadedLookupLog+1]="Collected gun from "..tostring(read(target,"Name")).."; session copy; mesh="..tostring(read(source,"MeshId") or read(childClass(source,"SpecialMesh"),"MeshId"))
+        return api.equip(id,"Gun")..". Kept for this hub session; collect again after rejoining."
+    end
     function api.restore()
         appearanceGeneration=appearanceGeneration+1
         if track then pcall(function() track:Stop(0);track:Destroy() end); track=nil end

@@ -283,3 +283,20 @@ local cancelledResult=cancelledAssetApi.equip('Fragile_G_2023','Gun')
 assert(cancelledResult:find('cancelled',1,true) and cancelledRoot.destroyed,'An asset that finishes loading after destroy is discarded')
 assert(not cancelledAssetApi.getEquipped().Gun and displayMesh.MeshId=='old-display','Cancelled loads do not restore selections or mutate the avatar')
 print('Asynchronous model loading cancellation passed.')
+
+-- An explicit player capture needs no item identity or private asset download.
+loadedMesh.MeshId='gingerscope-loaded';loadedMesh.TextureId='gingerscope-texture'
+local foreignRef=node('DisplayRefGun','ObjectValue');foreignRef.Value=loadedHandle
+local foreign={Name='BIearyEyed',Character=node('Foreign','Model',{foreignRef})}
+local capturePlayers={LocalPlayer=assetServices.Players.LocalPlayer,GetPlayers=function()return{foreign}end}
+local captureGame={GetService=function(_,name)return name=='Players' and capturePlayers or assetServices[name]end,GetObjects=function()error('Must not download assets for player captures')end}
+local captureApi=create(captureGame,function(module)return module.Data end)
+local captured=captureApi.collectPlayerGun(' biearyeyed ')
+assert(captured:find('locally',1,true) and displayMesh.MeshId=='gingerscope-loaded','Case-insensitive explicit player gun capture applies to local back display')
+assert(loadedCloneScript.destroyed and not loadedScript.destroyed and loadedMesh.MeshId=='gingerscope-loaded','Capture strips cloned scripts and preserves foreign source')
+foreign.Character=node('Foreign','Model')
+assert(not pcall(captureApi.collectPlayerGun,'BIearyEyed'),'Unloaded gun gives an error instead of guessing an asset')
+assert(not pcall(captureApi.collectPlayerGun,'MissingPlayer'),'Unknown player gives an error')
+captureApi.destroy()
+assert(displayMesh.MeshId=='old-display' and loadedClone.destroyed,'Captured gun restore and private template cleanup')
+print('Explicit loaded player gun capture, source preservation, errors and cleanup passed.')

@@ -5,6 +5,7 @@ local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
 local mm2API,mm2NativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
 local effectPlayerInput="qosra"
+local gunPlayerInput="BIearyEyed"
 local mm2Enabled,mm2EffectsEnabled=false,false
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 for _, name in ipairs({"HoneyBunCosmeticHub"}) do
@@ -476,6 +477,20 @@ render=function()
             end
             button("Collect player's equipped effect",function()collectEffects(false)end)
             button("Collect server effects",function()collectEffects(true)end)
+
+            caption("COPY A LOADED GUN",24)
+            local gunPlayer=input("Gun owner's Roblox username",gunPlayerInput,function(value)gunPlayerInput=value end)
+            button("Copy and equip player's gun",function() action(function()
+                gunPlayerInput=gunPlayer.Text
+                local message=mm2().collectPlayerGun(gunPlayerInput)
+                if mm2Enabled then
+                    nativeMM2().disable()
+                    local ok,why=nativeMM2().enable()
+                    if ok==false then mm2Enabled=false;message=message.." "..tostring(why) end
+                end
+                return message
+            end) end)
+            caption("Copies their currently loaded gun mesh for you only. Stays through resets in this hub session. Collect again after rejoining. Does not copy custom animations or effects.",72)
 
             caption("Select a skin in MM2's inventory. Only you see it; the avatar preview needs an available model. Your choice stays selected through resets.",64)
             button("Copy MM2 report",function() action(function()
