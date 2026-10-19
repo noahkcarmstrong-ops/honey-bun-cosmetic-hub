@@ -464,9 +464,12 @@ render=function()
         item.TextColor3=name==activePage and Color3.fromRGB(20,20,20) or Color3.fromRGB(200,200,200)
     end
     if activePage~="Characters" then limits.MaxSize=Vector2.new(520,760) end
-    statusLabel=caption(statusText,56)
-    statusLabel.AutomaticSize=Enum.AutomaticSize.Y
-    persistenceLabel=caption(persistence and persistence.status() or persistenceNotice,44)
+    statusLabel,persistenceLabel=nil,nil
+    if activePage~="Characters" then
+        statusLabel=caption(statusText,56)
+        statusLabel.AutomaticSize=Enum.AutomaticSize.Y
+        persistenceLabel=caption(persistence and persistence.status() or persistenceNotice,44)
+    end
     if activePage=="MM2" and isMM2 then
         caption(mm2MenuOpen and "MM2 MENU" or "MURDER MYSTERY 2",24)
         if mm2MenuOpen then
@@ -584,7 +587,6 @@ render=function()
         end
     elseif activePage=="Characters" then
         limits.MaxSize=Vector2.new(1050,850)
-        statusLabel.Visible=false;persistenceLabel.Visible=false
         local toolbar=row("Frame",34)
         local search=Instance.new("TextBox",toolbar)
         search.Name="CharacterSearch";search.Size=UDim2.new(1,-176,1,0)
