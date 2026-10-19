@@ -103,6 +103,7 @@ return function(game, injectedRequire)
         end end; return out
     end
     local snapshots,track = {},nil
+    local appearanceGeneration=0
     local equipped,pending,connections = {},{},{}
     local allowPending=false
     local watchersActive=false
@@ -166,7 +167,7 @@ return function(game, injectedRequire)
         if isA(model,"Model") or isA(model,"Tool") then return child(model,"Handle") end
         if isA(model,"BasePart") then return model end
     end
-    local assetCache,assetRoots,assetFailures,resourceCache={},{},{},{}
+    local assetCache,assetRoots,assetFailures,resourceCache,assetLoaders={},{},{},{},{}
     local lastAttempt
     local function itemAsset(assetId)
         local id=tonumber(assetId)
@@ -174,12 +175,30 @@ return function(game, injectedRequire)
         local key=tostring(id)
         if assetCache[key] then return assetCache[key] end
         if assetFailures[key] then error(assetFailures[key]) end
+        local generation=appearanceGeneration
         local ok,objects=pcall(function() return game:GetObjects("rbxassetid://"..string.format("%.0f",id)) end)
+        local loader="GetObjects"
+        local firstFailure
         if not ok or type(objects)~="table" or #objects==0 then
-            local message="Could not load ItemID "..key..": "..tostring(objects)
-            if ok and type(objects)=="table" then message="ItemID "..key.." returned no objects; its asset is unavailable to this client." end
-            assetFailures[key]=message;error(message)
+            firstFailure=ok and type(objects)=="table" and "GetObjects returned no objects" or ("GetObjects: "..tostring(objects))
+            local assets=service("AssetService")
+            local method=read(assets,"LoadAssetAsync")
+            if type(method)=="function" then
+                local loaded,root=pcall(method,assets,id)
+                if loaded and read(root,"ClassName") then
+                    ok,objects=true,{root};loader="AssetService.LoadAssetAsync"
+                else ok,objects=false,"AssetService.LoadAssetAsync: "..tostring(root) end
+            else ok,objects=false,"AssetService.LoadAssetAsync is unavailable" end
         end
+        if not alive or generation~=appearanceGeneration then
+            if ok and type(objects)=="table" then for _,root in ipairs(objects) do pcall(function() root:Destroy() end) end end
+            error("MM2 cosmetic loading cancelled.")
+        end
+        if not ok or type(objects)~="table" or #objects==0 then
+            local message="Could not load ItemID "..key..": "..tostring(firstFailure).."; "..tostring(objects)
+            assetFailures[key]=message;assetLoaders[key]=message;error(message)
+        end
+        assetLoaders[key]=loader
         local all={}
         for _,object in ipairs(objects) do
             assetRoots[#assetRoots+1]=object
@@ -352,7 +371,9 @@ return function(game, injectedRequire)
         local kind=toolKind(tool)
         local id=kind and equipped[kind]
         if id and weaponHandle(tool) then
+            local generation=appearanceGeneration
             local ok,message=pcall(api.preview,id,kind,tool)
+            if not alive or generation~=appearanceGeneration or equipped[kind]~=id then return end
             if not ok then pending[kind]=id;equipError=tostring(message) else equipError=nil end
         end
     end
@@ -360,7 +381,9 @@ return function(game, injectedRequire)
         if not alive then return end
         local kind=referenceKind(reference);local id=kind and equipped[kind]
         if id and weaponHandle(read(reference,"Value")) then
+            local generation=appearanceGeneration
             local ok,message=pcall(api.preview,id,kind,reference)
+            if not alive or generation~=appearanceGeneration or equipped[kind]~=id then return end
             if not ok then pending[kind]=id;equipError=tostring(message) else equipError=nil end
         end
     end
@@ -414,8 +437,10 @@ return function(game, injectedRequire)
         local kind=category and tostring(category):sub(1,1):upper()..tostring(category):sub(2):lower(); assert(kind=="Gun" or kind=="Knife","Equip category must be Knife or Gun.")
         local e=findEntry(id,kind); assert(e,"Unsupported "..kind:lower().." cosmetic: "..tostring(id))
         lastAttempt={id=e.id,kind=kind,definition=e.definition}
+        local generation=appearanceGeneration
         equipped[kind]=e.id;pending[kind]=e.id
         allowPending=true; local ok,result=pcall(api.preview,e.id,kind); allowPending=false
+        if not alive or generation~=appearanceGeneration then return "MM2 cosmetic selection cancelled." end
         if not ok then
             equipError=tostring(result);ensureWatchers();equipError=tostring(result)
             lastEquipResult="Selected "..e.name.."; avatar preview unavailable: "..equipError
@@ -429,6 +454,7 @@ return function(game, injectedRequire)
         return {Knife=equipped.Knife,Gun=equipped.Gun}
     end
     function api.restore()
+        appearanceGeneration=appearanceGeneration+1
         if track then pcall(function() track:Stop(0);track:Destroy() end); track=nil end
         for _,old in pairs(snapshots) do restoreHandle(old) end
         snapshots={}; pending={}; equipped={};equipError=nil;lastEquipResult=nil; disconnectAll(); return "Restored local MM2 preview."
@@ -437,7 +463,7 @@ return function(game, injectedRequire)
         if alive then
             alive=false;api.restore()
             for _,object in ipairs(assetRoots) do pcall(function() object:Destroy() end) end
-            assetRoots={};assetCache={};assetFailures={};resourceCache={}
+            assetRoots={};assetCache={};assetFailures={};resourceCache={};assetLoaders={}
         end
     end
     local function fullName(o) local fn=read(o,"GetFullName"); if type(fn)=="function" then local ok,v=pcall(fn,o); if ok and type(v)=="string" then return v end end; return tostring(read(o,"Name") or "") end
@@ -461,7 +487,7 @@ return function(game, injectedRequire)
     end
     function api.report()
         local rs=service("ReplicatedStorage"); local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local lines={"MM2 discovery (read-only)","GameId="..tostring(read(game,"GameId") or "?"),"PlaceId="..tostring(read(game,"PlaceId") or "?"),"ReplicatedStorage="..(rs and "available" or "missing"),"LocalPlayer="..(p and tostring(read(p,"Name") or "available") or "missing")}
-        lines[#lines+1]="Build: replicated visuals and avatar diagnostics V7"
+        lines[#lines+1]="Build: native asset loading V8"
         lines[#lines+1]="Selected Knife="..tostring(equipped.Knife).." Gun="..tostring(equipped.Gun).." Last equip error="..tostring(equipError or "none")
         lines[#lines+1]="Pending Knife="..tostring(pending.Knife).." Gun="..tostring(pending.Gun).." Last result="..tostring(lastEquipResult or "none")
         if lastAttempt then
@@ -503,6 +529,8 @@ return function(game, injectedRequire)
         if lastAttempt then
             local source=resourceCache[lastAttempt.id]
             lines[#lines+1]="Resolved local resource="..(source and fullName(source) or "none")
+            local id=tonumber(field(lastAttempt.definition,"ItemID"))
+            lines[#lines+1]="Visual loader="..tostring(id and assetLoaders[tostring(id)] or "not attempted")
         end
         local ps=service("Players");local current=read(ps,"LocalPlayer")
         for _,area in ipairs({"Character","Backpack"}) do
