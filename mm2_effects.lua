@@ -1,5 +1,5 @@
 -- Local visual previews from MM2 Effects data; no ownership changes or game remotes.
-return function(game,onStatus)
+return function(game,onStatus,library)
     local alive=true;local generation=0
     local selected=nil
     local catalogCache
@@ -30,6 +30,7 @@ return function(game,onStatus)
         if catalogCache then return catalogCache end
         local data,err=moduleData();assert(type(data)=="table",err or "Effects database is unavailable")
         local out={};for id,def in pairs(data)do if tostring(id)=="Bats" and type(def)=="table"then out[#out+1]={id=tostring(id),name=tostring(field(def,"ItemName")or field(def,"Name")or id),kind="Effect",rarity=field(def,"Rarity"),image=field(def,"Image")or field(def,"ImageId")or field(def,"ImageID"),category="effects",definition=def}end end
+        if library then for _,entry in ipairs(library.list())do out[#out+1]=entry end end
         table.sort(out,function(a,b)return lower(a.name)<lower(b.name)end);catalogCache=out;for _,e in ipairs(out)do catalogIds[e.id]=e end;return out
     end
     local function find(id)for _,e in ipairs(catalog())do if e.id==tostring(id)then return e end end end
@@ -294,6 +295,7 @@ return function(game,onStatus)
     local api={}
     function api.list(_,search)local out={};local q=lower(search);for _,e in ipairs(catalog())do if q==""or lower(e.name):find(q,1,true)or lower(e.id):find(q,1,true)then out[#out+1]={id=e.id,name=e.name,kind=e.kind,rarity=e.rarity,image=e.image,category=e.category}end end;return out end
     function api.equip(id,kind)assert(alive,"The effects preview is closed.");assert(kind=="Effect","Equip category must be Effect.");local e=find(id);assert(e,"Unsupported effect: "..tostring(id));generation=generation+1;local token=generation;selected=e.id;sourceErrors[e.id]=nil;ensureWatchers();clearApplied();local ok,msg=apply();if not alive or token~=generation then ok=false;msg="Effect application was cancelled." end;lastApplyError=ok and "" or msg;if onStatus then pcall(onStatus,msg)end;return ok and msg or "Selected "..e.name.."; unavailable locally: "..msg end
+    function api.reloadLibrary()catalogCache=nil;catalogIds={};catalog()end
     function api.collectOriginals()assert(alive,"The effects preview is closed.");ensureWatchers()end
     function api.getEquipped()return{Effect=selected}end
     function api.restore()generation=generation+1;selected=nil;clearApplied();disconnectAll();lastApplyError="";return"Restored local MM2 effects."end
@@ -347,6 +349,6 @@ return function(game,onStatus)
         local ids={};for id in pairs(collectedIds)do ids[#ids+1]=id end;table.sort(ids)
         return "Automatically collected originals: "..(#ids>0 and table.concat(ids,",")or"none yet")
     end
-    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=sourceErrors[selected]or sourceNotes[selected]or"resolved" end;return"MM2 Effects build: original Bats only V9\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails().."\n"..visualDetails().."\n"..collectionReport() end
+    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=sourceErrors[selected]or sourceNotes[selected]or"resolved" end;return"MM2 Effects build: Bats and saved player originals V10\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails().."\n"..visualDetails().."\n"..collectionReport() end
     return api
 end

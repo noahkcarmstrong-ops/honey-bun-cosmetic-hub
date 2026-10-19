@@ -119,6 +119,7 @@ function game:HttpGet(url)
     if url:find('/commits/main',1,true)then return'revision'end
     assert(url:find('/'..string.rep('a',40)..'/',1,true),'Modules and Refresh use immutable commits')
     if url:find('/native_inventory.lua',1,true)then return'native-mm2-module'end
+    if url:find('/effect_library.lua',1,true)then return'effect-library-module'end
     if url:find('/mm2_effects.lua',1,true)then return'mm2-effects-module'end
     if url:find('/mm2.lua',1,true)then return'mm2-module'end
     if url:find('/avatar.lua',1,true)then return'editor-module'end
@@ -133,7 +134,8 @@ function game:HttpGet(url)
 end
 loadstring=function(source)
     if source=='native-mm2-module'then return function()return function(_gui,_catalog,_status,mode)local key=mode=='effects' and 'nativeEffectsEnabled' or 'nativeEnabled';return{enable=function()if calls.nativeFail then return false,'Open MM2 inventory first' end;calls[key]=true;return'Enabled'end,disable=function()calls[key]=false end,destroy=function()calls[key]=false;calls.nativeDestroyed=true end,report=function()return'Native fixture report'end}end end end
-    if source=='mm2-effects-module'then return function()return function(_game,_status)return{collectOriginals=function()calls.effectsCollecting=true end,restore=function()calls.effectsRestored=true end,destroy=function()calls.effectsDestroyed=true end,report=function()return'Effects fixture report'end}end end end
+    if source=='effect-library-module'then return function()return function()return{list=function()return{}end,capturePlayer=function(name)calls.capturePlayer=name;return'Captured player'end,captureServer=function(name)calls.capturePriority=name;return'Captured server'end,report=function()return'Library fixture'end,destroy=function()calls.libraryDestroyed=true end}end end end
+    if source=='mm2-effects-module'then return function()return function(_game,_status)return{reloadLibrary=function()calls.libraryReloaded=true end,collectOriginals=function()calls.effectsCollecting=true end,restore=function()calls.effectsRestored=true end,destroy=function()calls.effectsDestroyed=true end,report=function()return'Effects fixture report'end}end end end
     if source=='mm2-module'then return function()return function()return{report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
     if source=='editor-module'then return function()return createEditor end end
     if source=='motion-module'then return function()return createMotion end end
@@ -291,8 +293,10 @@ assert(calls.nativeEnabled and find(gui(),'TextButton','Show all weapons: ON'),'
 assert(not find(gui(),'TextBox','Search MM2 cosmetics'),'Separate catalog is removed from the hub')
 click('Show all weapons: ON');assert(not calls.nativeEnabled and calls.mm2Restored,'Disable restores native inventory and previews')
 click('Show all weapons: OFF')
-click('Bats effect: OFF');assert(calls.nativeEffectsEnabled and calls.effectsCollecting and calls.nativeEnabled and find(gui(),'TextButton','Bats effect: ON'),'Separate effects toggle enables alongside weapons')
-click('Bats effect: ON');assert(calls.effectsRestored and not calls.nativeEffectsEnabled and calls.nativeEnabled and find(gui(),'TextButton','Bats effect: OFF'),'Effects disable restores only local effects and keeps weapons enabled')
+click('Saved effects: OFF');assert(calls.nativeEffectsEnabled and calls.effectsCollecting and calls.nativeEnabled and find(gui(),'TextButton','Saved effects: ON'),'Separate effects toggle enables alongside weapons')
+click("Collect player's equipped effect");assert(calls.capturePlayer=='qosra'and calls.libraryReloaded,'Player capture defaults to qosra and refreshes the inventory')
+click('Collect server effects');assert(calls.capturePriority=='qosra','Server capture prioritizes the entered username')
+click('Saved effects: ON');assert(calls.effectsRestored and not calls.nativeEffectsEnabled and calls.nativeEnabled and find(gui(),'TextButton','Saved effects: OFF'),'Effects disable restores only local effects and keeps weapons enabled')
 click('Back');assert(find(gui(),'TextButton','Open MM2 menu'),'Back returns to the MM2 entry')
 click('ACCESSORIES');assert(find(gui(),'TextButton','Add accessories'),'Cosmetic tabs remain usable')
 game.GameId=0;game.PlaceId=142823291

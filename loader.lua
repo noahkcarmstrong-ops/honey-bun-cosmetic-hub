@@ -3,7 +3,8 @@ local Players = game:GetService("Players")
 local Input = game:GetService("UserInputService")
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
-local mm2API,mm2NativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI
+local mm2API,mm2NativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
+local effectPlayerInput="qosra"
 local mm2Enabled,mm2EffectsEnabled=false,false
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 for _, name in ipairs({"HoneyBunCosmeticHub"}) do
@@ -399,9 +400,12 @@ local function effectsMM2()
     api()
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/mm2_effects.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
+    local librarySource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/effect_library.lua",false)
+    local libraryChunk,libraryError=loadstring(librarySource);assert(libraryChunk,libraryError)
+    mm2EffectsLibraryAPI=libraryChunk()(game,gui)
     mm2EffectsAPI=chunk()(game,function(message)
         if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
-    end)
+    end,mm2EffectsLibraryAPI)
     return mm2EffectsAPI
 end
 local function nativeEffectsMM2()
@@ -443,7 +447,7 @@ render=function()
                 assert(ok~=false,message or "MM2 inventory could not be detected.")
                 mm2Enabled=true;return type(ok)=="string" and ok or message
             end) end)
-            button(mm2EffectsEnabled and "Bats effect: ON" or "Bats effect: OFF",function() action(function()
+            button(mm2EffectsEnabled and "Saved effects: ON" or "Saved effects: OFF",function() action(function()
                 if mm2EffectsEnabled then
                     nativeEffectsMM2().disable();effectsMM2().restore();mm2EffectsEnabled=false
                     return "Original effects inventory restored; local knife effect removed."
@@ -453,11 +457,31 @@ render=function()
                 effectsMM2().collectOriginals()
                 mm2EffectsEnabled=true;return type(ok)=="string" and ok or message
             end) end)
-            caption("Original Bats particles on your knife, including the knife on your back. Visible only to you.",64)
+            caption("Original Bats plus saved player effects. Collects loaded knife particles and trails; custom scripts and animations are not copied.",64)
+            local effectPlayer=input("Roblox username",effectPlayerInput,function(value)effectPlayerInput=value end)
+            local function collectEffects(everyone)
+                effectPlayerInput=effectPlayer.Text:gsub("^%s+",""):gsub("%s+$","")
+                action(function()
+                    effectsMM2()
+                    local message=everyone and mm2EffectsLibraryAPI.captureServer(effectPlayerInput)or mm2EffectsLibraryAPI.capturePlayer(effectPlayerInput)
+                    if not alive then return "Effect collection cancelled."end
+                    mm2EffectsAPI.reloadLibrary()
+                    if mm2EffectsEnabled then
+                        nativeEffectsMM2().disable()
+                        local ok,why=nativeEffectsMM2().enable()
+                        if not ok then mm2EffectsEnabled=false;message=message.." Reopen MM2 Effects: "..tostring(why)end
+                    end
+                    return message
+                end)
+            end
+            button("Collect player's equipped effect",function()collectEffects(false)end)
+            button("Collect server effects",function()collectEffects(true)end)
+
             caption("Select a skin in MM2's inventory. Only you see it; the avatar preview needs an available model. Your choice stays selected through resets.",64)
             button("Copy MM2 report",function() action(function()
                 local report=mm2().report().."\n"..nativeMM2().report()
                 if mm2EffectsAPI then report=report.."\n"..mm2EffectsAPI.report() end
+                if mm2EffectsLibraryAPI then report=report.."\n"..mm2EffectsLibraryAPI.report() end
                 if mm2EffectsNativeAPI then report=report.."\n"..mm2EffectsNativeAPI.report() end
                 if type(setclipboard)=="function" then
                     setclipboard(report)
@@ -857,6 +881,7 @@ gui.Destroying:Connect(function()
     respawn:Disconnect()
     if mm2EffectsNativeAPI then mm2EffectsNativeAPI.destroy() end
     if mm2EffectsAPI then mm2EffectsAPI.destroy() end
+    if mm2EffectsLibraryAPI then mm2EffectsLibraryAPI.destroy() end
     if mm2NativeAPI then mm2NativeAPI.destroy() end
     if mm2API then mm2API.destroy() end
     if persistence then persistence.destroy() end

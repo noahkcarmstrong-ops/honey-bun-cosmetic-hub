@@ -6,6 +6,7 @@ local function allowed(key,value)
     if key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" then
         return kind=="string" and #value<=131072
     end
+    if key=="HoneyBunCosmeticEffects" then return kind=="string" and #value<=1400000 end
     if key=="HoneyBunCosmeticCharacters" then
         return kind=="string" and #value<=1400000
     end
@@ -62,9 +63,9 @@ return function(gui,userId,onStatus)
     end
     local changed=gui.AttributeChanged:Connect(function(key)
         local value=gui:GetAttribute(key)
-        if not allowed(key,value) and not (value==nil and (key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" or key=="HoneyBunCosmeticAnimationBundle" or key=="HoneyBunCosmeticCharacters" or key:sub(1,19)=="HoneyBunCosmeticUI_")) then return end
+        if not allowed(key,value) and not (value==nil and (key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" or key=="HoneyBunCosmeticAnimationBundle" or key=="HoneyBunCosmeticCharacters" or key=="HoneyBunCosmeticEffects" or key:sub(1,19)=="HoneyBunCosmeticUI_")) then return end
         dirty=true
-        if key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" or key=="HoneyBunCosmeticAnimationBundle" or key=="HoneyBunCosmeticCharacters" then
+        if key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" or key=="HoneyBunCosmeticAnimationBundle" or key=="HoneyBunCosmeticCharacters" or key=="HoneyBunCosmeticEffects" then
             flush()
         elseif not scheduled then
             scheduled=true
