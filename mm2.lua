@@ -329,6 +329,9 @@ return function(game, injectedRequire, gunLibrary)
     end
     local function restoreHandle(old)
         if old.overlay then pcall(function() old.overlay:Destroy() end);old.overlay=nil end
+        old.restoring=true
+        for part,value in pairs(old.hidden or {}) do set(part,"LocalTransparencyModifier",value) end
+        old.hidden=nil
         if old.localTransparency~=nil then set(old.handle,"LocalTransparencyModifier",old.localTransparency) end
         if old.sourceClone then
             pcall(function() old.handle:ApplyMesh(old.sourceClone) end)
@@ -340,17 +343,23 @@ return function(game, injectedRequire, gunLibrary)
         set(old.handle,"Color",old.color);set(old.handle,"Material",old.material)
         set(old.handle,"Size",old.size)
     end
-    local function applySavedGun(handle,e)
+    local function applySavedGun(handle,e,held)
         assert(handle,"Your gun display has not loaded yet.")
         local old=snapshots[handle]
         if old and old.overlay and old.overlayId==e.id and read(old.overlay,"Parent") then return end
         if old then restoreHandle(old);snapshots[handle]=nil end
         local def=e.definition
+        local p=read(service("Players"),"LocalPlayer")
+        local character=read(p,"Character")
+        local mount=def.Mounts and def.Mounts[held and "Held" or "Holster"]
+        local anchor=mount and child(character,mount.Part) or handle
+        local offset=mount and mount.Offset
+        if not anchor then anchor=handle;offset=nil end
         local overlay=Instance.new("Part")
         local ok,message=pcall(function()
             overlay.Name="HoneyBunSavedGun"
             overlay.Size=def.Size or Vector3.new(1,1,1)
-            overlay.CFrame=handle.CFrame
+            overlay.CFrame=offset and anchor.CFrame*offset or handle.CFrame
             overlay.Anchored=false;overlay.Massless=true
             overlay.CanCollide=false;overlay.CanTouch=false;overlay.CanQuery=false
             overlay.Color=def.Color or handle.Color
@@ -365,12 +374,27 @@ return function(game, injectedRequire, gunLibrary)
             if def.VertexColor then mesh.VertexColor=def.VertexColor end
             mesh.Parent=overlay
             local weld=Instance.new("WeldConstraint")
-            weld.Part0=handle;weld.Part1=overlay;weld.Parent=overlay
-            old={handle=handle,color=read(handle,"Color"),material=read(handle,"Material"),size=read(handle,"Size"),localTransparency=read(handle,"LocalTransparencyModifier") or 0,overlay=overlay,overlayId=e.id}
+            weld.Part0=anchor;weld.Part1=overlay;weld.Parent=overlay
+            old={handle=handle,color=read(handle,"Color"),material=read(handle,"Material"),size=read(handle,"Size"),localTransparency=read(handle,"LocalTransparencyModifier") or 0,overlay=overlay,overlayId=e.id,hidden={}}
             snapshots[handle]=old
             -- A separate static visual preserves its dimensions without changing game joints or tools.
             overlay.Parent=service("Workspace")
-            handle.LocalTransparencyModifier=1
+            local function hide(part)
+                if old.restoring or snapshots[handle]~=old then return end
+                if not isA(part,"BasePart") or old.hidden[part]~=nil then return end
+                old.hidden[part]=read(part,"LocalTransparencyModifier") or 0
+                local changing=false
+                local changed=read(part,"GetPropertyChangedSignal")
+                if type(changed)=="function" then connect(changed(part,"LocalTransparencyModifier"),function()
+                    if changing or old.restoring or snapshots[handle]~=old then return end
+                    -- Camera/game visibility refreshes must not expose the original gun.
+                    if part==handle and old.overlay then old.overlay.LocalTransparencyModifier=part.LocalTransparencyModifier end
+                    changing=true;part.LocalTransparencyModifier=1;changing=false
+                end) end
+                changing=true;part.LocalTransparencyModifier=1;changing=false
+            end
+            hide(handle);for _,part in ipairs(descendants(handle)) do hide(part) end
+            connect(read(handle,"DescendantAdded"),hide)
             local changed=read(handle,"GetPropertyChangedSignal")
             if type(changed)=="function" then connect(changed(handle,"Transparency"),function()
                 if snapshots[handle]==old and old.overlay then old.overlay.Transparency=handle.Transparency end
@@ -425,7 +449,14 @@ return function(game, injectedRequire, gunLibrary)
             return "Queued "..kind:lower().." locally: "..e.name.." (waiting for your matching weapon)"
         end
         if field(e.definition,"PortableGun") then
-            applySavedGun(handle,e)
+            local tool=selectedTool
+            if not tool then local target=targetTool(kind);tool=target end
+            local held=isA(tool,"Tool")
+            if held and read(tool,"Parent")~=read(read(service("Players"),"LocalPlayer"),"Character") then
+                if snapshots[handle] then restoreHandle(snapshots[handle]);snapshots[handle]=nil end
+                return "Saved gun selected; draw your real gun to use this appearance."
+            end
+            applySavedGun(handle,e,held)
             equipped[kind]=e.id;pending[kind]=nil
             return "Previewing saved gun locally: "..e.name
         end
@@ -513,6 +544,7 @@ return function(game, injectedRequire, gunLibrary)
             observed[tool]=true
             connect(read(tool,"DescendantAdded"),function() applyToTool(tool) end)
             connect(read(tool,"ChildAdded"),function() applyToTool(tool) end)
+            connect(read(tool,"AncestryChanged"),function() applyToTool(tool) end)
         end
         applyToTool(tool)
     end
@@ -563,6 +595,31 @@ return function(game, injectedRequire, gunLibrary)
         return {Knife=equipped.Knife,Gun=equipped.Gun}
     end
     function api.savedGuns() return gunLibrary and gunLibrary.list() or {} end
+    local function captureGunMount(source,character,held)
+        if not source then return nil end
+        local anchor
+        local function bodyPart(object)
+            while object and object~=character do
+                if isA(object,"BasePart") and child(character,read(object,"Name"))==object then return object end
+                object=read(object,"Parent")
+            end
+        end
+        for _,constraint in ipairs(descendants(source)) do
+            for _,key in ipairs({"Attachment0","Attachment1","Part0","Part1"}) do
+                local candidate=bodyPart(read(constraint,key))
+                if candidate and candidate~=source then anchor=candidate;break end
+            end
+            if anchor then break end
+        end
+        if not anchor then
+            for _,name in ipairs(held and {"RightHand","Right Arm"} or {"LowerTorso","UpperTorso","Torso"}) do
+                anchor=child(character,name);if anchor then break end
+            end
+        end
+        if not anchor then return nil end
+        local ok,offset=pcall(function() return anchor.CFrame:ToObjectSpace(source.CFrame) end)
+        if ok then return {Part=anchor.Name,Offset=offset} end
+    end
     function api.collectPlayerGun(username)
         assert(alive,"The MM2 cosmetic preview is closed.")
         assert(gunLibrary,"Refresh the hub to load the saved gun library.")
@@ -576,18 +633,18 @@ return function(game, injectedRequire, gunLibrary)
         assert(target,"Player not found in this server: "..username)
         assert(target~=read(players,"LocalPlayer"),"Choose another player's loaded gun.")
         local character=read(target,"Character")
-        local source
+        local source,heldSource,holsteredSource
         -- Prefer the held gun: the back display can be hidden while it is equipped.
         for _,object in ipairs(children(character)) do
-            if isA(object,"Tool") and lower(read(object,"Name"))=="gun" then source=weaponHandle(object);break end
+            if isA(object,"Tool") and lower(read(object,"Name"))=="gun" then heldSource=weaponHandle(object);break end
         end
-        if not source then
-            local reference=child(character,"DisplayRefGun")
-            if referenceKind(reference)=="Gun" then source=weaponHandle(read(reference,"Value")) end
-        end
+        local reference=child(character,"DisplayRefGun")
+        if referenceKind(reference)=="Gun" then holsteredSource=weaponHandle(read(reference,"Value")) end
+        source=heldSource or holsteredSource
         assert(source and isA(source,"BasePart"),"Their gun model is not loaded. Ask them to equip it nearby, then collect again.")
         assert(isA(source,"MeshPart") or childClass(source,"SpecialMesh"),"Their loaded gun has no supported mesh to copy.")
-        local entry=gunLibrary.capture(source,tostring(read(target,"Name")))
+        local mounts={Holster=captureGunMount(holsteredSource,character,false),Held=captureGunMount(heldSource,character,true)}
+        local entry=gunLibrary.capture(source,tostring(read(target,"Name")),mounts)
         loadedLookupLog[#loadedLookupLog+1]="Saved gun from "..tostring(read(target,"Name")).."; mesh="..tostring(entry.definition.MeshId)
         return api.equip(entry.id,"Gun")..". Saved to your gun library."
     end

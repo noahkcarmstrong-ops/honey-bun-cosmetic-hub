@@ -18,6 +18,10 @@ return function(game,gui)
         if t=="string"then if #v>MAX_STRING then return nil end;return v end
         if t=="number"then return finite(v)and v or nil end
         if t=="Vector3"or t=="Color3"then local values=vector(t,v);return values and {t=t,v=values}or nil end
+        if t=="CFrame"then
+            local ok,values=pcall(function()return {v:GetComponents()}end)
+            if ok and #values==12 then for _,n in ipairs(values)do if not finite(n)then return nil end end;return {t=t,v=values}end
+        end
         if t=="EnumItem"then
             local group,item=tostring(v):match("^Enum%.([%w_]+)%.([%w_]+)$")
             if group and (kind=="Material"and group=="Material")then return {t="EnumItem",v={group,item}}end
@@ -28,6 +32,10 @@ return function(game,gui)
         if type(v)=="number"then return finite(v)and v or nil end
         if type(v)~="table"or type(v.v)~="table"then return nil end
         local a=v.v
+        if v.t=="CFrame"and #a==12 then
+            for _,n in ipairs(a)do if not finite(n)then return nil end end
+            return CFrame.new(table.unpack(a))
+        end
         if v.t=="Vector3"and #a==3 and finite(a[1])and finite(a[2])and finite(a[3])then return Vector3.new(a[1],a[2],a[3])end
         if v.t=="Color3"and #a==3 and finite(a[1])and finite(a[2])and finite(a[3])then return Color3.new(a[1],a[2],a[3])end
         if v.t=="EnumItem"and kind=="Material"and a[1]=="Material"and type(a[2])=="string"then
@@ -43,21 +51,53 @@ return function(game,gui)
             and vector("Color3",d.Color)~=nil and vector("Vector3",d.Size)~=nil
             and d.Size.X>0 and d.Size.Y>0 and d.Size.Z>0
     end
+    local function packMounts(mounts)
+        if mounts==nil then return nil end
+        if type(mounts)~="table"then return nil end
+        local packed={}
+        for name,mount in pairs(mounts)do
+            if (name~="Holster"and name~="Held")or type(mount)~="table"then return nil end
+            for key in pairs(mount)do if key~="Part"and key~="Offset"then return nil end end
+            if type(mount.Part)~="string"or #mount.Part==0 or #mount.Part>64 then return nil end
+            local offset=encode(mount.Offset)
+            if not offset or offset.t~="CFrame"then return nil end
+            packed[name]={Part=mount.Part,Offset=offset}
+        end
+        return next(packed)and packed or nil
+    end
+    local function unpackMounts(mounts)
+        if mounts==nil then return nil,true end
+        if type(mounts)~="table"then return nil,false end
+        local decoded={}
+        for name,mount in pairs(mounts)do
+            if (name~="Holster"and name~="Held")or type(mount)~="table"then return nil,false end
+            for key in pairs(mount)do if key~="Part"and key~="Offset"then return nil,false end end
+            if type(mount.Part)~="string"or #mount.Part==0 or #mount.Part>64 then return nil,false end
+            local offset=decode(mount.Offset)
+            if typeof(offset)~="CFrame"then return nil,false end
+            decoded[name]={Part=mount.Part,Offset=offset}
+        end
+        if not next(decoded)then return nil,false end
+        return decoded,true
+    end
     local function pack(d)
-        return {PortableGun=true,MeshId=d.MeshId,TextureId=d.TextureId,Scale=encode(d.Scale),Offset=encode(d.Offset),
+        local out={PortableGun=true,MeshId=d.MeshId,TextureId=d.TextureId,Scale=encode(d.Scale),Offset=encode(d.Offset),
             VertexColor=encode(d.VertexColor),Color=encode(d.Color),Material=encode(d.Material,"Material"),Size=encode(d.Size)}
+        if d.Mounts then out.Mounts=packMounts(d.Mounts)end
+        return out
     end
     local function unpackDefinition(d)
         if type(d)~="table"or d.PortableGun~=true then return nil end
+        local mounts,mountsValid=unpackMounts(d.Mounts);if not mountsValid then return nil end
         local result={PortableGun=true,MeshId=decode(d.MeshId),TextureId=decode(d.TextureId),Scale=decode(d.Scale),Offset=decode(d.Offset),
-            VertexColor=decode(d.VertexColor),Color=decode(d.Color),Material=decode(d.Material,"Material"),Size=decode(d.Size)}
+            VertexColor=decode(d.VertexColor),Color=decode(d.Color),Material=decode(d.Material,"Material"),Size=decode(d.Size),Mounts=mounts}
         return validDefinition(result)and result or nil
     end
-    local function canonical(v)
-        if type(v)=="number"then return "number:"..string.format("%.5f",v)end
+    local function canonical(v,precise)
+        if type(v)=="number"then return "number:"..string.format(precise and "%.9f"or"%.5f",v)end
         if type(v)~="table"then return type(v)..":"..tostring(v)end
         local keys={};for k in pairs(v)do keys[#keys+1]=k end;table.sort(keys)
-        local out={};for _,k in ipairs(keys)do out[#out+1]=k.."="..canonical(v[k])end;return "{"..table.concat(out,"|").."}"
+        local out={};for _,k in ipairs(keys)do out[#out+1]=k.."="..canonical(v[k],precise or k=="Mounts")end;return "{"..table.concat(out,"|").."}"
     end
     local function identity(d)
         local s=canonical(pack(d));local a,b=1,7
@@ -90,7 +130,7 @@ return function(game,gui)
         assert(#encoded<=MAX_BYTES,"Saved gun library is full.");gui:SetAttribute(KEY,encoded)
     end
     local api={}
-    function api.capture(sourceBasePart,playerName)
+    function api.capture(sourceBasePart,playerName,mounts)
         assert(sourceBasePart and read(sourceBasePart,"IsA") and sourceBasePart:IsA("BasePart"),"Choose a gun mesh part.")
         assert(type(playerName)=="string"and #playerName>0 and #playerName<=150,"Enter a player name.")
         local class=read(sourceBasePart,"ClassName")
@@ -107,6 +147,8 @@ return function(game,gui)
         else error("Gun source needs a SpecialMesh or MeshPart mesh.")end
         local definition={PortableGun=true,MeshId=meshId,TextureId=textureId,Scale=scale,Offset=offset,VertexColor=vertexColor,
             Color=read(sourceBasePart,"Color"),Material=read(sourceBasePart,"Material"),Size=size}
+        local encodedMounts=packMounts(mounts)
+        definition.Mounts=unpackMounts(encodedMounts)
         assert(validDefinition(definition),"Gun mesh has unsupported or oversized visual properties.")
         local id=identity(definition)
         for _,entry in ipairs(entries)do if entry.id==id then return entry end end

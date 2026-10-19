@@ -76,10 +76,11 @@ local meta={__index=function(t,k)return methods[k]or t.props[k]end,__newindex=fu
         if old then for i,c in ipairs(old.children)do if c==t then table.remove(old.children,i);break end end end
         t.props.Parent=v
         if v then v.children[#v.children+1]=t;v.ChildAdded:Fire(t);local a=v;while a do a.DescendantAdded:Fire(t);a=a.Parent end end
-    else t.props[k]=v end
+        t.AncestryChanged:Fire(t,v)
+    else local old=t.props[k];t.props[k]=v;if old~=v and t.props.propertySignals and t.props.propertySignals[k]then t.props.propertySignals[k]:Fire()end end
 end}
 local function node(class,name,parent)
-    local n=setmetatable({props={ClassName=class,Name=name or class,ChildAdded=signal(),DescendantAdded=signal(),CharacterAdded=signal(),Destroying=signal()},children={}},meta)
+    local n=setmetatable({props={ClassName=class,Name=name or class,ChildAdded=signal(),DescendantAdded=signal(),CharacterAdded=signal(),Destroying=signal(),AncestryChanged=signal()},children={}},meta)
     n.Parent=parent;return n
 end
 function methods:IsA(class)return class==self.ClassName or (class=="BasePart"and(self.ClassName=="Part"or self.ClassName=="MeshPart"))end
@@ -88,6 +89,7 @@ function methods:GetDescendants()local out={};local function walk(p)for _,v in i
 function methods:FindFirstChild(name)for _,v in ipairs(self.children)do if v.Name==name then return v end end end
 function methods:FindFirstChildWhichIsA(class)for _,v in ipairs(self.children)do if v:IsA(class)then return v end end end
 function methods:FindFirstChildOfClass(class)for _,v in ipairs(self.children)do if v.ClassName==class then return v end end end
+function methods:GetPropertyChangedSignal(key)self.propertySignals=self.propertySignals or {};self.propertySignals[key]=self.propertySignals[key]or signal();return self.propertySignals[key]end
 function methods:Destroy()self.Destroying:Fire();for _,v in ipairs(self:GetChildren())do v:Destroy()end;self.Parent=nil;self.destroyed=true end
 local localPlayer=node("Player","LocalPlayer");localPlayer.Character=node("Model","LocalCharacter");localPlayer.Backpack=node("Backpack","Backpack")
 local native=node("MeshPart","NativeGun");native.Size=Vector3.new(1,2,3);native.CFrame={native=true};native.Color=Color3.new(1,1,1);native.Material=material;native.LocalTransparencyModifier=0.25
@@ -127,6 +129,41 @@ local rejoinedMesh=rejoinedOverlay:FindFirstChildWhichIsA("SpecialMesh")
 assert(rejoinedMesh and rejoinedMesh.MeshId=="rbxassetid://321"and rejoinedMesh.Scale.X==2,"rejoined overlay restores the saved mesh and normalized scale")
 rejoinedMm2.restore();assert(native.LocalTransparencyModifier==0.25 and rejoinedOverlay.destroyed,"rejoined MM2 restore cleans up the overlay")
 rejoinedMm2.destroy()
+
+-- The captured body-relative mount must replace the old gun's unrelated pivot.
+local function frame(x,y,z)
+    local f={X=x or 0,Y=y or 0,Z=z or 0,_kind='CFrame'}
+    function f:ToObjectSpace(other)return frame(other.X-self.X,other.Y-self.Y,other.Z-self.Z)end
+    function f:GetComponents()return self.X,self.Y,self.Z,1,0,0,0,1,0,0,0,1 end
+    return setmetatable(f,{__mul=function(a,b)return frame(a.X+b.X,a.Y+b.Y,a.Z+b.Z)end})
+end
+CFrame={new=frame}
+local sourceTorso=node('MeshPart','UpperTorso',sourcePlayer.Character);sourceTorso.CFrame=frame(10,0,0)
+local localTorso=node('MeshPart','UpperTorso',localPlayer.Character);localTorso.CFrame=frame(100,0,0)
+sourceMesh.CFrame=frame(13,2,0);native.CFrame=frame(100,0,0)
+local originalChild=node('MeshPart','OriginalGunDetail',native);originalChild.LocalTransparencyModifier=0
+players.GetPlayers=function()return{localPlayer,sourcePlayer}end
+local mountLibrary=create(mm2Game,gui())
+local mountApi=dofile('mm2.lua')(mm2Game,function()return{}end,mountLibrary)
+mountApi.collectPlayerGun('BIearyEyed')
+local positioned
+for _,o in ipairs(workspace:GetChildren())do if o.Name=='HoneyBunSavedGun'then positioned=o end end
+assert(positioned.CFrame.X==103 and positioned.CFrame.Y==2,'The copied gun keeps the source torso mount offset instead of the old gun pivot')
+assert(originalChild.LocalTransparencyModifier==1,'Every native gun detail is hidden under the replacement')
+native.LocalTransparencyModifier=0
+assert(native.LocalTransparencyModifier==1,'A camera visibility reset must not reveal the native gun beneath the skin')
+local realGun=node('Tool','Gun',localPlayer.Backpack)
+local realHandle=node('Part','Handle',realGun);realHandle.CFrame=frame(110,0,0);realHandle.LocalTransparencyModifier=0
+realGun.Parent=localPlayer.Character
+assert(realHandle.LocalTransparencyModifier==1,'Drawing the real gun hides its original appearance')
+local heldOverlay
+for _,o in ipairs(workspace:GetChildren())do if o.Name=='HoneyBunSavedGun' and o~=positioned then heldOverlay=o end end
+assert(heldOverlay and heldOverlay.CFrame.X==110,'Drawing the real gun attaches the copied appearance to its handle')
+realGun.Parent=localPlayer.Backpack
+assert(heldOverlay.destroyed and realHandle.LocalTransparencyModifier==0,'Putting the gun away removes its held overlay and restores its handle')
+mountApi.restore()
+assert(originalChild.LocalTransparencyModifier==0 and native.LocalTransparencyModifier==0.25,'Removing the skin restores native root and detail visibility')
+mountApi.destroy()
 
 local bad=gui(http:JSONEncode({version=1,entries={{id="bad",name="bad",definition={PortableGun=true}}}}))
 assert(#create(game,bad).list()==0,"malformed saved definitions are rejected")
