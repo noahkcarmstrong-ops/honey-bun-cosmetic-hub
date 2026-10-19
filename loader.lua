@@ -44,6 +44,7 @@ end
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
 local mm2API,mm2NativeAPI,mm2SavedNativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
+local atmosphereAPI
 local mm2EmoteBarAPI
 local mm2EmotesNativeAPI
 local mm2WeaponEditorAPI
@@ -271,10 +272,11 @@ local copyPlayerInput=uiSetting("copyPlayer","")
 local knifeSide=uiSetting("mm2KnifeSide",false)
 local alive, busy, activePage = true, false, uiSetting("page","Accessories")
 local actionRunning=false
-if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" and activePage~="Characters" and not (isMM2 and activePage=="MM2") then activePage="Accessories" end
+if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" and activePage~="Characters" and activePage~="Atmosphere" and not (isMM2 and activePage=="MM2") then activePage="Accessories" end
 local statusText = "Local avatar editor. Saved selections reapply automatically."
 local statusLabel, render,lastRenderedPage
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
+local skyboxInput=uiSetting("skybox","")
 local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animationBundle","")
 local shirtInput,pantsInput=uiSetting("shirt",""),uiSetting("pants","")
 local characterName=uiSetting("characterName","")
@@ -297,6 +299,7 @@ if regionIndex<1 or regionIndex>#regions or regionIndex%1~=0 then regionIndex=1 
 local paletteOpen=uiSetting("palette",false)
 local function saveUI()
     local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animationBundle=animationInput,emoteSlot=emoteSlot,shirt=shirtInput,pants=pantsInput}
+    values.skybox=skyboxInput
     values.bodyPartsOpen=bodyPartsOpen
     values.characterName=characterName
     values.copyPlayer=copyPlayerInput
@@ -385,6 +388,13 @@ local function api()
         if render then render() end
     end)
     return avatarAPI
+end
+local function atmosphere()
+    if atmosphereAPI then return atmosphereAPI end
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/atmosphere.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    atmosphereAPI=chunk()(game)
+    return atmosphereAPI
 end
 local function motion()
     if motionAPI then return motionAPI end
@@ -1067,6 +1077,16 @@ render=function()
         button("Open Roblox emote wheel",function() action(function() return motion().openWheel() end) end)
         caption("Playback can be visible to other players through Roblox's normal animation system. Wheel assignments are saved locally.",52)
         caption("The standard wheel needs an R15 avatar and Roblox's emote menu enabled by the game. Some emotes may be restricted.",52)
+    elseif activePage=="Atmosphere" then
+        caption("CUSTOM SKYBOX",24)
+        caption("Paste a Roblox skybox model link or asset ID. The model must contain a Sky; a single image ID is not a complete skybox.",64)
+        local field=input("Roblox skybox model link or ID",skyboxInput,function(value)skyboxInput=value end)
+        button("Apply skybox",function()
+            skyboxInput=field.Text;saveUI()
+            action(function()local ok,message=atmosphere().apply(skyboxInput);assert(ok,message);return "Skybox applied. Only you see this sky." end)
+        end)
+        button("Restore original sky",function()action(function()atmosphere().restore();return "Original sky restored." end)end)
+        caption("Only you see this change. If Roblox cannot load the asset, your current sky stays in place.",48)
     elseif activePage=="Animations" then
         caption("ANIMATION BUNDLES",24)
         caption("Paste a Roblox animation bundle link to change your walk, run, idle, and the other movement animations included in that bundle.",56)
@@ -1112,7 +1132,7 @@ render=function()
         button("Restore original body",function() action(function(editor) return editor.restoreBody() end) end)
         caption("R6 and R15 use different body parts. Unsupported packages show a message instead of changing your avatar rig.",48)
     end
-    if activePage~="Characters" and activePage~="MM2" then
+    if activePage~="Characters" and activePage~="MM2" and activePage~="Atmosphere" then
     button("Reapply saved cosmetics",function() action(reapplyAll) end)
     button("Restore original appearance",function() action(function(editor)
         if motionAPI then motionAPI.restore() end
@@ -1123,13 +1143,13 @@ render=function()
     end
     if savedScroll then content.CanvasPosition=savedScroll end
 end
-local pages={"Accessories", "Clothes", "Skin", "Body", "Emotes", "Animations", "Characters"}
+local pages={"Accessories", "Clothes", "Skin", "Body", "Emotes", "Animations", "Characters", "Atmosphere"}
 if isMM2 then table.insert(pages,"MM2") end
 for index,name in ipairs(pages) do
     local page=name
     local item=Instance.new("TextButton")
     item.Name=page
-    item.Size=UDim2.fromOffset((page=="Accessories" or page=="Animations" or page=="Characters") and 96 or 64,32)
+    item.Size=UDim2.fromOffset((page=="Accessories" or page=="Animations" or page=="Characters" or page=="Atmosphere") and 96 or 64,32)
     item.LayoutOrder=index
     item.Parent=tabs
     styleButton(item,string.upper(page))
@@ -1151,6 +1171,7 @@ gui.Destroying:Connect(function()
     connection:Disconnect()
     for object,tween in pairs(tweens) do tween:Cancel();tweens[object]=nil end
     respawn:Disconnect()
+    if atmosphereAPI then atmosphereAPI.destroy() end
     if mm2EmoteBarAPI then mm2EmoteBarAPI.destroy() end
     if mm2EmotesNativeAPI then mm2EmotesNativeAPI.destroy() end
     if mm2EffectsNativeAPI then mm2EffectsNativeAPI.destroy() end

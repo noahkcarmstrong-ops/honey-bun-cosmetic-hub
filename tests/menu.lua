@@ -140,6 +140,7 @@ function game:HttpGet(url)
     if url:find('/storage.lua',1,true)then return'storage-module'end
     if url:find('/clothes.lua',1,true)then return'clothes-module'end
     if url:find('/characters.lua',1,true)then return'characters-module'end
+    if url:find('/atmosphere.lua',1,true)then return'atmosphere-module'end
     if url:find('/previews.lua',1,true)then return'previews-module'end
     if url:find('/loader.lua',1,true)then return'loader'end
     error('Unexpected request '..url)
@@ -151,6 +152,7 @@ loadstring=function(source)
     if source=='effect-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Effect library uses persistent PlayerGui');return{list=function()return{{id='Effect1',name='Effect from PlayerOne'}}end,capturePlayer=function(name)calls.capturePlayer=name;return'Captured player',{'Effect1'}end,captureServer=function(name)calls.capturePriority=name;return'Captured server'end,report=function()return'Library fixture'end,destroy=function()calls.libraryDestroyed=true end}end end end
     if source=='mm2-effects-module'then return function()return function(_game,_status)calls.effectLoads=(calls.effectLoads or 0)+1;return{equip=function(id)calls.savedEffect=id;return'Equipped effect'end,getEquipped=function()return{}end,reloadLibrary=function()calls.libraryReloaded=true end,collectOriginals=function()calls.effectsCollecting=true end,restore=function()calls.effectsRestored=true end,destroy=function()calls.effectsDestroyed=true end,report=function()return'Effects fixture report'end}end end end
     if source=='mm2-module'then return function()return function()calls.weaponLoads=(calls.weaponLoads or 0)+1;return{setKnifeSide=function(value)calls.knifeSide=value;return value end,savedInventory=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,savedWeapons=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,equip=function(id,kind)calls.savedWeapon=id;calls.savedKind=kind;return'Equipped'end,collectPlayerWeapon=function(name,kind)calls.captureOwner=name;calls.captureKind=kind;if calls.failGun and kind=='Gun' then error('Gun not loaded')end;return'Copied '..kind end,report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
+    if source=='atmosphere-module'then return function()return function()return{apply=function(id)calls.skybox=id;return true end,restore=function()calls.skyRestored=true;return'Sky restored'end,destroy=function()calls.skyDestroyed=true end}end end end
     if source=='editor-module'then return function()return createEditor end end
     if source=='motion-module'then return function()return createMotion end end
     if source=='animations-module'then return function()return createAnimations end end
@@ -359,6 +361,11 @@ click('Collect server effects');assert(calls.capturePriority=='PlayerOne','Serve
 assert(not calls.effectsRestored and calls.nativeEffectsEnabled,'Saved effects stay visible and equipped')
 click('Remove saved weapon appearances');assert(calls.mm2Restored,'Explicit remove clears only equipped weapon appearances')
 click('Back');assert(find(gui(),'TextButton','Open MM2 menu'),'Back returns to the MM2 entry')
+click('ATMOSPHERE')
+assert(findName(gui(),'Atmosphere').LayoutOrder==findName(gui(),'Characters').LayoutOrder+1,'Atmosphere tab follows Characters in all games')
+field('Roblox skybox model link or ID').Text='12345';click('Apply skybox')
+assert(calls.skybox=='12345','Skybox field routes the requested ID to its own module')
+click('Restore original sky');assert(calls.skyRestored,'Atmosphere restores the original sky')
 click('ACCESSORIES');assert(find(gui(),'TextButton','Add accessories'),'Cosmetic tabs remain usable')
 click('Hat sounds: ON');assert(calls.hatSounds==false,'Hat sound toggle updates persisted preference')
 click('Hat sounds: OFF');click('Play hat sounds now');assert(calls.hatSounds==true and calls.playHatSounds,'Hat sound controls enable and play local audio')
@@ -378,4 +385,5 @@ game.PlaceId=0
 dofile('loader.lua');assert(not find(gui(),'TextButton','MM2'),'MM2 entry is absent outside MM2')
 gui():Destroy()
 for _,c in ipairs(input.InputBegan.listeners)do assert(not c.Connected,'Input listeners disconnected')end
+assert(calls.skyDestroyed,'Skybox module restores its changes on menu cleanup')
 print('Cosmetic tabs, accessory/body actions, color validation, separate repo, Refresh and cleanup passed.')
