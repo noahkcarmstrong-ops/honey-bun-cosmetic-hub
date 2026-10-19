@@ -875,10 +875,54 @@ return function(game, injectedRequire, gunLibrary)
             connect(read(character,"ChildAdded"),watchReference)
         end
     end
+    -- Retain short-lived projectile structure after a throw for the discovery report.
+    local throwDiscoveries={}
+    local function recordThrowCandidate(object)
+        if not alive or not equipped.Knife then return end
+        local name=lower(read(object,"Name"))
+        if name:find("honeybun",1,true) then return end
+        if not (name:find("knife",1,true) or name:find("throw",1,true) or name:find("projectile",1,true)) then return end
+        local function describe()
+            if not alive then return end
+            local function path(value)
+                local fn=read(value,"GetFullName")
+                if type(fn)=="function" then local ok,result=pcall(fn,value);if ok then return tostring(result) end end
+                return tostring(read(value,"Name") or value)
+            end
+            local rows={path(object).." ["..tostring(read(object,"ClassName")).."]"}
+            local node=object
+            for depth=1,3 do
+                if not node or node==service("Workspace") then break end
+                local attrs=read(node,"GetAttributes")
+                if type(attrs)=="function" then
+                    local ok,values=pcall(attrs,node)
+                    if ok and type(values)=="table" then
+                        local count=0
+                        for key,value in pairs(values) do
+                            count=count+1;if count>12 then break end
+                            rows[#rows+1]=tostring(read(node,"Name")).." attribute "..tostring(key).."="..tostring(value):sub(1,160)
+                        end
+                    end
+                end
+                local count=0
+                for _,item in ipairs(children(node)) do
+                    count=count+1;if count>16 then break end
+                    local value=read(item,"Value")
+                    rows[#rows+1]=tostring(read(item,"Name")).."["..tostring(read(item,"ClassName")).."]"..(value~=nil and "="..path(value) or "")
+                end
+                node=read(node,"Parent")
+            end
+            throwDiscoveries[#throwDiscoveries+1]=table.concat(rows,"; ")
+            if #throwDiscoveries>16 then table.remove(throwDiscoveries,1) end
+        end
+        describe()
+        if task and type(task.delay)=="function" then task.delay(0.15,describe) end
+    end
     local function ensureWatchers()
         local ps=service("Players");local p=read(ps,"LocalPlayer")
         if not watchersActive then
             watchersActive=true
+            connect(read(service("Workspace"),"DescendantAdded"),recordThrowCandidate)
             connect(read(p,"CharacterAdded"),watchCharacter)
             connect(read(p,"ChildAdded"),function(o) if isA(o,"Backpack") then watchContainer(o) end end)
         end
@@ -1289,6 +1333,9 @@ return function(game, injectedRequire, gunLibrary)
     function api.report()
         local rs=service("ReplicatedStorage"); local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local lines={"MM2 discovery (read-only)","GameId="..tostring(read(game,"GameId") or "?"),"PlaceId="..tostring(read(game,"PlaceId") or "?"),"ReplicatedStorage="..(rs and "available" or "missing"),"LocalPlayer="..(p and tostring(read(p,"Name") or "available") or "missing")}
         lines[#lines+1]="Build: native knife mount diagnostics V13"
+        lines[#lines+1]="Throw diagnostics V14"
+        lines[#lines+1]="Recent throw candidates="..#throwDiscoveries
+        for _,entry in ipairs(throwDiscoveries) do lines[#lines+1]="Throw candidate: "..entry end
         if gunLibrary then
             local names={};for _,entry in ipairs(gunLibrary.list()) do names[#names+1]=entry.name end
             lines[#lines+1]="Saved guns="..#names.."; "..table.concat(names,", ")
