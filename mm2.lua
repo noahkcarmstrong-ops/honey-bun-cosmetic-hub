@@ -492,6 +492,39 @@ return function(game, injectedRequire, gunLibrary)
             local ok,relative=pcall(function()return tool.Grip*grip:Inverse()end)
             if ok then anchor=handle;offset=relative end
         end
+        if kind=="Gun" and not held then
+            local torso=child(character,"LowerTorso") or child(character,"Torso") or child(character,"UpperTorso")
+            if torso then
+                -- Use our native holster location, not the donor's body dimensions.
+                local native=torso.CFrame:ToObjectSpace(handle.CFrame)
+                local captured=torso.CFrame:ToObjectSpace(offset and anchor.CFrame*offset or handle.CFrame)
+                local components={captured:GetComponents()}
+                local placement=CFrame.new(native.X,native.Y,native.Z,table.unpack(components,4,12))
+                local minX,maxX=math.huge,-math.huge
+                local function bounds(visual,relative)
+                    if (visual.Transparency or 0)>=1 then return end
+                    local size=visual.Size
+                    if not size then return end
+                    local frame=placement*relative
+                    local center=frame
+                    local shift=visual.Offset
+                    if shift then center=frame*CFrame.new(shift.X,shift.Y,shift.Z) end
+                    local r={frame:GetComponents()}
+                    local half=(math.abs(r[4])*size.X+math.abs(r[5])*size.Y+math.abs(r[6])*size.Z)/2
+                    minX=math.min(minX,center.X-half);maxX=math.max(maxX,center.X+half)
+                end
+                bounds(def,CFrame.new())
+                for _,part in ipairs(def.Parts or {}) do bounds(part,part.RelativeCFrame) end
+                local correction=0
+                local bodySize=read(torso,"Size")
+                if bodySize and minX~=math.huge then
+                    local edge=bodySize.X/2+0.03
+                    correction=native.X>=0 and math.max(0,edge-minX) or math.min(0,-edge-maxX)
+                end
+                mount={Part=read(torso,"Name"),Offset=CFrame.new(correction,0,0)*placement}
+                anchor=torso;offset=mount.Offset
+            end
+        end
         local overlay=Instance.new("Part")
         local ok,message=pcall(function()
             overlay.Name=kind=="Gun" and "HoneyBunSavedGun" or "HoneyBunSavedKnife"

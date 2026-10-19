@@ -156,6 +156,9 @@ chromaMM2.collectPlayerGun("KnifeOwner")
 local gunOverlay
 for _,item in ipairs(workspace:GetChildren())do if item.Name=="HoneyBunSavedGun"then gunOverlay=item end end
 assert(gunOverlay and gunOverlay:FindFirstChild("SavedWeaponDetail_1"),"Chroma guns copy their complete mesh assembly")
+assert(gunOverlay.CFrame.X-source.Size.X/2>=localLowerTorso.CFrame.X+localLowerTorso.Size.X/2+0.029,"wide copied gun clears the local hip instead of embedding in it")
+assert(gunOverlay.CFrame.Y==localGun.CFrame.Y and gunOverlay.CFrame.Z==localGun.CFrame.Z,"hip clearance preserves native holster height and depth")
+
 local gunTint=gunOverlay.Color;heartbeat:Fire(0.5)
 assert(gunOverlay.Color~=gunTint,"a root Chroma gun cycles its tint")
 local persistedChroma=libraryFactory(game,gui(screen:GetAttribute("HoneyBunCosmeticGuns")))
@@ -165,6 +168,12 @@ local savedGunId=library.getSelected("Gun")
 source.Color=Color3.new(0.9,0.1,0.5);chroma.Color=Color3.new(0.1,0.3,0.9)
 chromaMM2.collectPlayerGun("KnifeOwner")
 assert(library.getSelected("Gun")==savedGunId and #library.list("Gun")==1,"different Chroma color phases do not create duplicate gun saves")
+chromaMM2.restore()
+localGun.CFrame=frame(99.5,0,0)
+chromaMM2.collectPlayerGun("KnifeOwner")
+local leftGun
+for _,item in ipairs(workspace:GetChildren())do if item.Name=="HoneyBunSavedGun"then leftGun=item end end
+assert(leftGun.CFrame.X+source.Size.X/2<=localLowerTorso.CFrame.X-localLowerTorso.Size.X/2-0.029,"hip clearance also pushes left-side holsters outward instead of through the body")
 chromaMM2.destroy()
 print("Chroma gun root animation and multipart persistence passed.")
 
