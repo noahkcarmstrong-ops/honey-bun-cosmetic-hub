@@ -66,7 +66,7 @@ return function(gui,userId,onStatus)
         local value=gui:GetAttribute(key)
         if not allowed(key,value) and not (value==nil and (key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" or key=="HoneyBunCosmeticAnimationBundle" or key=="HoneyBunCosmeticCharacters" or key=="HoneyBunCosmeticEffects" or key=="HoneyBunCosmeticGuns" or key:sub(1,19)=="HoneyBunCosmeticUI_")) then return end
         dirty=true
-        if key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" or key=="HoneyBunCosmeticAnimationBundle" or key=="HoneyBunCosmeticCharacters" or key=="HoneyBunCosmeticEffects" or key=="HoneyBunCosmeticGuns" then
+        if key=="HoneyBunCosmeticSettings" or key=="HoneyBunCosmeticEmotes" or key=="HoneyBunCosmeticClothes" or key=="HoneyBunCosmeticAnimationBundle" or key=="HoneyBunCosmeticCharacters" or key=="HoneyBunCosmeticEffects" or key=="HoneyBunCosmeticGuns" or key=="HoneyBunCosmeticUI_activeAtmosphere" then
             flush()
         elseif not scheduled then
             scheduled=true

@@ -152,7 +152,7 @@ loadstring=function(source)
     if source=='effect-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Effect library uses persistent PlayerGui');return{list=function()return{{id='Effect1',name='Effect from PlayerOne'}}end,capturePlayer=function(name)calls.capturePlayer=name;return'Captured player',{'Effect1'}end,captureServer=function(name)calls.capturePriority=name;return'Captured server'end,report=function()return'Library fixture'end,destroy=function()calls.libraryDestroyed=true end}end end end
     if source=='mm2-effects-module'then return function()return function(_game,_status)calls.effectLoads=(calls.effectLoads or 0)+1;return{equip=function(id)calls.savedEffect=id;return'Equipped effect'end,getEquipped=function()return{}end,reloadLibrary=function()calls.libraryReloaded=true end,collectOriginals=function()calls.effectsCollecting=true end,restore=function()calls.effectsRestored=true end,destroy=function()calls.effectsDestroyed=true end,report=function()return'Effects fixture report'end}end end end
     if source=='mm2-module'then return function()return function()calls.weaponLoads=(calls.weaponLoads or 0)+1;return{setKnifeSide=function(value)calls.knifeSide=value;return value end,savedInventory=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,savedWeapons=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,equip=function(id,kind)calls.savedWeapon=id;calls.savedKind=kind;return'Equipped'end,collectPlayerWeapon=function(name,kind)calls.captureOwner=name;calls.captureKind=kind;if calls.failGun and kind=='Gun' then error('Gun not loaded')end;return'Copied '..kind end,report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
-    if source=='atmosphere-module'then return function()return function()local environment;return{environment=function()if not environment then return end;return{time=environment.time,fog=environment.fog,color=environment.color}end,applyEnvironment=function(settings)environment=settings;calls.environment=settings;return true end,restoreEnvironment=function()environment=nil;calls.environment=nil;return true end,daylightEnabled=function()return calls.daylight~=false end,setDaylight=function(v)calls.daylight=v;return'Time updated'end,apply=function(id)calls.skybox=id;return true end,currentAsset=function()return calls.skybox end,previewImage=function()return'rbxassetid://123456'end,restore=function()calls.skyRestored=true;return'Sky restored'end,destroy=function()calls.skyDestroyed=true end}end end end
+    if source=='atmosphere-module'then return function()return function()local environment,activeAsset;return{environment=function()if not environment then return end;return{time=environment.time,fog=environment.fog,color=environment.color}end,applyEnvironment=function(settings)environment=settings;calls.environment=settings;return true end,restoreEnvironment=function()environment=nil;calls.environment=nil;return true end,daylightEnabled=function()return calls.daylight~=false end,setDaylight=function(v)calls.daylight=v;return'Time updated'end,apply=function(id)activeAsset=id;calls.skybox=id;return true end,currentAsset=function()return activeAsset end,previewImage=function()return'rbxassetid://123456'end,restore=function()activeAsset=nil;calls.skyRestored=true;return'Sky restored'end,destroy=function()calls.skyDestroyed=true end}end end end
     if source=='editor-module'then return function()return createEditor end end
     if source=='motion-module'then return function()return createMotion end end
     if source=='animations-module'then return function()return createAnimations end end
@@ -397,6 +397,7 @@ clickNamed('LoadSkybox_1');clickNamed('SkyboxOptions_2');click('Delete');click('
 
 assert(calls.skybox=='12345' and calls.daylight==true,'Load reapplies the saved asset and daylight preference')
 click('Refresh');click('ATMOSPHERE')
+assert(calls.skybox=='12345' and calls.environment and calls.environment.time==8 and calls.environment.fog=='Light' and calls.environment.color=='Warm','Refresh automatically reapplies active skybox time fog and color')
 assert(named(gui(),'SkyboxCard_1') and named(gui(),'LoadSkybox_1'),'Skybox library survives Refresh')
 local skyScroll=named(gui(),'SkyboxGrid').Parent
 skyScroll.CanvasPosition=Vector2.new(0,480)
@@ -413,11 +414,14 @@ clickNamed('SkyboxOptions_1');click('Delete');assert(find(gui(),'TextButton','Co
 click('Cancel');assert(named(gui(),'SkyboxCard_1'),'Cancelled deletion keeps the skybox')
 clickNamed('SkyboxOptions_1');click('Delete');click('Confirm delete')
 assert(not named(gui(),'SkyboxCard_1'),'Confirmed deletion removes the skybox card')
-click('Time: Game');click('Fog: Off')
 field('Roblox skybox model link or ID').Text='';field('Atmosphere name').Text='Fog only';click('Save atmosphere')
 assert(named(gui(),'SkyboxCard_1'),'An atmosphere can be saved without a custom skybox')
 click('Restore game atmosphere');clickNamed('LoadSkybox_1')
 assert(calls.environment and calls.environment.fog=='Light','Environment-only saves load without requiring a model ID')
+click('Restore game atmosphere');click('Restore original sky')
+click('Refresh');click('ATMOSPHERE')
+assert(not calls.environment and find(gui(),'TextButton','Time: Game'),'Restored atmosphere stays off after Refresh')
+
 
 
 click('ACCESSORIES');assert(find(gui(),'TextButton','Add accessories'),'Cosmetic tabs remain usable')

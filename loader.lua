@@ -520,6 +520,29 @@ local function action(callback)
         render()
     end)
 end
+local function atmosphereAction(callback)
+    action(function()
+        local message=callback()
+        if atmosphereAPI then
+            local saved={version=1,asset=atmosphereAPI.currentAsset() or "",daylight=atmosphereAPI.daylightEnabled(),environment=atmosphereAPI.environment()}
+            playerGui:SetAttribute("HoneyBunCosmeticUI_activeAtmosphere",game:GetService("HttpService"):JSONEncode(saved))
+        end
+        return message
+    end)
+end
+local function reapplyAtmosphere()
+    local raw=uiSetting("activeAtmosphere","")
+    if raw=="" then return end
+    local saved=game:GetService("HttpService"):JSONDecode(raw)
+    assert(type(saved)=="table" and saved.version==1 and type(saved.asset)=="string" and #saved.asset<=512
+        and type(saved.daylight)=="boolean","Saved active atmosphere is invalid.")
+    local active=atmosphere()
+    active.setDaylight(saved.daylight)
+    if saved.environment then
+        local ok,message=active.applyEnvironment(saved.environment);assert(ok,message)
+    end
+    if saved.asset~="" then local ok,message=active.apply(saved.asset);assert(ok,message) end
+end
 local function hatSounds()
     if accessorySoundsAPI then return accessorySoundsAPI end
     api()
@@ -1111,7 +1134,7 @@ render=function()
         local environment=atmosphereAPI and atmosphereAPI.environment()
         local times={[8]="Morning",[14]="Day",[18]="Sunset",[0]="Night"}
         local function cycleEnvironment(key,choices)
-            action(function()
+            atmosphereAction(function()
                 local current=atmosphere().environment()
                 local nextValue=choices[1]
                 if current then
@@ -1128,7 +1151,7 @@ render=function()
         button("Time: "..(environment and (times[environment.time] or tostring(environment.time)) or "Game"),function()cycleEnvironment("time",{8,14,18,0})end)
         button("Fog: "..(environment and environment.fog or "Game"),function()cycleEnvironment("fog",{"Off","Light","Thick"})end)
         button("Color: "..(environment and environment.color or "Game"),function()cycleEnvironment("color",{"Natural","Warm","Cool","Pink"})end)
-        button("Restore game atmosphere",function()action(function()
+        button("Restore game atmosphere",function()atmosphereAction(function()
             atmosphere().restoreEnvironment();return "Game atmosphere restored. Your selected skybox stays on."
         end)end)
         caption("CUSTOM SKYBOX",24)
@@ -1136,11 +1159,11 @@ render=function()
         local field=input("Roblox skybox model link or ID",skyboxInput,function(value)skyboxInput=value end)
         button("Apply skybox",function()
             skyboxInput=field.Text;saveUI()
-            action(function()local ok,message=atmosphere().apply(skyboxInput);assert(ok,message);return atmosphere().environment() and "Skybox applied with your atmosphere settings." or ("Skybox applied. "..(atmosphere().daylightEnabled() and "Daylight is on." or "Using the game time.")) end)
+            atmosphereAction(function()local ok,message=atmosphere().apply(skyboxInput);assert(ok,message);return atmosphere().environment() and "Skybox applied with your atmosphere settings." or ("Skybox applied. "..(atmosphere().daylightEnabled() and "Daylight is on." or "Using the game time.")) end)
         end)
-        button("Restore original sky",function()action(function()atmosphere().restore();return "Original sky restored." end)end)
+        button("Restore original sky",function()atmosphereAction(function()atmosphere().restore();return "Original sky restored." end)end)
         local daylight=not atmosphereAPI or atmosphereAPI.daylightEnabled()
-        if not environment then button(daylight and "Daylight: ON" or "Daylight: OFF",function()action(function()
+        if not environment then button(daylight and "Daylight: ON" or "Daylight: OFF",function()atmosphereAction(function()
             return atmosphere().setDaylight(not daylight)
         end)end) end
         button("Copy sky report",function()action(function()
@@ -1153,7 +1176,7 @@ render=function()
         button(skyboxRename and "Save Name" or "Save atmosphere",function()
             local asset=field.Text:match("^%s*(.-)%s*$")
             local label=nameField.Text:match("^%s*(.-)%s*$")
-            action(function()
+            atmosphereAction(function()
                 assert(#label>0 and #label<=40,"Enter a name with 1-40 characters.")
                 local entries=savedSkies()
                 if skyboxRename then
@@ -1216,7 +1239,7 @@ render=function()
                 image.Size=UDim2.new(1,0,1,-38);image.BackgroundColor3=theme.button
                 animateButton(image)
                 Instance.new("UICorner",image).CornerRadius=UDim.new(0,2)
-                image.Activated:Connect(function() action(function()
+                image.Activated:Connect(function() atmosphereAction(function()
                     local active=atmosphere()
                     if entry.asset~="" then local ok,message=active.apply(entry.asset);assert(ok,message) else active.restore() end
                     active.setDaylight(entry.daylight)
@@ -1270,13 +1293,13 @@ render=function()
                         item.Activated:Connect(callback)
                     end
                     if skyboxDelete==id then
-                        option("Confirm delete",0.34,function() action(function()
+                        option("Confirm delete",0.34,function() atmosphereAction(function()
                             local current=savedSkies();table.remove(current,id);storeSkies(current);skyboxDelete=nil;skyboxMenu=nil;skyboxRename=nil
                             return "Deleted "..name..". Your current sky stays on."
                         end) end)
                         option("Cancel",0.56,function() if not busy then skyboxDelete=nil;skyboxMenu=nil;render() end end)
                     else
-                        option("Update",0.17,function() action(function()
+                        option("Update",0.17,function() atmosphereAction(function()
                             local current=savedSkies();local active=atmosphere()
                             local asset=active.currentAsset() or "";assert(asset~="" or active.environment(),"Choose an atmosphere style or skybox first.")
                             current[id].asset=asset;current[id].image=active.previewImage();current[id].daylight=active.daylightEnabled();current[id].environment=active.environment()
@@ -1405,7 +1428,9 @@ showMenu(true)
 render()
 action(function(editor)
     local soundsLoaded=pcall(hatSounds)
+    local atmosphereLoaded,atmosphereError=pcall(reapplyAtmosphere)
     local message=reapplyAll(editor)
+    if not atmosphereLoaded then message=message.." Your saved atmosphere could not fully load: "..tostring(atmosphereError) end
     if not soundsLoaded then message=message.." Hat sounds could not load; try their control in Accessories." end
     if activePage=="Characters" then characterModules() end
     if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticGuns") then mm2();savedNativeMM2().enable() end

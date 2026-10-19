@@ -222,6 +222,23 @@ local otherSkyGui, otherSkyStorage = rejoin(1002)
 assert(value(otherSkyGui, 'HoneyBunCosmeticUI_savedSkyboxes') == nil, 'saved skyboxes remain private to their account')
 skyStorage:destroy(); skyReload:destroy(); otherSkyStorage:destroy()
 
+-- Active atmosphere state shares the existing per-account UI storage.
+local activeAtmosphere = '{"version":1,"asset":"339406852","daylight":false,"environment":{"time":0,"fog":"Light","color":"Cool"}}'
+local offAtmosphere = '{"version":1,"asset":"","daylight":true}'
+local atmosphereGui, atmosphereStorage = rejoin(1101)
+atmosphereGui:SetAttribute('HoneyBunCosmeticUI_activeAtmosphere', activeAtmosphere)
+flush(); atmosphereStorage:destroy()
+local atmosphereReloadGui, atmosphereReload = rejoin(1101)
+assert(value(atmosphereReloadGui, 'HoneyBunCosmeticUI_activeAtmosphere') == activeAtmosphere, 'active atmosphere restores after rejoin')
+local otherAtmosphereGui, otherAtmosphere = rejoin(1102)
+assert(value(otherAtmosphereGui, 'HoneyBunCosmeticUI_activeAtmosphere') == nil, 'active atmosphere remains private to its account')
+otherAtmosphere:destroy()
+atmosphereReloadGui:SetAttribute('HoneyBunCosmeticUI_activeAtmosphere', offAtmosphere)
+flush(); atmosphereReload:destroy()
+local offReloadGui, offReload = rejoin(1101)
+assert(value(offReloadGui, 'HoneyBunCosmeticUI_activeAtmosphere') == offAtmosphere, 'restoring atmosphere off persists without resurrecting the previous active state')
+offReload:destroy()
+
 _G.characterRejoin = rejoin
 _G.characterFlush = flush
 
