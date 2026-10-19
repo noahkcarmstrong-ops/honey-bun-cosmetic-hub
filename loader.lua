@@ -59,11 +59,14 @@ line.Position = UDim2.fromOffset(28, 96)
 line.Size = UDim2.new(1, -56, 0, 1)
 line.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 line.BorderSizePixel = 0
-local tabs = Instance.new("Frame")
+local tabs = Instance.new("ScrollingFrame")
 tabs.Name = "Tabs"
 tabs.Position = UDim2.fromOffset(28, 112)
-tabs.Size = UDim2.new(1, -170, 0, 32)
+tabs.Size = UDim2.new(1, -56, 0, 36)
 tabs.BackgroundTransparency = 1
+tabs.BorderSizePixel=0;tabs.ScrollBarThickness=2
+tabs.CanvasSize=UDim2.fromOffset(0,0);tabs.AutomaticCanvasSize=Enum.AutomaticSize.X
+tabs.ScrollingDirection=Enum.ScrollingDirection.X
 tabs.Parent = panel
 local tabLayout = Instance.new("UIListLayout", tabs)
 tabLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -84,10 +87,10 @@ content.Parent = panel
 local layout = Instance.new("UIListLayout", content)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
-local avatarAPI
+local avatarAPI,motionAPI,moduleRevision
 local refresh = Instance.new("TextButton")
-refresh.Position = UDim2.new(1, -126, 0, 112)
-refresh.Size = UDim2.fromOffset(98, 32)
+refresh.Position = UDim2.new(1, -126, 0, 62)
+refresh.Size = UDim2.fromOffset(98, 26)
 refresh.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 refresh.BorderSizePixel = 0
 refresh.Text = "Refresh"
@@ -143,10 +146,14 @@ local function uiSetting(key,default)
     return type(value)==type(default) and value or default
 end
 local alive, busy, activePage = true, false, uiSetting("page","Accessories")
-if activePage~="Accessories" and activePage~="Skin" and activePage~="Body" then activePage="Accessories" end
+if activePage~="Accessories" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" then activePage="Accessories" end
 local statusText = "Local preview. Your selections save for this Roblox session."
 local statusLabel, render
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
+local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animation","")
+local emoteSlot=uiSetting("emoteSlot",1)
+if emoteSlot<1 or emoteSlot>8 or emoteSlot%1~=0 then emoteSlot=1 end
+local animationLoop,animationSpeed=uiSetting("animationLoop",true),uiSetting("animationSpeed","1")
 local rgb = {uiSetting("red","255"),uiSetting("green","204"),uiSetting("blue","153")}
 local hexInput = uiSetting("hex","#FFCC99")
 local regions = {"All", "Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg"}
@@ -155,7 +162,7 @@ local regionIndex = uiSetting("region",1)
 if regionIndex<1 or regionIndex>#regions or regionIndex%1~=0 then regionIndex=1 end
 local paletteOpen=uiSetting("palette",false)
 local function saveUI()
-    local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen}
+    local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animation=animationInput,emoteSlot=emoteSlot,animationLoop=animationLoop,animationSpeed=animationSpeed}
     for key,value in pairs(values) do playerGui:SetAttribute("HoneyBunCosmeticUI_"..key,value) end
 end
 -- Exact RGB samples from the user's 5-column, 6-row Roblox palette reference.
@@ -221,6 +228,7 @@ local function api()
         "https://api.github.com/repos/noahkcarmstrong-ops/honey-bun-cosmetic-hub/commits/main?refresh="..stamp,false))
     local sha=revision and revision.sha
     assert(type(sha)=="string" and #sha==40 and sha:match("^%x+$"),"Could not find the latest cosmetic update.")
+    moduleRevision=sha
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..sha.."/avatar.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Avatar editor failed to load.")
@@ -231,6 +239,18 @@ local function api()
         if render then render() end
     end)
     return avatarAPI
+end
+local function motion()
+    if motionAPI then return motionAPI end
+    api()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/motion.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    motionAPI=chunk()(Players.LocalPlayer,function(message)
+        if not alive then return end
+        statusText=message
+        if statusLabel then statusLabel.Text=message end
+    end)
+    return motionAPI
 end
 local function action(callback)
     if busy or not alive then return end
@@ -370,6 +390,53 @@ render=function()
                 return message
             end)
         end)
+    elseif activePage=="Emotes" then
+        caption("EMOTE WHEEL",24)
+        caption("Choose one of the 8 Roblox wheel slots, then paste an emote catalog link or ID. Assignments save through resets and Refresh.",56)
+        local slots=motionAPI and motionAPI.getSlots() or {}
+        local slotRow
+        for index=1,8 do
+            local slot=index
+            if slot%2==1 then slotRow=row("Frame",34) end
+            local entry=slots[slot]
+            local label=entry and (entry.name or tostring(entry.id)) or "Original / unassigned"
+            local item=Instance.new("TextButton")
+            item.Size=UDim2.new(0.5,-3,1,0)
+            item.Position=UDim2.new(slot%2==1 and 0 or 0.5,slot%2==1 and 0 or 3,0,0)
+            styleButton(item,(slot==emoteSlot and "> " or "").."Slot "..slot..": "..label)
+            item.TextTruncate=Enum.TextTruncate.AtEnd
+            item.Parent=slotRow
+            item.Activated:Connect(function()
+                if busy then return end
+                emoteSlot=slot;saveUI();render()
+            end)
+        end
+        local field=input("Roblox emote catalog link or ID",emoteInput,function(value) emoteInput=value end)
+        button("Assign to slot "..emoteSlot,function()
+            emoteInput=field.Text;saveUI()
+            action(function() return motion().setEmote(emoteSlot,emoteInput) end)
+        end)
+        button("Preview slot "..emoteSlot,function() action(function() return motion().playEmote(emoteSlot) end) end)
+        button("Reset slot "..emoteSlot,function() action(function() return motion().clearEmote(emoteSlot) end) end)
+        button("Open Roblox emote wheel",function() action(function() return motion().openWheel() end) end)
+        caption("Playback can be visible to other players through Roblox's normal animation system. Wheel assignments are saved locally.",52)
+        caption("The standard wheel needs an R15 avatar and Roblox's emote menu enabled by the game. Some emotes may be restricted.",52)
+    elseif activePage=="Animations" then
+        caption("ANIMATION PLAYER",24)
+        caption("Paste an animation asset link or ID to play on your avatar. This plays an animation; it does not replace your walk or idle set.",56)
+        local field=input("Roblox animation link or ID",animationInput,function(value) animationInput=value end)
+        button(animationLoop and "Loop: ON" or "Loop: OFF",function()
+            if busy then return end
+            animationLoop=not animationLoop;saveUI();render()
+        end)
+        local speed=input("Speed (0.1 to 3)",animationSpeed,function(value) animationSpeed=value end)
+        button("Play animation",function()
+            animationInput=field.Text;animationSpeed=speed.Text;saveUI()
+            action(function() return motion().playAnimation(animationInput,animationLoop,tonumber(animationSpeed)) end)
+        end)
+        button("Stop animation",function() action(function() return motion().stopAnimation() end) end)
+        caption("Uses your character's existing animation player, which normally shares playback with other players.",44)
+        caption("Animations must match your R6/R15 avatar and be allowed by Roblox. Private or restricted assets may not play.",52)
     else
         caption("BODY PACKAGES",24)
         caption("Choose a classic body or paste a Roblox bundle link. Packages keep your current avatar rig.",44)
@@ -385,14 +452,21 @@ render=function()
         end)
         caption("R6 and R15 use different body parts. Unsupported packages show a message instead of changing your avatar rig.",48)
     end
-    button("Reapply saved cosmetics",function() action(function(editor) return editor.reapplySaved() end) end)
-    button("Restore original appearance",function() action(function(editor) return editor.restore() end) end)
+    button("Reapply saved cosmetics",function() action(function(editor)
+        local message=editor.reapplySaved()
+        if motionAPI then motionAPI.reapplySaved() end
+        return message
+    end) end)
+    button("Restore original appearance",function() action(function(editor)
+        if motionAPI then motionAPI.restore() end
+        return editor.restore()
+    end) end)
 end
-for index,name in ipairs({"Accessories", "Skin", "Body"}) do
+for index,name in ipairs({"Accessories", "Skin", "Body", "Emotes", "Animations"}) do
     local page=name
     local item=Instance.new("TextButton")
     item.Name=page
-    item.Size=UDim2.fromOffset(index==1 and 96 or 60,32)
+    item.Size=UDim2.fromOffset((index==1 or index==5) and 96 or 64,32)
     item.LayoutOrder=index
     item.Parent=tabs
     styleButton(item,string.upper(page))
@@ -412,6 +486,11 @@ gui.Destroying:Connect(function()
     connection:Disconnect()
     respawn:Disconnect()
     if avatarAPI then avatarAPI.destroy() end
+    if motionAPI then motionAPI.destroy() end
 end)
 render()
-action(function(editor) return editor.reapplySaved() end)
+action(function(editor)
+    local message=editor.reapplySaved()
+    motion().reapplySaved()
+    return message
+end)

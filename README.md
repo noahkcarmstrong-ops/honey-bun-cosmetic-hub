@@ -37,6 +37,22 @@ Clothing and textured bodies can cover skin colors. R6 and R15 limb groups are s
 
 The editor keeps your current character model and rig type. R6 uses compatible CharacterMesh bodies; R15 uses Roblox's body-part replacement API. Body bundles must expose a usable avatar outfit. The Girl and Robloxian 2.0 presets use Roblox's official outfits. Body-only package changes do not add the package's clothes or hair.
 
+## Emotes
+
+1. Open **EMOTES** and select one of the eight wheel slots.
+2. Paste a Roblox emote catalog link or ID and click **Assign to slot**.
+3. Use **Open Roblox emote wheel**, or **Preview slot** to try your selection. **Reset slot** restores that slot's original assignment.
+
+Wheel assignments save for the session and reapply after respawning or Refresh. Roblox's standard wheel requires an R15 avatar and the game's emote menu to be enabled. Private or restricted emotes may not play.
+
+## Animations
+
+1. Open **ANIMATIONS** and paste an animation asset link or ID.
+2. Choose looping and a speed from 0.1 to 3, then click **Play animation**.
+3. Click **Stop animation** to end playback.
+
+Playback uses your current avatar. Animations must match its R6/R15 rig and be permitted by Roblox. This is a player for individual animations, rather than a replacement walk/idle animation set. Playback stops on reset or Refresh; it does not automatically restart. Tabs scroll sideways on narrow screens.
+
 ## Controls and limits
 
 - **Restore original appearance** removes added accessories, brings back hidden original accessories, restores the captured body and colors, and clears saved cosmetic selections.
@@ -47,15 +63,16 @@ The editor keeps your current character model and rig type. R6 uses compatible C
 
 Selections and editor fields are saved on PlayerGui for the current game session, so they survive respawns, resets, Refresh, and re-running the launcher. Leaving Roblox clears them.
 
-Changes are local and visible to you. They do not update your Roblox account avatar. Asset permissions, custom game characters, and client API restrictions can prevent an item or package from loading; the menu shows an error. Layered clothing is not supported by the rigid accessory equipper. Live behavior still needs verification in the user's client.
+Accessory, body, skin, and wheel assignment changes are local. They do not update your Roblox account avatar. Animation and emote playback uses the character's existing Animator: when that Animator was created by the server, Roblox normally shares the playback with other players. This depends on the game's character system and asset permissions; multiplayer visibility has not been verified in a live session. Asset permissions, custom game characters, and client API restrictions can prevent an item or package from loading; the menu shows an error. Layered clothing is not supported by the rigid accessory equipper.
 
 ## Verification
 
 ```sh
 npx --offline --package=fengari-node-cli fengari tests/avatar.lua
 npx --offline --package=fengari-node-cli fengari tests/menu.lua
+npx --offline --package=fengari-node-cli fengari tests/motion.lua
 ```
 
 These use Roblox stand-ins to check the editor logic; they do not prove that a game permits a particular asset.
 
-API references: [Accessories](https://create.roblox.com/docs/reference/engine/classes/Accessory), [Humanoid body-part replacement](https://create.roblox.com/docs/reference/engine/classes/Humanoid#ReplaceBodyPartR15), and [Players avatar generation](https://create.roblox.com/docs/reference/engine/classes/Players#CreateHumanoidModelFromDescriptionAsync).
+API references: [Accessories](https://create.roblox.com/docs/reference/engine/classes/Accessory), [Humanoid body-part replacement](https://create.roblox.com/docs/reference/engine/classes/Humanoid#ReplaceBodyPartR15), [Players avatar generation](https://create.roblox.com/docs/reference/engine/classes/Players#CreateHumanoidModelFromDescriptionAsync), [emote assignments](https://create.roblox.com/docs/reference/engine/classes/HumanoidDescription#SetEquippedEmotes), and [animation replication](https://create.roblox.com/docs/reference/engine/classes/Animator#LoadAnimation).
