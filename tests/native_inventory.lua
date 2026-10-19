@@ -359,6 +359,8 @@ assert(nestedApi.report():find('Generated=2',1,true) and nestedApi.report():find
 assert(holidayGrid.AutomaticCanvasSize=='None','Plain category containers do not require scrolling settings')
 savedTab:FindFirstChild('View',true).Activated:Fire();flush()
 assert(savedPane.Visible and not currentBranch.Visible and not classicBranch.Visible and not holidayBranch.Visible,'Saved tab shows only the owned pane')
+assert(tabClassic.BackgroundColor3.R==48/255 and tabCurrent.BackgroundColor3.R==48/255 and savedTab.BackgroundColor3.R==12/255,'Selecting Saved clears every native dark tab background')
+assert(savedTab.BorderColor3.R==0,'Selected Saved tab has a black border')
 nestedSearch.Text='holiday';flush();assert(#savedCardsIn(savedGrid)==1,'Native search filters the combined Saved pane')
 nestedSearch.Text='';flush();classicView.Activated:Fire();flush();assert(not savedPane.Visible and classicBranch.Visible,'Native category tabs hide Saved and keep game behavior')
 savedPane.Visible=true;flush()
