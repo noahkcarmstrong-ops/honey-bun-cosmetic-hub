@@ -399,12 +399,9 @@ local function effectsMM2()
     api()
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/mm2_effects.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
-    local recreationSource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/effect_recreations.lua",false)
-    local recreationChunk,recreationError=loadstring(recreationSource);assert(recreationChunk,recreationError)
-    local recreate=recreationChunk()
     mm2EffectsAPI=chunk()(game,function(message)
         if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
-    end,recreate)
+    end)
     return mm2EffectsAPI
 end
 local function nativeEffectsMM2()
@@ -446,7 +443,7 @@ render=function()
                 assert(ok~=false,message or "MM2 inventory could not be detected.")
                 mm2Enabled=true;return type(ok)=="string" and ok or message
             end) end)
-            button(mm2EffectsEnabled and "Show all effects: ON" or "Show all effects: OFF",function() action(function()
+            button(mm2EffectsEnabled and "Bats effect: ON" or "Bats effect: OFF",function() action(function()
                 if mm2EffectsEnabled then
                     nativeEffectsMM2().disable();effectsMM2().restore();mm2EffectsEnabled=false
                     return "Original effects inventory restored; local knife effect removed."
@@ -456,10 +453,7 @@ render=function()
                 effectsMM2().collectOriginals()
                 mm2EffectsEnabled=true;return type(ok)=="string" and ok or message
             end) end)
-            button("Check original effects",function() action(function()
-                return effectsMM2().checkOriginals()
-            end) end)
-            caption("Originals are used when available. Missing effects use labeled, approximate local recreations. Kill behavior is not included.",64)
+            caption("Original Bats particles on your knife, including the knife on your back. Visible only to you.",64)
             caption("Select a skin in MM2's inventory. Only you see it; the avatar preview needs an available model. Your choice stays selected through resets.",64)
             button("Copy MM2 report",function() action(function()
                 local report=mm2().report().."\n"..nativeMM2().report()

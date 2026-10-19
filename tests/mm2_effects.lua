@@ -52,234 +52,29 @@ local function count(root,class)local n=0;for _,v in ipairs(root:GetDescendants(
 local function first(root,class)for _,v in ipairs(root:GetDescendants())do if v:IsA(class)then return v end end end
 local rs=node('Folder','ReplicatedStorage')
 local sync=node('Folder','Sync',node('Folder','Database',rs))
-local module=node('ModuleScript','Effects',sync)
-local resources=node('Folder','Resources',rs)
-local attachment=node('Attachment','GlowOrigin')
-local emitter=node('ParticleEmitter','Glow',attachment);emitter.Rate=5;emitter.Enabled=false
-node('LocalScript','DoNotRun',emitter)
-local trailSource=node('Folder','TrailFx',resources)
-local a=node('Attachment','A',trailSource);local b=node('Attachment','B',trailSource)
-local trail=node('Trail','Trail',trailSource);trail.Attachment0=a;trail.Attachment1=b;trail.Enabled=false
-local burst=node('ParticleEmitter','Burst');burst.Rate=0
-local broken=node('Trail','Broken')
-node('ParticleEmitter','Ambiguous',resources);node('ParticleEmitter','Ambiguous',resources)
-module.Data={Spark={ItemName='Spark',Rarity='Rare',Effect=attachment,ImageID=999},TrailFx={Name='Trail'},
-    ServerOnly={Name='Kill only'},Burst={Effect=burst},Broken={Effect=broken},Ambiguous={},AssetOnly={EffectID=12345}}
-local char=node('Model','Character');local handle=node('Part','Handle',node('Tool','Knife',char))
-local display=node('Part','KnifeDisplay');local ref=node('ObjectValue','DisplayRefKnife',char);ref.Value=display
-local player=node('Player','Player');player.Character=char;player.Backpack=node('Backpack','Backpack')
-local game={GetService=function(_,name)return name=='ReplicatedStorage'and rs or name=='Players'and{LocalPlayer=player}end}
-require=function(m)return m.Data end
-local api=dofile('mm2_effects.lua')(game)
-local list=api.list('Effect');assert(#list==7,'Every catalog effect remains listed, including unsupported effects')
-local sparkle=api.list('Effect','Spark')[1];assert(sparkle.image==999 and sparkle.kind=='Effect' and sparkle.rarity=='Rare','Effect names, images and metadata come from the catalog')
-assert(api.equip('Spark','Effect'):find('Equipped effect'),'Supported source equips')
-assert(count(handle,'ParticleEmitter')==1 and count(display,'ParticleEmitter')==1,'The effect reaches both the actual knife and avatar display')
-assert(first(display,'ParticleEmitter').Parent:IsA('Attachment'),'Root Attachment is preserved as emitter parent')
-assert(first(display,'ParticleEmitter').Enabled and not emitter.Enabled,'Only copied visuals are enabled')
-assert(count(display,'LocalScript')==0 and count(attachment,'LocalScript')==1,'Nested scripts are stripped while source stays intact')
-local oldGlow=first(display,'ParticleEmitter')
-assert(api.equip('TrailFx','Effect'):find('Equipped effect'),'Exact catalog-key template resolves from replicated resources')
-local copiedTrail=first(display,'Trail')
-assert(oldGlow.destroyed and copiedTrail and copiedTrail.Attachment0~=a and copiedTrail.Attachment1~=b,'Switching removes previous visuals and remaps trail attachments')
-assert(copiedTrail.Attachment0.Parent==display and copiedTrail.Attachment1.Parent==display,'Trail endpoints attach to the actual display')
-for _,id in ipairs({'ServerOnly','Broken','Ambiguous'})do
-    assert(api.equip(id,'Effect'):find('unavailable locally'),'Unavailable, burst-only and ambiguous effects cannot claim visible equip')
-    assert(#display:GetChildren()==0 and #handle:GetChildren()==0,'Failed effect leaves no partial clones')
-end
-assert(api.equip('Burst','Effect'):find('Equipped effect'),'Dormant original particles get local playback on the back knife')
-local playingBurst=first(display,'ParticleEmitter')
-assert(playingBurst and playingBurst.Enabled and playingBurst.Rate>0,'Original zero-rate particles emit on the display')
-assert(burst.Rate==0,'Local playback never modifies the original source')
-assert(api.report():find('started dormant original particles',1,true),'Report identifies locally started original particle playback')
-api.equip('Spark','Effect')
-local previous=first(display,'ParticleEmitter')
-local fresh=node('Model','Respawn');player.Character=fresh;player.CharacterAdded:Fire(fresh)
-assert(previous.destroyed,'Reset removes old preview')
-local lateRef=node('ObjectValue','DisplayRefKnife',fresh)
-local replacement=node('Part','NewDisplay');lateRef.Value=replacement
-assert(count(replacement,'ParticleEmitter')==1,'Late reference and Value arrival reapply the selected effect')
-player.Backpack=node('Backpack','NewBackpack');player.ChildAdded:Fire(player.Backpack)
-local lateTool=node('Tool','Knife',player.Backpack);local lateHandle=node('Part','Handle',lateTool)
-assert(count(lateHandle,'ParticleEmitter')==1,'Replacement Backpack and late Handle both receive the selected effect')
-local cleanRoot=node('Folder','LateAsset');node('ParticleEmitter','AssetVisual',cleanRoot)
-game.GetObjects=function()api.restore();return{cleanRoot}end
-assert(api.equip('AssetOnly','Effect'):find('cancelled')and cleanRoot.destroyed,'Restore cancels a yielding asset request and destroys late results')
-assert(#replacement:GetChildren()==0 and #lateHandle:GetChildren()==0 and not api.getEquipped().Effect,'Restore clears selection and all added visuals')
-local switchedRoot=node('Folder','SupersededAsset');node('ParticleEmitter','OldEffect',switchedRoot)
-game.GetObjects=function()api.equip('Spark','Effect');return{switchedRoot}end
-assert(api.equip('AssetOnly','Effect'):find('cancelled')and switchedRoot.destroyed,'A new selection supersedes an older yielding request')
-assert(api.getEquipped().Effect=='Spark'and count(replacement,'ParticleEmitter')==1,'Late old results do not overwrite the new selection')
--- Real MM2 definitions reference visual assets through KnifeModule.
-module.Data.LegacyFire={Name='Legacy Fire',KnifeModule=473588389}
-local legacyApi=dofile('mm2_effects.lua')(game)
-local downloaded=node('ModuleScript','KnifeEffect')
-local downloadedVisual=node('Fire','Flame',downloaded)
-node('Script','NeverExecute',downloaded)
-local requested
-local requireBefore=require
-require=function(m)assert(m==module,'Downloaded effect code must never execute');return requireBefore(m)end
-game.GetObjects=function(_,asset)requested=asset;return{downloaded}end
-assert(legacyApi.equip('LegacyFire','Effect'):find('Equipped effect'),'KnifeModule assets supply visual children')
-assert(requested=='rbxassetid://473588389' and count(replacement,'Fire')==1,'Actual knife display receives KnifeModule visual')
-assert(count(replacement,'Script')==0,'Downloaded scripts are never attached')
-assert(legacyApi.report():find('selected definition=LegacyFire',1,true),'Report includes selected effect definition even beyond sample limit')
-legacyApi.destroy()
-require=requireBefore
--- Blue Fire remains visible when its original asset is unavailable.
-module.Data.BlueFire={Name='Blue Flaming Knife',KnifeModule=473588389}
-Instance={new=function(class)return node(class)end}
-Color3={fromRGB=function(r,g,b)return{R=r,G=g,B=b}end}
-game.GetObjects=function()return{}end
-local fireApi=dofile('mm2_effects.lua')(game)
-assert(fireApi.equip('BlueFire','Effect'):find('local recreation',1,true),'Unavailable BlueFire asset uses an explicitly labeled native flame recreation')
-local fire=first(replacement,'Fire')
-assert(fire and fire.Enabled and fire.Color.B==255,'Blue flame is attached and enabled on the real display')
-assert(count(lateHandle,'Fire')==1,'Blue flame also reaches the held knife')
-assert(fireApi.report():find('built-in blue flame recreation',1,true),'Report identifies recreated effect source')
-fireApi.restore();assert(fire.destroyed and count(lateHandle,'Fire')==0,'Restoring removes recreated flames')
-fireApi.destroy()
-api.restore()
--- Original templates can be streamed into Workspace instead of replicated storage.
+local database=node('ModuleScript','Effects',sync)
+database.Data={Bats={Name='Bats',KnifeModule=1133166797},BlueFire={Name='Blue Flaming Knife'},Flowerwood={Name='Flowerwood'}}
 local world=node('Folder','Workspace')
-local oldGetService=game.GetService
-game.GetService=function(self,name)if name=='Workspace'then return world end;return oldGetService(self,name)end
-module.Data.WorldEffect={Name='World Effect'}
-local originalWorld=node('Folder','WorldEffect',world)
-local originalParticle=node('ParticleEmitter','Original',originalWorld);originalParticle.Rate=9
-local worldApi=dofile('mm2_effects.lua')(game)
-assert(worldApi.equip('WorldEffect','Effect'):find('Equipped effect'),'Original exact-id world template is usable')
-assert(count(replacement,'ParticleEmitter')==1 and originalParticle.Parent==originalWorld,'Loaded original is copied without moving another player effect')
-assert(worldApi.report():find('original loaded template',1,true),'Loaded sources are identified as original')
-worldApi.restore()
--- Effect metadata can identify a live original even when its container is named generically.
-originalWorld.Name='OtherPlayerKnife'
-originalWorld.GetAttribute=function(_,key)if key=='KnifeEffect'then return 'WorldEffect' end end
-local taggedApi=dofile('mm2_effects.lua')(game)
-assert(taggedApi.equip('WorldEffect','Effect'):find('original visuals',1,true),'Exact effect metadata identifies another loaded original')
-taggedApi.destroy()
-
-module.Data.CachedWorld={Name='Cached World'}
-local transient=node('Folder','CachedWorld',world);node('Sparkles','Original',transient)
-local cachedApi=dofile('mm2_effects.lua')(game)
-assert(cachedApi.equip('CachedWorld','Effect'):find('original visuals',1,true))
-transient:Destroy()
-local cachedDisplay=node('Part','CachedDisplay');lateRef.Value=cachedDisplay
-assert(count(cachedDisplay,'Sparkles')==1,'Original template survives the source player leaving or unloading')
-cachedApi.destroy();lateRef.Value=replacement
-module.Data.MultiAsset={EffectID=88,KnifeModule=99}
-local emptyAsset=node('Folder','NoVisuals')
-local moduleOnly=node('ModuleScript','LogicOnly')
-local actualAsset=node('Folder','Visuals');node('Sparkles','OriginalSparkles',actualAsset)
-local requests={}
-game.GetObjects=function(_,uri)
-    requests[#requests+1]=uri
-    if uri=='rbxassetid://88' then return{emptyAsset} end
-    return{moduleOnly,actualAsset}
-end
-local multiApi=dofile('mm2_effects.lua')(game)
-assert(multiApi.equip('MultiAsset','Effect'):find('Equipped effect'),'All explicit original asset fields and roots are checked')
-assert(#requests==2 and count(replacement,'Sparkles')==1,'Supported visual in later asset root reaches knife')
-assert(emptyAsset.destroyed and moduleOnly.destroyed,'Unused downloaded roots are released')
-multiApi.destroy();worldApi.destroy()
--- A catalog check covers every effect without equipping or substituting recreations.
-local allDefinitions=module.Data
-module.Data={WorldEffect={Name='World Effect'},Missing={Name='Missing'},BlueFire={KnifeModule=473588389}}
-game.GetObjects=function()return{}end
-local scanApi=dofile('mm2_effects.lua')(game)
-local rootReads=0
-local realDescendants=methods.GetDescendants
-methods.GetDescendants=function(self)if self==rs or self==world then rootReads=rootReads+1 end;return realDescendants(self)end
-local summary=scanApi.checkOriginals()
-assert(rootReads==2,'Catalog check traverses each loaded game root once, not once per effect')
-methods.GetDescendants=realDescendants
-assert(summary:find('World Effect',1,true),'Finished check names the originals that are available')
-assert(summary:find('1/3',1,true),'Catalog scan counts originals only, not the BlueFire recreation')
-assert(not scanApi.getEquipped().Effect and #replacement:GetChildren()==0,'Checking every source never equips effects')
-assert(scanApi.report():find('Missing: BlueFire,Missing',1,true),'Report lists all inaccessible originals')
-scanApi.destroy()
-local cancelledScan
-cancelledScan=dofile('mm2_effects.lua')(game,function()cancelledScan.restore()end)
-assert(cancelledScan.checkOriginals():find('cancelled',1,true),'Turning effects off cancels an active source scan')
-cancelledScan.destroy();module.Data=allDefinitions
--- Originals that arrive later are collected without rescanning the whole game.
-module.Data.LateOriginal={Name='Late Original'}
-local deferred={};task={defer=function(fn)deferred[#deferred+1]=fn end}
-local function flushCaptures()local queue=deferred;deferred={};for _,fn in ipairs(queue)do fn()end end
-local automatic=dofile('mm2_effects.lua')(game)
-assert(automatic.equip('LateOriginal','Effect'):find('unavailable locally'))
-local lateOriginal=node('Folder','LateOriginal',world)
-local lateParticles=node('ParticleEmitter','OriginalLateParticle',lateOriginal);lateParticles.Rate=0
-flushCaptures()
-assert(count(replacement,'ParticleEmitter')==1,'A selected original begins on the back knife when its source arrives')
-lateOriginal:Destroy();lateRef.Value=node('Part','StreamedBackKnife')
-assert(count(lateRef.Value,'ParticleEmitter')==1,'Automatically collected original survives unloading')
-assert(automatic.report():find('Automatically collected originals: LateOriginal',1,true),'Report names collected originals')
-automatic.destroy();lateRef.Value=replacement
-local afterDestroy=node('Folder','LateOriginal',world);node('ParticleEmitter','NoCapture',afterDestroy)
-flushCaptures();assert(#replacement:GetChildren()==0,'Closing disconnects collection and cannot revive an effect')
--- A queued capture cannot reapply after the user turns effects off.
-module.Data.QueuedOriginal={Name='Queued Original'}
-local queuedApi=dofile('mm2_effects.lua')(game)
-queuedApi.equip('QueuedOriginal','Effect')
-local queuedOriginal=node('Folder','QueuedOriginal',world);node('ParticleEmitter','QueuedParticle',queuedOriginal)
-queuedApi.restore();flushCaptures()
-assert(not queuedApi.getEquipped().Effect and #replacement:GetChildren()==0,'Restore invalidates deferred original capture')
-queuedApi.destroy()
-task=nil
-local report=api.report();assert(report:find('defs=')and report:find('targets=')and report:find('source='),'Report includes definition and target diagnostics')
-api.destroy();assert(#replacement:GetChildren()==0 and #lateHandle:GetChildren()==0,'Closing the hub cleans all previews')
-assert(not pcall(api.equip,'Spark','Effect'),'Closed effect service cannot equip')
-local after=node('Part','AfterClose');lateRef.Value=after;assert(#after:GetChildren()==0,'Closed service disconnects lifecycle listeners')
-local closingApi=dofile('mm2_effects.lua')(game)
-local closingRoot=node('Folder','ClosingRoot');node('ParticleEmitter','Visual',closingRoot)
-game.GetObjects=function()closingApi.destroy();return{closingRoot}end
-assert(closingApi.equip('AssetOnly','Effect'):find('cancelled')and closingRoot.destroyed,'Closing the hub during asset loading destroys late results')
-print('MM2 effects catalog, particle and trail cloning, script stripping, source matching, reset, late targets, cancellation and cleanup passed.')
-
--- Every live catalog entry gets an explicitly labeled fallback if originals are absent.
-Vector2={new=function(x,y)return{X=x,Y=y}end}
-Vector3={new=function(x,y,z)return{X=x,Y=y,Z=z}end}
-NumberRange={new=function(a,b)return{Min=a,Max=b or a}end}
-NumberSequenceKeypoint={new=function(t,v)return{Time=t,Value=v}end}
-NumberSequence={new=function(a,b)return{a,b}end}
-ColorSequenceKeypoint={new=function(t,v)return{Time=t,Value=v}end}
-ColorSequence={new=function(a,b)return{a,b}end}
-local recreate=dofile('effect_recreations.lua')
-local allIds={'Abduction2025','Aquatic2025','Arctic2022','Aurora2021','Aurora2024','Bats','Bats2020','Bats2024','Bitsplosion','Blizzard','Bloom2025','BlueFire','Bokeh2025','Bubbly26','Burn','Candies','CandyCane','CandyEffect2022','CandyEffect2023','Carrots2025','Cats2025','CauldronEffect26','Chilly2022','Coal2025','CommonOrnamentEffect','Confetti2025','Cursed2024','Darkfire','Darkswirl','Darkwave26','Doge','Dual','EasterGlow2023','Electric','Elitify','Ethereal','Fireworks2023','Flameburst26','FlamingoEffect2025','Floral2023','Flowers2024','Flowerwood','Frost2025','FrostbiteEffect','Frostfire2020','GearStorm','Ghostify','Ghostly26','Ghosts2020','Ghosts2023','Ghosts2024','Gifts2024','GingerbreadEffect','Glisten2024','Glowy2023','GreenFire','HallowsBlaze','Heartify','Hearts26','Heatwave2025','IceMagic','Jack26','Jellyfish2024','Jingle2020','Knifeception','Leaves2025','LegendaryOrnamentEffect','Lights2025','Matrix2024','Minty2022','Money','Musical','Nightlife26','Nightsky2025','NorthernLights','Ocean26','Petals','Phantom','PhantomEffect2022','PinkFire','PlasmaEffect','Poison','Pumpkin','Pumpkin2022','Pumpkins26','Radioactive','Rainbow','RainbowEffect','Rainbows2025','RareOrnamentEffect','Retro2025','Smolder2026','Snowballs2025','Snowfall2020','Snowflake2021','Snowflakes','Snowflakes2','Snowstorm2024','Snowstorm2025','Starry2021','Starry2024','Stars2023','StickersX2022','Strawberries26','Sunbeams2024','SweetEffect26','Swirls2023','SynthEffect2025','Toxic2022','Traveler2023','Treats2025','UFOs2025','UncommonOrnamentEffect','Vampire2020','Vampiric2024','VersusEffect2022','VoidRbxEffect','Water2023','Wraith2024','Wraithfire','Wrapper','XenoEffect','XmasGlow2025','Zombie26'}
-local savedDefinitions=module.Data;module.Data={}
-for _,id in ipairs(allIds)do module.Data[id]={Name=id}end
-module.Data.Bats.Effect=attachment
-module.Data.BlueFire.KnifeModule=473588389
-game.GetObjects=function()return{}end
-local complete=dofile('mm2_effects.lua')(game,nil,recreate)
-assert(#complete.list('Effect')==124,'All 124 effects remain in the catalog')
-for _,id in ipairs(allIds)do
-    local message=complete.equip(id,'Effect')
-    assert(message:find('Equipped effect',1,true),'Visual preview must attach for '..id..': '..message)
-    if id=='Bats'then assert(message:find('original visuals',1,true),'Available original always wins')
-    else assert(message:find('local recreation',1,true),'Fallbacks never claim to be originals: '..id)end
-    assert(#lateRef.Value:GetChildren()>0,'Back knife receives each preview: '..id)
-    assert(count(lateRef.Value,'Script')==0 and count(lateRef.Value,'LocalScript')==0,'Recreations execute no scripts')
-    local copy=first(lateRef.Value,'ParticleEmitter');assert(copy and copy.Rate>0 and copy.Enabled,'Every fallback emits while the knife is on the back')
-end
--- An original that contains an unusable Trail must also fall back, not stay invisible.
-module.Data.BrokenOriginal={Name='Broken Original',Effect=broken}
-local playable=dofile('mm2_effects.lua')(game,nil,recreate)
-assert(playable.equip('BrokenOriginal','Effect'):find('local recreation',1,true),'Unplayable original gets a labeled fallback')
-assert(first(lateRef.Value,'ParticleEmitter'),'Fallback for an incompatible original reaches the back knife')
-playable.destroy()
-assert(complete.report():find('local recreation:',1,true),'Report discloses approximate fallback theme')
-complete.destroy();assert(#lateRef.Value:GetChildren()==0,'All fallback visuals are removed on close')
--- A newly arriving original replaces the recreation automatically.
-module.Data.FutureOriginal={Name='Future Original'}
-task={defer=function(fn)fn()end}
-local upgraded=dofile('mm2_effects.lua')(game,nil,recreate)
-assert(upgraded.equip('FutureOriginal','Effect'):find('local recreation',1,true))
-local arriving=node('Folder','FutureOriginal');local realParticle=node('ParticleEmitter','RealParticle',arriving);realParticle.Rate=0
-arriving.Parent=world
-assert(upgraded.report():find('original loaded template (automatically collected)',1,true),'Streaming originals replace cached recreations')
-local actual=first(lateRef.Value,'ParticleEmitter');assert(actual and actual.Name=='RealParticle','Original visuals replace the approximate preview')
-upgraded.destroy();task=nil
-module.Data=savedDefinitions
-print('All 124 original-first effect selections, labeled fallback previews and cleanup passed.')
+local source=node('Folder','Bats',world)
+local original=node('ParticleEmitter','ParticleEmitter',source);original.Rate=0;original.Texture='rbxassetid://5858070133'
+local character=node('Model','Character')
+local display=node('Part','KnifeDisplay',world)
+local reference=node('ObjectValue','DisplayRefKnife',character);reference.Value=display
+local backpack=node('Backpack','Backpack')
+local held=node('Part','Handle',node('Tool','Knife',backpack))
+local player=node('Player','Player');player.Character=character;player.Backpack=backpack
+local game={GetService=function(_,name)return({ReplicatedStorage=rs,Workspace=world,Players={LocalPlayer=player}})[name]end}
+require=function(m)assert(m==database);return m.Data end
+local api=dofile('mm2_effects.lua')(game)
+local catalog=api.list('Effect')
+assert(#catalog==1 and catalog[1].id=='Bats','Only original Bats is offered')
+assert(not pcall(api.equip,'BlueFire','Effect') and not pcall(api.equip,'Flowerwood','Effect'),'Other effects cannot be equipped')
+assert(api.equip('Bats','Effect'):find('original visuals',1,true),'Bats keeps original visuals')
+assert(count(display,'ParticleEmitter')==1 and count(held,'ParticleEmitter')==1,'Original Bats reaches back knife and held knife')
+assert(first(display,'ParticleEmitter').Texture==original.Texture and first(display,'ParticleEmitter').Rate==2 and original.Rate==0,'Original texture is preserved and playback starts locally')
+source:Destroy()
+local nextDisplay=node('Part','NewKnifeDisplay',world);reference.Value=nextDisplay
+assert(count(nextDisplay,'ParticleEmitter')==1 and #display:GetChildren()==0,'Cached original follows display replacement')
+api.restore();assert(#nextDisplay:GetChildren()==0 and #held:GetChildren()==0,'Turning off Bats removes its visuals')
+api.destroy()
+print('Original Bats-only catalog, back and held knife playback, display replacement and cleanup passed.')

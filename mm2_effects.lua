@@ -1,20 +1,16 @@
 -- Local visual previews from MM2 Effects data; no ownership changes or game remotes.
-return function(game,onStatus,createRecreation)
+return function(game,onStatus)
     local alive=true;local generation=0
     local selected=nil
     local catalogCache
-    local loadedIndex=nil
-    local playbackFallbacks={}
     local catalogIds={}
     local collectedIds={}
     local capturePending,captureQueued,watchEpoch={},false,0
     local connections,observed,applied={}, {}, {}
-    local sourceCache,sourceRoots,sourceNotes,recreatedSources={},{},{},{}
+    local sourceCache,sourceRoots,sourceNotes={},{},{}
     local sourceErrors,lastApplyError={},""
     local madeVisuals=setmetatable({},{__mode="k"})
-    local scanSummary="Original effects have not been checked."
     local startedDormant=false
-    local fallbackPlayback=nil
     local function read(o,k) if not o then return nil end;local ok,v=pcall(function()return o[k]end);return ok and v or nil end
     local function isA(o,c) local f=read(o,"IsA");if type(f)=="function"then local ok,v=pcall(f,o,c);return ok and v==true end;return read(o,"ClassName")==c end
     local function children(o) local f=read(o,"GetChildren");if type(f)=="function"then local ok,v=pcall(f,o);if ok and type(v)=="table"then return v end end;return{} end
@@ -33,7 +29,7 @@ return function(game,onStatus,createRecreation)
     local function catalog()
         if catalogCache then return catalogCache end
         local data,err=moduleData();assert(type(data)=="table",err or "Effects database is unavailable")
-        local out={};for id,def in pairs(data)do if type(def)=="table"then out[#out+1]={id=tostring(id),name=tostring(field(def,"ItemName")or field(def,"Name")or id),kind="Effect",rarity=field(def,"Rarity"),image=field(def,"Image")or field(def,"ImageId")or field(def,"ImageID"),category="effects",definition=def}end end
+        local out={};for id,def in pairs(data)do if tostring(id)=="Bats" and type(def)=="table"then out[#out+1]={id=tostring(id),name=tostring(field(def,"ItemName")or field(def,"Name")or id),kind="Effect",rarity=field(def,"Rarity"),image=field(def,"Image")or field(def,"ImageId")or field(def,"ImageID"),category="effects",definition=def}end end
         table.sort(out,function(a,b)return lower(a.name)<lower(b.name)end);catalogCache=out;for _,e in ipairs(out)do catalogIds[e.id]=e end;return out
     end
     local function find(id)for _,e in ipairs(catalog())do if e.id==tostring(id)then return e end end end
@@ -75,13 +71,12 @@ return function(game,onStatus,createRecreation)
         return index
     end
     local function loadedSource(e,value,index)
-        index=index or loadedIndex or indexSources()
+        index=index or indexSources()
         if not index then return nil end
-        loadedIndex=index
         local matches,seen={},{}
         for _,key in ipairs({e.id,type(value)=="string" and value or e.id})do
             for _,candidate in ipairs(index[key]or{})do
-                if not seen[candidate] and read(candidate,"Parent") and not generated(candidate) and supported(candidate)then
+                if not seen[candidate] and not generated(candidate) and supported(candidate)then
                     seen[candidate]=true;matches[#matches+1]=candidate
                 end
             end
@@ -90,9 +85,8 @@ return function(game,onStatus,createRecreation)
         if #matches==1 then return matches[1] end
         return nil,#matches>1 and "multiple original templates match this effect" or nil
     end
-    local function sourceFor(e,originalOnly,index)
-        local recreated=recreatedSources[e.id]==true
-        if sourceCache[e.id] and not (originalOnly and recreated) then return sourceCache[e.id] end
+    local function sourceFor(e,index)
+        if sourceCache[e.id] then return sourceCache[e.id] end
         if sourceErrors[e.id] then return nil end
         local def=e.definition;local value=field(def,"Effect")or field(def,"Model")or field(def,"Template")or field(def,"Instance")or field(def,"Source")
         local source,reason;local lookupToken=generation
@@ -100,7 +94,7 @@ return function(game,onStatus,createRecreation)
         if not source then source,reason=loadedSource(e,value,index)end
         if not alive or lookupToken~=generation then return nil end
         if source then
-            sourceNotes[e.id]="original loaded template";recreatedSources[e.id]=nil
+            sourceNotes[e.id]="original loaded template"
             -- Keep a private template if the other player leaves or their effect unloads.
             local ok,copy=pcall(function()return source:Clone()end)
             if ok and copy then source=copy;sourceRoots[#sourceRoots+1]=copy end
@@ -127,29 +121,9 @@ return function(game,onStatus,createRecreation)
                         else destroy(r)end
                     end
                 end
-                if source then sourceNotes[e.id]="original asset "..asset;recreatedSources[e.id]=nil
+                if source then sourceNotes[e.id]="original asset "..asset
                 else reason="asset "..asset..(ok and " returned no supported visual objects" or (" failed: "..tostring(roots):sub(1,160)))end
             else reason="GetObjects is unavailable on this client"end
-        end
-        if not source and not originalOnly and type(createRecreation)=="function"then
-            local ok,preview,note=pcall(createRecreation,e)
-            if ok and preview then
-                source=preview;sourceRoots[#sourceRoots+1]=preview;recreatedSources[e.id]=true
-                sourceNotes[e.id]=tostring(note or "local recreation; approximate visuals")
-            elseif not ok then reason="Local recreation failed: "..tostring(preview):sub(1,160)end
-        end
-        -- A named local recreation avoids depending on an inaccessible legacy asset.
-        if not source and not originalOnly and e.id=="BlueFire" then
-            local ok,flame=pcall(function()
-                local fire=Instance.new("Fire")
-                fire.Name="HoneyBunBlueFlame";fire.Color=Color3.fromRGB(0,85,255)
-                fire.SecondaryColor=Color3.fromRGB(80,200,255);fire.Size=2;fire.Heat=2
-                return fire
-            end)
-            if ok and flame then
-                source=flame;sourceRoots[#sourceRoots+1]=flame
-                sourceNotes[e.id]="built-in blue flame recreation";recreatedSources[e.id]=true
-            end
         end
         if not source then sourceErrors[e.id]=reason or "no original template or explicit effect asset is available";return nil end
         local found=visual(source);for _,o in ipairs(descendants(source))do if visual(o)then found=true;break end end
@@ -212,35 +186,19 @@ return function(game,onStatus,createRecreation)
         for _,o in ipairs(made)do applied[target][#applied[target]+1]=o end
         return true
     end
-    local function clearApplied()startedDormant=false;fallbackPlayback=nil;for target,list in pairs(applied)do for _,o in ipairs(list)do destroy(o)end;applied[target]=nil end end
+    local function clearApplied()startedDormant=false;for target,list in pairs(applied)do for _,o in ipairs(list)do destroy(o)end;applied[target]=nil end end
     local function apply()
         if not alive or not selected then return false,"No effect selected." end
         local token=generation
         local e=find(selected);local source=e and sourceFor(e)
         if not alive or token~=generation then return false,"Effect application was cancelled." end
         if not source then return false,"Effect has no supported local visual source." end
-        local targetList=targets()
-        local count=0;for _,target in ipairs(targetList)do
+        local count=0;for _,target in ipairs(targets())do
             if not alive or token~=generation then return false,"Effect application was cancelled." end
             if cloneVisuals(source,target)then count=count+1 end
         end
-        if count==0 and #targetList>0 and not recreatedSources[e.id] and type(createRecreation)=="function"then
-            local cached=playbackFallbacks[e.id]
-            if not cached then
-                local ok,preview,note=pcall(createRecreation,e)
-                if ok and preview then
-                    sourceRoots[#sourceRoots+1]=preview
-                    cached={source=preview,note=tostring(note or "local recreation; original could not play")}
-                    playbackFallbacks[e.id]=cached
-                end
-            end
-            if cached then
-                for _,target in ipairs(targetList)do if cloneVisuals(cached.source,target)then count=count+1 end end
-                if count>0 then fallbackPlayback=cached.note end
-            end
-        end
         if count==0 then return false,"No original visuals could attach to the knife. See visual details in Copy MM2 report." end
-        return true,"Equipped effect locally: "..e.name..((recreatedSources[e.id]or fallbackPlayback) and " (local recreation)" or " (original visuals)")
+        return true,"Equipped effect locally: "..e.name.." (original visuals)"
     end
     local function refreshEffect()
         if not alive or not selected then return end
@@ -292,12 +250,12 @@ return function(game,onStatus,createRecreation)
             captureQueued=false
             local pending=capturePending;capturePending={};local reapply=false
             for source,e in pairs(pending)do
-                local originalCached=sourceCache[e.id] and not recreatedSources[e.id]
+                local originalCached=sourceCache[e.id]
                 if not originalCached and read(source,"Parent") and not generated(source) and supported(source)then
                     local ok,copy=pcall(function()return source:Clone()end)
                     if ok and copy then
                         sourceRoots[#sourceRoots+1]=copy;sourceCache[e.id]=copy
-                        sourceNotes[e.id]="original loaded template (automatically collected)";recreatedSources[e.id]=nil
+                        sourceNotes[e.id]="original loaded template (automatically collected)"
                         sourceErrors[e.id]=nil;collectedIds[e.id]=true
                         if selected==e.id then reapply=true end
                     end
@@ -337,34 +295,9 @@ return function(game,onStatus,createRecreation)
     function api.list(_,search)local out={};local q=lower(search);for _,e in ipairs(catalog())do if q==""or lower(e.name):find(q,1,true)or lower(e.id):find(q,1,true)then out[#out+1]={id=e.id,name=e.name,kind=e.kind,rarity=e.rarity,image=e.image,category=e.category}end end;return out end
     function api.equip(id,kind)assert(alive,"The effects preview is closed.");assert(kind=="Effect","Equip category must be Effect.");local e=find(id);assert(e,"Unsupported effect: "..tostring(id));generation=generation+1;local token=generation;selected=e.id;sourceErrors[e.id]=nil;ensureWatchers();clearApplied();local ok,msg=apply();if not alive or token~=generation then ok=false;msg="Effect application was cancelled." end;lastApplyError=ok and "" or msg;if onStatus then pcall(onStatus,msg)end;return ok and msg or "Selected "..e.name.."; unavailable locally: "..msg end
     function api.collectOriginals()assert(alive,"The effects preview is closed.");ensureWatchers()end
-    function api.checkOriginals()
-        assert(alive,"The effects preview is closed.")
-        ensureWatchers()
-        local token=generation;local available,missing,names=0,{},{}
-        if onStatus then pcall(onStatus,"Checking loaded original effect sources...")end
-        if not alive or token~=generation then return "Original effect check cancelled." end
-        local index=indexSources()
-        if not index then return "Original effect check cancelled." end
-        loadedIndex=index
-        for i,e in ipairs(catalog())do
-            if not alive or token~=generation then return "Original effect check cancelled." end
-            sourceErrors[e.id]=nil
-            local source=sourceFor(e,true,index)
-            if not alive or token~=generation then return "Original effect check cancelled." end
-            if source then available=available+1;names[#names+1]=e.name.." ("..e.id..")" else missing[#missing+1]=e.id end
-            scanSummary="Original sources checked: "..i.."/"..#catalog().."; available="..available
-            if onStatus then pcall(onStatus,scanSummary)end
-            if task and task.wait then task.wait()end
-            if not alive or token~=generation then return "Original effect check cancelled." end
-        end
-        scanSummary="Original sources available: "..available.."/"..#catalog()..". Available: "..table.concat(names,", ")..". Missing: "..table.concat(missing,",")
-        -- Checking sources must not remove the user's working recreation or selection.
-        if selected then sourceErrors[selected]=nil;refreshEffect()end
-        return "Original sources available: "..available.."/"..#catalog()..". "..table.concat(names,", ")..". Details are in Copy MM2 report."
-    end
     function api.getEquipped()return{Effect=selected}end
     function api.restore()generation=generation+1;selected=nil;clearApplied();disconnectAll();lastApplyError="";return"Restored local MM2 effects."end
-    function api.destroy()if alive then alive=false;api.restore();for _,r in ipairs(sourceRoots)do destroy(r)end;sourceRoots={};sourceCache={};loadedIndex=nil;playbackFallbacks={}end end
+    function api.destroy()if alive then alive=false;api.restore();for _,r in ipairs(sourceRoots)do destroy(r)end;sourceRoots={};sourceCache={}end end
     local function selectedDetails()
         local e=selected and find(selected)
         if not e then return "none" end
@@ -414,6 +347,6 @@ return function(game,onStatus,createRecreation)
         local ids={};for id in pairs(collectedIds)do ids[#ids+1]=id end;table.sort(ids)
         return "Automatically collected originals: "..(#ids>0 and table.concat(ids,",")or"none yet")
     end
-    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=fallbackPlayback or sourceErrors[selected]or sourceNotes[selected]or"resolved" end;return"MM2 Effects build: originals and labeled recreations V8\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails().."\n"..scanSummary.."\n"..visualDetails().."\n"..collectionReport() end
+    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=sourceErrors[selected]or sourceNotes[selected]or"resolved" end;return"MM2 Effects build: original Bats only V9\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails().."\n"..visualDetails().."\n"..collectionReport() end
     return api
 end
