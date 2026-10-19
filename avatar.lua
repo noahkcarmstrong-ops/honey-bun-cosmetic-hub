@@ -468,7 +468,7 @@ return function(player,onStatus)
     end
     function api.accessoryReport()
         local ctx=context()
-        local lines={"Honey Bun Cosmetic Hub accessory report","Build: avatar attachment detection V3","Hide originals saved: "..tostring(settings.hideOriginals),"Tracked hidden accessories: "..#hidden}
+        local lines={"Larpblox accessory report","Build: avatar attachment detection V3","Hide originals saved: "..tostring(settings.hideOriginals),"Tracked hidden accessories: "..#hidden}
         local owned={};for _,entry in ipairs(added) do owned[entry.object]=true end
         for _,item in ipairs(ctx.character:GetChildren()) do
             if item:IsA("Accessory") or item:IsA("Hat") then

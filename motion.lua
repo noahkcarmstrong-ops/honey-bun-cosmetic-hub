@@ -77,7 +77,7 @@ return function(player,onStatus)
             if not slots[entry.Slot] then equipped[#equipped+1]=copy(entry) end
         end
         for slot,item in pairs(slots) do
-            local name="Honey Bun Slot "..slot
+            local name="Larpblox Slot "..slot
             emotes[name]={item.id}
             equipped[#equipped+1]={Slot=slot,Name=name}
         end
@@ -122,7 +122,7 @@ return function(player,onStatus)
         slot=slotNumber(slot);assert(slots[slot],"Assign an emote to that slot first.")
         applyWheel()
         local character,humanoid,ticket=context()
-        local ok,played=pcall(function() return humanoid:PlayEmoteAsync("Honey Bun Slot "..slot) end)
+        local ok,played=pcall(function() return humanoid:PlayEmoteAsync("Larpblox Slot "..slot) end)
         check(character,ticket)
         assert(ok and played,"Roblox could not play this emote. Check its permissions and your avatar rig.")
         return "Playing emote from slot "..slot.."."

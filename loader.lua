@@ -1,4 +1,4 @@
--- Honey Bun Cosmetic Hub: standalone cosmetic menu.
+-- Larpblox: standalone cosmetic menu.
 local Players = game:GetService("Players")
 local Input = game:GetService("UserInputService")
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
@@ -69,8 +69,28 @@ local function text(parent, value, position, size, fontSize, shade)
     return label
 end
 
-text(panel, "HONEY BUN COSMETIC HUB", UDim2.fromOffset(28, 26), UDim2.new(1, -100, 0, 24), 16, 240).Font = Enum.Font.GothamMedium
-text(panel, "LOCAL AVATAR EDITOR", UDim2.fromOffset(28, 55), UDim2.new(1, -56, 0, 20), 10, 110)
+local brandFallback = text(panel, "LARPBLOX", UDim2.fromOffset(28, 26), UDim2.new(1, -100, 0, 48), 28, 240)
+brandFallback.Font = Enum.Font.GothamBold
+local customAsset = getcustomasset or getsynasset
+if type(customAsset)=="function" and type(writefile)=="function" and moduleRevision then
+    task.spawn(function()
+        pcall(function()
+            local file = "Larpblox-logo.png"
+            local bytes = game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/assets/larpblox-logo.png", false)
+            assert(bytes:sub(1,8)=="\137PNG\13\10\26\10", "Invalid logo image")
+            writefile(file, bytes)
+            local logo = Instance.new("ImageLabel")
+            logo.Name = "LarpbloxLogo"
+            logo.BackgroundTransparency = 1
+            logo.Position = UDim2.fromOffset(28, 22)
+            logo.Size = UDim2.new(1, -110, 0, 58)
+            logo.ScaleType = Enum.ScaleType.Fit
+            logo.Image = customAsset(file)
+            logo.Parent = panel
+            brandFallback.Visible = false
+        end)
+    end)
+end
 
 local hide = Instance.new("TextButton")
 hide.Position = UDim2.new(1, -60, 0, 23)
@@ -146,7 +166,7 @@ refresh.Activated:Connect(function()
         chunk()
     end)
     if not ok then
-        warn("Honey Bun Cosmetic Hub: refresh failed", message)
+        warn("Larpblox: refresh failed", message)
         if refresh.Parent then
             refresh.Text = "Retry refresh"
         end
