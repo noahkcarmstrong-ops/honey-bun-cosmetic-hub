@@ -852,11 +852,18 @@ return function(game, injectedRequire, gunLibrary)
         assert(isA(source,"MeshPart") or childClass(source,"SpecialMesh"),"Their loaded "..kindLower.." has no supported mesh to copy.")
         local mounts={Holster=captureGunMount(holsteredSource,character,false),Held=captureGunMount(heldSource,character,true)}
         local presentation=capturePresentation(heldTool,source)
-        local entry=gunLibrary.capture(source,tostring(read(target,"Name")),mounts,kind,presentation)
+        local alternate=source==heldSource and holsteredSource or heldSource
+        local entry=gunLibrary.capture(source,tostring(read(target,"Name")),mounts,kind,presentation,alternate)
         enrichSaved(entry,{heldTool,source,reference})
         loadedLookupLog[#loadedLookupLog+1]="Saved "..kindLower.." from "..tostring(read(target,"Name")).."; mesh="..tostring(entry.definition.MeshId)
         local message=api.equip(entry.id,kind)..". Saved to your "..kindLower.." library."
         message=message.." Grip: "..(presentation.Grip and "captured" or "not loaded").."; icon: "..(presentation.ToolIcon and "captured" or "not loaded").."; sounds: "..#presentation.Sounds.."."
+        local surface=entry.definition.SurfaceAppearance
+        if (surface and surface.ColorMap and surface.ColorMap~="") or (entry.definition.TextureId and entry.definition.TextureId~="") then
+            message=message.." Texture reference saved (live rendering not verified)."
+        else
+            message=message.." No texture map was exposed by either matching display; this copy uses the source colors."
+        end
         if not heldTool then message=message.." Save again while they hold it to capture its held grip, toolbar icon, and loaded sounds." end
         return message
     end
@@ -902,7 +909,7 @@ return function(game, injectedRequire, gunLibrary)
     end
     function api.report()
         local rs=service("ReplicatedStorage"); local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local lines={"MM2 discovery (read-only)","GameId="..tostring(read(game,"GameId") or "?"),"PlaceId="..tostring(read(game,"PlaceId") or "?"),"ReplicatedStorage="..(rs and "available" or "missing"),"LocalPlayer="..(p and tostring(read(p,"Name") or "available") or "missing")}
-        lines[#lines+1]="Build: saved original gun visuals V11"
+        lines[#lines+1]="Build: dual-display texture capture V12"
         if gunLibrary then
             local names={};for _,entry in ipairs(gunLibrary.list()) do names[#names+1]=entry.name end
             lines[#lines+1]="Saved guns="..#names.."; "..table.concat(names,", ")
@@ -911,6 +918,9 @@ return function(game, injectedRequire, gunLibrary)
         lines[#lines+1]="Pending Knife="..tostring(pending.Knife).." Gun="..tostring(pending.Gun).." Last result="..tostring(lastEquipResult or "none")
         if lastAttempt then
             lines[#lines+1]="Last attempted item="..lastAttempt.id.." kind="..lastAttempt.kind.." ItemID="..tostring(field(lastAttempt.definition,"ItemID")).." Model="..tostring(field(lastAttempt.definition,"Model"))
+            local def=lastAttempt.definition
+            local surface=field(def,"SurfaceAppearance")
+            lines[#lines+1]="Captured texture="..tostring(field(def,"TextureId") or "none").."; surface color map="..tostring(surface and surface.ColorMap or "none")
         end
         local roots={}
         for _,object in ipairs(children(rs)) do

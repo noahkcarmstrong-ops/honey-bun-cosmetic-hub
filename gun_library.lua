@@ -250,27 +250,57 @@ return function(game,gui)
         assert(#encoded<=MAX_BYTES,"Saved gun library is full.");gui:SetAttribute(KEY,encoded)
     end
     local api={}
-    function api.capture(sourceBasePart,playerName,mounts,kind,presentation)
+    function api.capture(sourceBasePart,playerName,mounts,kind,presentation,alternateSource)
         kind=kind=="Knife" and "Knife" or "Gun"
         local noun=kind:lower()
         assert(sourceBasePart and read(sourceBasePart,"IsA") and sourceBasePart:IsA("BasePart"),"Choose a "..noun.." mesh part.")
         assert(type(playerName)=="string"and #playerName>0 and #playerName<=150,"Enter a player name.")
-        local class=read(sourceBasePart,"ClassName")
-        local mesh;if class~="MeshPart"then mesh=sourceBasePart:FindFirstChildWhichIsA("SpecialMesh")end
-        local size=read(sourceBasePart,"Size");assert(typeof(size)=="Vector3","Gun source has no valid part size.")
-        local meshId,textureId,scale,offset,vertexColor
-        if mesh then
-            meshId=read(mesh,"MeshId");textureId=read(mesh,"TextureId");scale=read(mesh,"Scale");offset=read(mesh,"Offset");vertexColor=read(mesh,"VertexColor")
-        elseif class=="MeshPart"then
-            meshId=read(sourceBasePart,"MeshId");textureId=assetProperty(sourceBasePart,"TextureContent","TextureID")
-            local meshSize=read(sourceBasePart,"MeshSize")
-            assert(typeof(meshSize)=="Vector3"and meshSize.X~=0 and meshSize.Y~=0 and meshSize.Z~=0,"Gun mesh has no valid mesh size.")
-            scale=Vector3.new(size.X/meshSize.X,size.Y/meshSize.Y,size.Z/meshSize.Z);offset=Vector3.new(0,0,0);vertexColor=Vector3.new(1,1,1)
-        else error("Gun source needs a SpecialMesh or MeshPart mesh.")end
-        local surface=sourceBasePart:FindFirstChildWhichIsA("SurfaceAppearance")
-        local definition={PortableGun=true,MeshId=meshId,TextureId=textureId,Scale=scale,Offset=offset,VertexColor=vertexColor,
-            Color=read(sourceBasePart,"Color"),Material=read(sourceBasePart,"Material"),Size=size}
-        definition.SurfaceAppearance=packSurface(surface)
+        local function snapshot(part)
+            local class=read(part,"ClassName")
+            local mesh;if class~="MeshPart"then mesh=part:FindFirstChildWhichIsA("SpecialMesh")end
+            local size=read(part,"Size");assert(typeof(size)=="Vector3","Gun source has no valid part size.")
+            local meshId,textureId,scale,offset,vertexColor,layout
+            if mesh then
+                meshId=read(mesh,"MeshId");textureId=assetProperty(mesh,"TextureContent","TextureId");scale=read(mesh,"Scale");offset=read(mesh,"Offset");vertexColor=read(mesh,"VertexColor")
+                layout="SpecialMesh:"..tostring(read(mesh,"MeshType"))
+            elseif class=="MeshPart"then
+                meshId=read(part,"MeshId");textureId=assetProperty(part,"TextureContent","TextureID")
+                local meshSize=read(part,"MeshSize")
+                assert(typeof(meshSize)=="Vector3"and meshSize.X~=0 and meshSize.Y~=0 and meshSize.Z~=0,"Gun mesh has no valid mesh size.")
+                scale=Vector3.new(size.X/meshSize.X,size.Y/meshSize.Y,size.Z/meshSize.Z);offset=Vector3.new(0,0,0);vertexColor=Vector3.new(1,1,1);layout="MeshPart"
+            else error("Gun source needs a SpecialMesh or MeshPart mesh.")end
+            return {class=class,layout=layout,meshId=meshId,textureId=textureId,scale=scale,offset=offset,vertexColor=vertexColor,size=size,
+                color=read(part,"Color"),material=read(part,"Material"),surface=packSurface(part:FindFirstChildWhichIsA("SurfaceAppearance"))}
+        end
+        local captured=snapshot(sourceBasePart)
+        local definition={PortableGun=true,MeshId=captured.meshId,TextureId=captured.textureId,Scale=captured.scale,Offset=captured.offset,VertexColor=captured.vertexColor,
+            Color=captured.color,Material=captured.material,Size=captured.size,SurfaceAppearance=captured.surface}
+        local function attribute(part,name)
+            local getter=read(part,"GetAttribute")
+            if type(getter)~="function"then return nil end
+            local ok,value=pcall(getter,part,name);return ok and value or nil
+        end
+        local function sameIdentity(a,b)
+            for _,name in ipairs({"ItemID","ItemKey","WeaponID"})do
+                local left,right=attribute(a,name),attribute(b,name)
+                if left~=nil and right~=nil and tostring(left)~=tostring(right)then return false end
+            end
+            return true
+        end
+        local alternateValid,alternateIsPart=pcall(function()return alternateSource and alternateSource:IsA("BasePart")end)
+        if alternateValid and alternateIsPart and sameIdentity(sourceBasePart,alternateSource) then
+            local ok,alternate=pcall(snapshot,alternateSource)
+            if ok and alternate.meshId==captured.meshId and alternate.class==captured.class and alternate.layout==captured.layout then
+                if (definition.TextureId or "")=="" then definition.TextureId=alternate.textureId end
+                if alternate.surface then
+                    definition.SurfaceAppearance=definition.SurfaceAppearance or {}
+                    for _,name in ipairs(SURFACE_FIELDS)do
+                        if (name~="ColorMap" or (captured.textureId or "")=="") and (not definition.SurfaceAppearance[name] or definition.SurfaceAppearance[name]=="") then definition.SurfaceAppearance[name]=alternate.surface[name] end
+                    end
+                    if not next(definition.SurfaceAppearance)then definition.SurfaceAppearance=nil end
+                end
+            end
+        end
         local encodedMounts=packMounts(mounts)
         definition.Mounts=unpackMounts(encodedMounts)
         local encodedPresentation=packPresentation(presentation)

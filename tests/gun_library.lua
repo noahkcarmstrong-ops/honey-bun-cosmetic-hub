@@ -72,6 +72,30 @@ assert(modernEntry.definition.TextureId=="rbxassetid://modern-texture","MeshPart
 assert(modernEntry.definition.SurfaceAppearance.ColorMap=="rbxassetid://modern-color","SurfaceAppearance ColorMapContent is captured as its URI")
 assert(modernEntry.definition.SurfaceAppearance.MetalnessMap=="rbxassetid://legacy-metal","empty modern content falls back to the legacy map")
 
+-- A matching display can fill only missing texture maps, and the borrowed
+-- values must survive persistence. Explicit item identity prevents cross-skin borrowing.
+local fallbackPrimary=object("MeshPart",{Name="FallbackPrimary",MeshId="rbxassetid://fallback-mesh",TextureID="",
+    Size=Vector3.new(2,2,2),MeshSize=Vector3.new(1,1,1),Color=Color3.new(1,1,1),Material=material},object("SurfaceAppearance",{ColorMap="",NormalMap="rbxassetid://primary-normal"}))
+local fallbackAlternate=object("MeshPart",{Name="FallbackAlternate",MeshId="rbxassetid://fallback-mesh",TextureID="rbxassetid://borrowed-texture",
+    Size=Vector3.new(2,2,2),MeshSize=Vector3.new(1,1,1),Color=Color3.new(1,1,1),Material=material},object("SurfaceAppearance",{ColorMap="rbxassetid://borrowed-color",NormalMap="rbxassetid://alternate-normal",RoughnessMap="rbxassetid://borrowed-rough"}))
+fallbackPrimary.GetAttribute=function(_,name)return name=="ItemID" and "same-item" or nil end
+fallbackAlternate.GetAttribute=function(_,name)return name=="ItemID" and "same-item" or nil end
+local fallbackEntry=library.capture(fallbackPrimary,"BIearyEyed",nil,"Gun",nil,fallbackAlternate)
+assert(fallbackEntry.definition.TextureId=="rbxassetid://borrowed-texture" and fallbackEntry.definition.SurfaceAppearance.ColorMap=="rbxassetid://borrowed-color",
+    "matching mesh fallback fills missing texture and color maps")
+assert(fallbackEntry.definition.SurfaceAppearance.NormalMap=="rbxassetid://primary-normal" and fallbackEntry.definition.SurfaceAppearance.RoughnessMap=="rbxassetid://borrowed-rough",
+    "primary surface maps win while missing maps are borrowed")
+local mismatched=object("MeshPart",{Name="MismatchedFallback",MeshId="rbxassetid://different-mesh",TextureID="rbxassetid://primary-texture",
+    Size=Vector3.new(2,2,2),MeshSize=Vector3.new(1,1,1),Color=Color3.new(1,1,1),Material=material},object("SurfaceAppearance",{ColorMap="rbxassetid://primary-color"}))
+local mismatchEntry=library.capture(mismatched,"BIearyEyed",nil,"Gun",nil,fallbackAlternate)
+assert(mismatchEntry.definition.TextureId=="rbxassetid://primary-texture" and mismatchEntry.definition.SurfaceAppearance.ColorMap=="rbxassetid://primary-color",
+    "different mesh fallback leaves primary textures unchanged")
+local fallbackReload=create(game,gui(screen:GetAttribute("HoneyBunCosmeticGuns")))
+local fallbackDefinition
+for _,savedEntry in ipairs(fallbackReload.list("Gun")) do if savedEntry.id==fallbackEntry.id then fallbackDefinition=savedEntry.definition end end
+assert(fallbackDefinition and fallbackDefinition.TextureId=="rbxassetid://borrowed-texture" and fallbackDefinition.SurfaceAppearance.RoughnessMap=="rbxassetid://borrowed-rough",
+    "borrowed texture maps persist after reload")
+
 local restoredGui=gui(saved)
 local restored=create(game,restoredGui)
 local restoredEntries=restored.list()
