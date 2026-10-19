@@ -130,7 +130,7 @@ function game:HttpGet(url)
     error('Unexpected request '..url)
 end
 loadstring=function(source)
-    if source=='mm2-module'then return function()return function()return{report=function()return'MM2 fixture report'end}end end end
+    if source=='mm2-module'then return function()return function()return{report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
     if source=='editor-module'then return function()return createEditor end end
     if source=='motion-module'then return function()return createMotion end end
     if source=='animations-module'then return function()return createAnimations end end
@@ -280,6 +280,13 @@ assert(find(gui(),'TextLabel','MM2 MENU'),'MM2 entry opens its own menu')
 setclipboard=function(value)calls.clipboard=value end
 click('Copy MM2 report');setclipboard=nil;assert(calls.clipboard=='MM2 fixture report','MM2 discovery report is copied')
 assert(not find(gui(),'TextButton','Restore original appearance'),'MM2 menu contains no cosmetic actions')
+click('Local cosmetics: OFF')
+assert(find(gui(),'TextButton','Local cosmetics: ON'),'Local collection toggles on')
+click('Chroma fixture | Preview');assert(calls.mm2Preview=='ChromaFixture','Catalog items can be previewed')
+click('Gun cosmetics');assert(calls.mm2Category=='Gun','Gun catalog can be selected')
+click('Emote cosmetics');assert(calls.mm2Category=='Emote','Emote catalog can be selected')
+field('Search MM2 cosmetics').Text='chroma';click('Search cosmetics');assert(calls.mm2Search=='chroma','Search filters the catalog')
+click('Local cosmetics: ON');assert(calls.mm2Restored and find(gui(),'TextButton','Local cosmetics: OFF'),'Disable restores previews')
 click('Back');assert(find(gui(),'TextButton','Open MM2 menu'),'Back returns to the MM2 entry')
 click('ACCESSORIES');assert(find(gui(),'TextButton','Add accessories'),'Cosmetic tabs remain usable')
 game.GameId=0;game.PlaceId=142823291

@@ -105,3 +105,9 @@ npx --offline --package=fengari-node-cli fengari tests/previews.lua
 These use Roblox stand-ins to check the editor logic; they do not prove that a game permits a particular asset.
 
 API references: [Accessories](https://create.roblox.com/docs/reference/engine/classes/Accessory), [Humanoid body-part replacement](https://create.roblox.com/docs/reference/engine/classes/Humanoid#ReplaceBodyPartR15), [Players avatar generation](https://create.roblox.com/docs/reference/engine/classes/Players#CreateHumanoidModelFromDescriptionAsync), [emote assignments](https://create.roblox.com/docs/reference/engine/classes/HumanoidDescription#SetEquippedEmotes), and [animation replication](https://create.roblox.com/docs/reference/engine/classes/Animator#LoadAnimation).
+
+## MM2 local cosmetics
+
+In MM2, open **MM2 → Open MM2 menu** and enable **Local cosmetics**. Browse Knife, Gun, or Emote cosmetics, search by name, and click Preview. Hold the matching weapon first. Disable the toggle or use Restore MM2 previews to undo previews.
+
+This browser reads the item definitions loaded by the game. It does not add ownership, alter trading, or populate MM2's own inventory screen. Weapon previews support available explicit mesh/texture definitions; unsupported item formats give an explanation. Emote previews require an accessible animation. Availability depends on the game's current data and assets; the hub does not promise every item works. Copy MM2 report includes field samples to diagnose unsupported formats.
