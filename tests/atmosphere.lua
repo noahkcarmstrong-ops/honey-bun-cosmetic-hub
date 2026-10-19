@@ -33,7 +33,7 @@ function methods:Clone()
     return copy
 end
 
-local lighting = Instance.new("Lighting")
+local lighting = Instance.new("Lighting");lighting.ClockTime=0
 local original = Instance.new("Sky", lighting); original.Name = "Original"; original.SkyboxBk = "old"
 local game = {Lighting = lighting, assets = {}, fail = false, cancel = false}
 local api
@@ -81,11 +81,16 @@ local source = sky("Source"); local script = Instance.new("Script", source)
 local wrapper = model("Wrapper", {source}); game.assets = {wrapper}
 assert(api.apply("https://create.roblox.com/store/asset/123/Custom-Sky"))
 assert(original.Parent == nil and wrapper.destroyed and script.destroyed, "success sanitizes and cleans source assets")
+assert(lighting.ClockTime==14,"Applying a sky uses daylight instead of preserving the game midnight")
 local custom = lighting:FindFirstChildOfClass("Sky"); assert(custom and custom ~= original and custom.Name == "Source")
 assert(#custom:GetChildren() == 0, "cloned Sky has no untrusted descendants")
 
 local gameReset=sky("Game reset");gameReset.Parent=lighting;custom.Parent=nil;tick()
 assert(custom.Parent==lighting and gameReset.Parent==nil,"Override removes newly inserted game skies and reparents custom sky")
+lighting.ClockTime=0;tick();assert(lighting.ClockTime==14,"Game midnight resets cannot darken the custom sky")
+api.setDaylight(false);assert(lighting.ClockTime==0,"Daylight off restores the game time")
+tick();assert(lighting.ClockTime==0,"Daylight off stops time enforcement")
+api.setDaylight(true);assert(lighting.ClockTime==14,"Daylight can be enabled again")
 custom.SkyboxBk="game changed it";tick();assert(custom.SkyboxBk=="Source","Game sky texture changes are repaired")
 local report=api.report()
 assert(report:find("Requested asset=123",1,true) and report:find("SkyboxBk=Source",1,true),"Report includes requested model and actual active sky face IDs")
@@ -94,7 +99,7 @@ assert(custom.Parent == lighting and not custom.destroyed, "failed replacement k
 game.fail = false
 local second = sky("Second"); local secondWrapper = model("SecondWrapper", {second}); game.assets = {secondWrapper}
 assert(api.apply("https://roblox.com/asset/?id=123")); assert(custom.destroyed and secondWrapper.destroyed)
-assert(api.restore());assert(gameReset.Parent==lighting,"Restore returns skies added by the game during override")
+assert(api.restore());assert(lighting.ClockTime==0,"Restore returns the exact original time of day");assert(gameReset.Parent==lighting,"Restore returns skies added by the game during override")
 assert(original.Parent == lighting and second.Parent == nil, "restore returns exact original object")
 local late = sky("Late"); local lateWrapper = model("LateWrapper", {late}); game.assets = {lateWrapper}; game.cancel = true
 assert(not api.apply(123), "a replacement cancelled during loading is rejected")

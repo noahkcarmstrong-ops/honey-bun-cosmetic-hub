@@ -8,6 +8,8 @@ return function(game)
     local keeper,blueprint
     local appliedId,lastFailure
     local repairs=0
+    local daylight=true
+    local originalClock
     local skyProperties={"SkyboxBk","SkyboxDn","SkyboxFt","SkyboxLf","SkyboxRt","SkyboxUp"}
     local function service(name)local ok,value=pcall(game.GetService,game,name);if ok then return value end end
 
@@ -108,6 +110,7 @@ return function(game)
         end
 
         if not custom then
+            originalClock=lighting.ClockTime
             originals={}
             for _,child in ipairs(lighting:GetChildren()) do
                 if child:IsA("Sky") then originals[#originals+1]={object=child,parent=child.Parent} end
@@ -117,6 +120,7 @@ return function(game)
         if custom then custom.Parent = nil; custom:Destroy() end
         replacement.Parent = lighting
         custom = replacement
+        if daylight then lighting.ClockTime=14 end
         appliedId=assetId;lastFailure=nil;repairs=0
         if blueprint then blueprint:Destroy() end
         blueprint=replacement:Clone()
@@ -127,6 +131,7 @@ return function(game)
             keeper=run.Heartbeat:Connect(function(dt)
                 elapsed=elapsed+dt;if elapsed<0.25 then return end;elapsed=0
                 if not custom or destroyed then return end
+                if daylight and lighting.ClockTime~=14 then lighting.ClockTime=14 end
                 for _,child in ipairs(lighting:GetChildren()) do
                     if child:IsA("Sky") and child~=custom then
                         local known=false;for _,entry in ipairs(originals) do if entry.object==child then known=true;break end end
@@ -151,11 +156,19 @@ return function(game)
         if custom then custom.Parent = nil; custom:Destroy(); custom = nil end
         for _, entry in ipairs(originals) do entry.object.Parent = entry.parent end
         originals={}
+        if originalClock~=nil then lighting.ClockTime=originalClock;originalClock=nil end
         return true
     end
 
+    function api.daylightEnabled()return daylight end
+    function api.setDaylight(value)
+        daylight=value==true
+        if custom then lighting.ClockTime=daylight and 14 or originalClock end
+        return daylight and "Daylight enabled for the custom sky." or "Game time restored; the sky may look dark at night."
+    end
+
     function api.report()
-        local lines={"Atmosphere build: sky diagnostics V3","Requested asset="..tostring(appliedId or "none"),
+        local lines={"Atmosphere build: sky diagnostics V3","Requested asset="..tostring(appliedId or "none"),"Daylight="..tostring(daylight).." original clock="..tostring(originalClock),
             "Custom sky parent="..tostring(custom and custom.Parent and custom.Parent.Name or "none"),
             "Override active="..tostring(keeper~=nil).." competing sky removals="..repairs,
             "Last load failure="..tostring(lastFailure or "none")}
