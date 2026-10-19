@@ -19,7 +19,7 @@ print('MM2 read-only discovery checks passed.')
 local itemModule=node('Item','ModuleScript')
 itemModule.Data={KnifeAlpha={ItemName='Nebula Knife',ItemType='Knife',MeshId='mesh-new',TextureId='texture-new',Rarity='Godly',Image='rbxassetid://123',Season=1},KnifeBeta={ItemName='Second Knife',ItemType='Knife',MeshId='mesh-second'},GunAlpha={Name='Dart Gun',Type='Gun',Color='blue'}}
 local emoteModule=node('Emotes','ModuleScript')
-emoteModule.Data={Wave={Name='Wave',Type='Emote',AnimationId=12345},Dance={Name='Dance',AnimationId='67890'}}
+emoteModule.Data={Wave={Name='Wave',Type='Emote',AnimationId=12345},Dance={Name='Dance',AnimationID='67890'}}
 local sync=node('Sync','Folder',{itemModule,emoteModule})
 local database=node('Database','Folder',{sync})
 local rs=node('ReplicatedStorage','ReplicatedStorage',{database})
@@ -96,3 +96,41 @@ mixedApi.restore(); assert(liveHandle.applied and liveHandle.applied.original==l
 assert(respawnHandle.applied and respawnHandle.applied.original==respawnHandle and displayHandle.applied.original==displayHandle,'Restore returns respawned and holstered weapon meshes')
 assert(not mixedApi.getEquipped().Knife,'Restore clears pending and selected cosmetics')
 print('MM2 metadata, pending equip, respawn persistence and mesh restoration passed.')
+
+-- Replays the real MM2 ItemID-only fields supplied in the live report.
+local realData=node('Item','ModuleScript')
+realData.Data={Fragile_G_2023={ItemID=12965349193,ItemName='Fragile',ItemType='Gun',Rarity='Common',Season=1},Gingerscythe={ItemID=15683138101,ItemName='Gingerscythe',ItemType='Knife',Rarity='Rare',Event='Christmas',Year=2023},ClassicItem={ItemID=999,ItemName='Classic',ItemType='Knife',Rarity='Common'}}
+local assetScript={ClassName='LocalScript',IsA=function(_,c)return c=='LuaSourceContainer' end,Destroy=function(self)self.destroyed=true end}
+local assetSource=node('Mesh','MeshPart',{assetScript});assetSource.MeshId='asset-mesh';assetSource.TextureID='asset-texture'
+assetSource.IsA=function(_,c)return c=='BasePart'or c=='MeshPart'end
+assetSource.Destroy=function(self)self.destroyed=true end
+local weaponHandle=node('Handle','MeshPart');weaponHandle.MeshId='original-mesh';weaponHandle.TextureID='original-texture'
+weaponHandle.ApplyMesh=function(self,v)self.MeshId=v.MeshId;self.TextureID=v.TextureID end
+weaponHandle.Clone=function(self)return{MeshId=self.MeshId,TextureID=self.TextureID,Destroy=function(self)self.destroyed=true end}end
+local weapon=node('Gun','Tool',{weaponHandle})
+local assetPlayer={Character=node('Character','Model',{weapon})}
+local assetServices={Players={LocalPlayer=assetPlayer},ReplicatedStorage=node('ReplicatedStorage','ReplicatedStorage',{node('Database','Folder',{node('Sync','Folder',{realData})})})}
+local assetLoads=0
+local assetGame={GetService=function(_,name)return assetServices[name]end,GetObjects=function(_,uri)assert(uri=='rbxassetid://12965349193');assetLoads=assetLoads+1;return{assetSource}end}
+local assetApi=create(assetGame,function(module)return module.Data end)
+local categoryById={};for _,entry in ipairs(assetApi.list())do categoryById[entry.id]=entry.category end
+assert(categoryById.Fragile_G_2023=='season1' and categoryById.Gingerscythe=='holiday' and categoryById.ClassicItem=='classic','Live database fields classify separately without excluding items')
+local equippedResult=assetApi.equip('Fragile_G_2023','Gun')
+assert(weaponHandle.MeshId=='asset-mesh'and weaponHandle.TextureID=='asset-texture','ItemID asset visibly changes the actual native weapon mesh and texture')
+assert(assetScript.destroyed,'Asset scripts are removed before use')
+assert(assetApi.getEquipped().Gun=='Fragile_G_2023','Database key remains the item identity; ItemID is its asset source')
+assetApi.equip('Fragile_G_2023','Gun');assert(assetLoads==1,'Selected asset is cached rather than downloaded on every reapply')
+assetApi.restore();assert(weaponHandle.MeshId=='original-mesh'and weaponHandle.TextureID=='original-texture','ItemID skin restores actual original weapon appearance')
+-- MM2 may use a Part/SpecialMesh holster even when the downloaded item is a MeshPart.
+assetSource.Size={X=2,Y=4,Z=2};assetSource.MeshSize={X=4,Y=4,Z=4}
+Vector3={new=function(x,y,z)return{X=x,Y=y,Z=z}end};Enum={MeshType={FileMesh='FileMesh'}}
+local oldScale={X=1,Y=1,Z=1}
+local displayMesh=node('Mesh','SpecialMesh');displayMesh.MeshId='old-display';displayMesh.TextureId='old-display-texture';displayMesh.Scale=oldScale;displayMesh.MeshType='old-type'
+local directDisplay=node('GunDisplay','Part',{displayMesh})
+directDisplay.IsA=function(_,c)return c=='BasePart'or c=='Part'end
+assetPlayer.Character=node('Character','Model',{directDisplay})
+assetApi.equip('Fragile_G_2023','Gun')
+assert(displayMesh.MeshId=='asset-mesh'and displayMesh.TextureId=='asset-texture'and displayMesh.Scale.X==0.5 and displayMesh.Scale.Y==1,'ItemID MeshPart skins fit the existing native SpecialMesh display')
+assetApi.restore();assert(displayMesh.MeshId=='old-display'and displayMesh.Scale==oldScale and displayMesh.MeshType=='old-type','Part display restores exact original geometry and scale')
+assetApi.destroy();assert(assetSource.destroyed,'Detached loaded assets are destroyed when the hub closes')
+print('Live MM2 ItemID loading, visible equip, script stripping, categories and restoration passed.')

@@ -89,7 +89,10 @@ local function nativeInventory()
     local search=node('TextBox','Search',inventory)
     local buttons={}
     for _,name in ipairs({'Season 1','Classic','Holiday'})do
-        local button=node('TextButton',name,inventory);button.Text=name;buttons[name]=button
+        local holder=node('Frame',name,inventory)
+        local button=node('ImageButton','Button',holder)
+        local title=node('TextLabel','Title',holder);title.Text=name
+        buttons[name]=button
         button.Activated:Connect(function()
             seasonPane.Visible=name=='Season 1';classicPane.Visible=name=='Classic';holidayPane.Visible=name=='Holiday'
         end)

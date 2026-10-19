@@ -8,6 +8,7 @@ return function(playerGui,catalog,onStatus)
     local cards,originals,connections,cardConnections={},{},{},{}
     local query,season="","season1"
     local lastReport="Native inventory has not been detected yet."
+    local tabBindings,categoryCounts={},{season1=0,classic=0,holiday=0}
     local function read(o,k) local ok,v=pcall(function() return o[k] end);if ok then return v end end
     local function is(o,c) local ok,v=pcall(function() return o:IsA(c) end);return ok and v end
     local function children(o) return o and o:GetChildren() or {} end
@@ -147,7 +148,7 @@ return function(playerGui,catalog,onStatus)
         local z=card.ZIndex or 1
         for _,v in ipairs(texts(card)) do
             if is(v,"GuiObject") then z=math.max(z,v.ZIndex or 1) end
-            if is(v,"GuiButton") then v.Active=false;pcall(function() v.Interactable=false end) end
+            if is(v,"GuiButton") and v~=card then v.Active=false;pcall(function() v.Interactable=false end) end
             if is(v,"LuaSourceContainer") then destroy(v) end
         end
         local button=Instance.new("TextButton")
@@ -167,15 +168,17 @@ return function(playerGui,catalog,onStatus)
         clearCards()
         local items={}
         for _,kind in ipairs({"Knife","Gun"}) do
-            local list=catalog.list(kind,query)
+            local list=catalog.list(kind)
             assert(type(list)=="table","MM2 catalog did not return an item list.")
             for _,entry in ipairs(list) do items[#items+1]=entry end
         end
+        categoryCounts={season1=0,classic=0,holiday=0}
+        for _,entry in ipairs(items) do local key=entryCategory(entry);categoryCounts[key]=categoryCounts[key]+1 end
         table.sort(items,compare)
         local equipped=catalog.getEquipped and catalog.getEquipped() or {}
         local ok,message=pcall(function()
             for _,entry in ipairs(items) do
-                if entryCategory(entry)==season then
+                if entryCategory(entry)==season and (query=="" or lower(entry.name):find(query,1,true) or lower(entry.id):find(query,1,true)) then
                     local card=template:Clone()
                     cards[#cards+1]=card
                     card.Name="HoneyBunLocal_"..entry.kind.."_"..tostring(entry.id)
@@ -233,15 +236,45 @@ return function(playerGui,catalog,onStatus)
             if enabled and o.Visible then o.Visible=false end
         end)
     end
+    local function buttonCategory(button)
+        local ancestor=button
+        while ancestor and ancestor~=root do
+            if originals[ancestor]~=nil then return nil end
+            ancestor=ancestor.Parent
+        end
+        local key=category(read(button,"Text")) or category(button.Name)
+        if key then return key end
+        for _,o in ipairs(descendants(button)) do
+            key=category(read(o,"Text"))
+            if key then return key end
+        end
+        ancestor=button.Parent
+        for _=1,3 do
+            if not ancestor or ancestor==root then break end
+            key=category(ancestor.Name)
+            if key then return key end
+            for _,label in ipairs(children(ancestor)) do
+                if is(label,"TextLabel") then
+                    key=category(label.Text)
+                    if key then return key end
+                end
+            end
+            ancestor=ancestor.Parent
+        end
+    end
     local function bindControls()
+        tabBindings={}
         for _,o in ipairs(descendants(root)) do
             if not localObject(o) then
                 if is(o,"TextBox") and (lower(o.Name):find("search",1,true) or lower(o.PlaceholderText):find("search",1,true)) then
                     query=lower(o.Text)
                     connections[#connections+1]=o:GetPropertyChangedSignal("Text"):Connect(function() query=lower(o.Text);schedule() end)
                 elseif is(o,"GuiButton") then
-                    local key=category(read(o,"Text")) or category(o.Name)
-                    if key then connections[#connections+1]=o.Activated:Connect(function() season=key;schedule() end) end
+                    local key=buttonCategory(o)
+                    if key then
+                        tabBindings[#tabBindings+1]=key.."="..o:GetFullName()
+                        connections[#connections+1]=o.Activated:Connect(function() season=key;schedule() end)
+                    end
                 end
             end
         end
@@ -328,7 +361,7 @@ return function(playerGui,catalog,onStatus)
         return true,message
     end
     function api.report()
-        return "Native inventory build: persistent category panels V3\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nGenerated="..#cards
+        return "Native inventory build: labelled category buttons V4\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.."\nBound tabs: "..table.concat(tabBindings,"; ")
     end
     function api.destroy() if not dead then api.disable();dead=true end end
     return api

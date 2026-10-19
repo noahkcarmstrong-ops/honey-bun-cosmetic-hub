@@ -45,7 +45,7 @@ return function(game, injectedRequire)
     local function collect(value, wanted, out, seen, fallback)
         if type(value)~="table" or seen[value] then return end; seen[value]=true
         local kind=kindOf(value)
-        if not kind and wanted=="Emote" and (field(value,"AnimationId") or field(value,"Animation") or field(value,"Name") or field(value,"ItemName")) then kind="Emote" end
+        if not kind and wanted=="Emote" and (field(value,"AnimationID") or field(value,"AnimationId") or field(value,"Animation") or field(value,"Name") or field(value,"ItemName")) then kind="Emote" end
         local id=tostring(field(value,"Id") or field(value,"ID") or fallback or field(value,"ItemName") or field(value,"Name") or "")
         if kind==wanted and id~="" then out[#out+1]={id=id,name=tostring(field(value,"ItemName") or field(value,"Name") or id),kind=kind,rarity=field(value,"Rarity"),definition=value} end
         for k,v in pairs(value) do if type(v)=="table" and k~="Model" then collect(v,wanted,out,seen,tostring(k)) end end
@@ -99,7 +99,7 @@ return function(game, injectedRequire)
         local query,out=lower(search),{}; for _,e in ipairs(source) do if query=="" or lower(e.name):find(query,1,true) or lower(e.id):find(query,1,true) then
             local categoryName,year,event,rarity,sortOrder=metadata(e.definition)
             local rarityColor,rarityOrder=rarityStyle(e.definition)
-            local chroma=field(e.definition,"Chroma"); out[#out+1]={id=e.id,name=e.name,kind=e.kind,rarity=rarity,image=field(e.definition,"Image") or field(e.definition,"ImageId"),category=categoryName,year=year,event=event,rarityColor=rarityColor,rarityOrder=rarityOrder,season=field(e.definition,"Season"),sortOrder=sortOrder,chroma=chroma==true or (type(chroma)=="string" and lower(chroma)~="" and lower(chroma)~="false")}
+            local chroma=field(e.definition,"Chroma"); out[#out+1]={id=e.id,name=e.name,kind=e.kind,rarity=rarity,image=field(e.definition,"Image") or field(e.definition,"ImageId") or field(e.definition,"ImageID"),category=categoryName,year=year,event=event,rarityColor=rarityColor,rarityOrder=rarityOrder,season=field(e.definition,"Season"),sortOrder=sortOrder,chroma=chroma==true or (type(chroma)=="string" and lower(chroma)~="" and lower(chroma)~="false")}
         end end; return out
     end
     local snapshots,track = {},nil
@@ -107,7 +107,7 @@ return function(game, injectedRequire)
     local allowPending=false
     local watchersActive=false
     local observed={}
-    local equipError
+    local equipError,lastEquipResult
     local function disconnectAll()
         for _,connection in ipairs(connections) do pcall(function() connection:Disconnect() end) end
         connections={};watchersActive=false;observed={}
@@ -123,8 +123,11 @@ return function(game, injectedRequire)
     local function weaponTarget(object)
         if isA(object,"Tool") then return true end
         local name=lower(read(object,"Name"))
-        return (isA(object,"Accessory") or isA(object,"Model")) and
+        return (isA(object,"Accessory") or isA(object,"Model") or isA(object,"BasePart")) and
             (name=="knife" or name=="gun" or name=="knifedisplay" or name=="gundisplay" or name=="holsteredknife" or name=="holsteredgun")
+    end
+    local function weaponHandle(object)
+        return isA(object,"BasePart") and object or child(object,"Handle")
     end
     local function targetTool(expected)
         local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local c=p and read(p,"Character")
@@ -132,7 +135,7 @@ return function(game, injectedRequire)
         local containers={character=c,backpack=bp}
         for _,key in ipairs({"character","backpack"}) do
             for _,t in ipairs(descendants(containers[key])) do
-                if weaponTarget(t) then local h=child(t,"Handle");if h and toolKind(t)==expected then return t,h end end
+                if weaponTarget(t) then local h=weaponHandle(t);if h and toolKind(t)==expected then return t,h end end
             end
         end
     end
@@ -148,10 +151,42 @@ return function(game, injectedRequire)
         if isA(model,"Model") or isA(model,"Tool") then return child(model,"Handle") end
         if isA(model,"BasePart") then return model end
     end
+    local assetCache,assetRoots={},{}
+    local lastAttempt
+    local function itemAsset(assetId)
+        local id=tonumber(assetId)
+        assert(id and id>0 and id%1==0,"The item has an invalid ItemID asset.")
+        local key=tostring(id)
+        if assetCache[key] then return assetCache[key] end
+        local ok,objects=pcall(function() return game:GetObjects("rbxassetid://"..string.format("%.0f",id)) end)
+        assert(ok and type(objects)=="table","Could not load ItemID "..key..": "..tostring(objects))
+        local all={}
+        for _,object in ipairs(objects) do
+            assetRoots[#assetRoots+1]=object
+            all[#all+1]=object
+            for _,desc in ipairs(descendants(object)) do all[#all+1]=desc end
+        end
+        for _,object in ipairs(all) do
+            if isA(object,"LuaSourceContainer") then pcall(function() object:Destroy() end) end
+        end
+        local visual
+        for _,object in ipairs(all) do
+            if read(object,"Name")=="Handle" and isA(object,"BasePart") then visual=object;break end
+        end
+        if not visual then
+            local parts={}
+            for _,object in ipairs(all) do if isA(object,"BasePart") then parts[#parts+1]=object end end
+            assert(#parts==1,"ItemID "..key.." did not expose one weapon mesh or a named Handle.")
+            visual=parts[1]
+        end
+        assetCache[key]=visual
+        return visual
+    end
     local function handleVisual(def)
-        local mesh,texture=field(def,"MeshId"),field(def,"TextureId"); local color=field(def,"Color") or field(def,"Color3"); local material=field(def,"Material")
+        local mesh,texture=field(def,"MeshId") or field(def,"MeshID"),field(def,"TextureId") or field(def,"TextureID"); local color=field(def,"Color") or field(def,"Color3"); local material=field(def,"Material")
         local scale,meshType=field(def,"Scale"),field(def,"MeshType")
         local h=modelHandle(field(def,"Model"))
+        if not h and field(def,"ItemID") then h=itemAsset(field(def,"ItemID")) end
         if h then
             local m=childClass(h,"SpecialMesh")
             if m then
@@ -159,6 +194,7 @@ return function(game, injectedRequire)
                 scale=scale or read(m,"Scale");meshType=meshType or read(m,"MeshType")
             end
             color=color or read(h,"Color");material=material or read(h,"Material")
+            if isA(h,"MeshPart") then texture=texture or read(h,"TextureID") end
         end
         return mesh,texture,color,material,scale,meshType,h
     end
@@ -180,7 +216,7 @@ return function(game, injectedRequire)
             local p=read(ps,"LocalPlayer")
             local h=childClass(read(p,"Character"),"Humanoid")
             local animator=childClass(h,"Animator")
-            local aid=field(e.definition,"AnimationId") or field(e.definition,"Animation")
+            local aid=field(e.definition,"AnimationId") or field(e.definition,"AnimationID") or field(e.definition,"Animation")
             if type(aid)=="number" then aid=tostring(aid) end
             assert(type(aid)=="string" and aid~="","Emote has no explicit AnimationId.")
             if aid:match("^%s*%d+%s*$") then aid="rbxassetid://"..aid:match("%d+") end
@@ -203,7 +239,7 @@ return function(game, injectedRequire)
             return "Previewing emote: "..e.name
         end
         local _,handle=targetTool(kind)
-        if selectedTool then assert(weaponTarget(selectedTool) and toolKind(selectedTool)==kind,"Matching native weapon is required.");handle=child(selectedTool,"Handle") end
+        if selectedTool then assert(weaponTarget(selectedTool) and toolKind(selectedTool)==kind,"Matching native weapon is required.");handle=weaponHandle(selectedTool) end
         local meshId,textureId,color,material,scale,meshType,source=handleVisual(e.definition)
         if field(e.definition,"Model")~=nil then assert(source,"Cosmetic model reference could not be resolved from ReplicatedStorage.Resources.") end
         assert(meshId or textureId or color or material or scale or meshType or source,"Cosmetic has no supported local visual fields (explicit MeshId/TextureId, model, Handle mesh, Color, or Material).")
@@ -213,7 +249,15 @@ return function(game, injectedRequire)
         end
         local mesh=childClass(handle,"SpecialMesh")
         local applyMesh=source and isA(source,"MeshPart") and isA(handle,"MeshPart") and type(read(handle,"ApplyMesh"))=="function"
-        if source and isA(source,"MeshPart") then assert(applyMesh,"This cosmetic needs a MeshPart weapon Handle.") end
+        if source and isA(source,"MeshPart") and not applyMesh then
+            assert(mesh,"The native weapon needs a SpecialMesh or MeshPart for this skin.")
+            local size,meshSize=read(source,"Size"),read(source,"MeshSize")
+            assert(size and meshSize and meshSize.X>0 and meshSize.Y>0 and meshSize.Z>0,"This asset did not expose mesh dimensions for the native Part weapon.")
+            meshId=read(source,"MeshId");textureId=read(source,"TextureID")
+            assert(type(meshId)=="string" and meshId~="","This weapon asset has no readable mesh.")
+            scale=Vector3.new(size.X/meshSize.X,size.Y/meshSize.Y,size.Z/meshSize.Z)
+            meshType=Enum.MeshType.FileMesh
+        end
         assert(applyMesh or mesh or not(meshId or textureId or scale or meshType),"Equipped Handle has no SpecialMesh for this mesh preview.")
         local old=snapshots[handle]; if not old then
             old={handle=handle,mesh=mesh,meshId=read(mesh,"MeshId"),textureId=read(mesh,"TextureId"),scale=read(mesh,"Scale"),meshType=read(mesh,"MeshType"),color=read(handle,"Color"),material=read(handle,"Material"),sourceClone=nil}
@@ -244,7 +288,7 @@ return function(game, injectedRequire)
         if not alive or not weaponTarget(tool) then return end
         local kind=toolKind(tool)
         local id=kind and equipped[kind]
-        if id and child(tool,"Handle") then
+        if id and weaponHandle(tool) then
             local ok,message=pcall(api.preview,id,kind,tool)
             if not ok then pending[kind]=id;equipError=tostring(message) else equipError=nil end
         end
@@ -278,8 +322,10 @@ return function(game, injectedRequire)
         assert(alive,"The MM2 cosmetic preview is closed.")
         local kind=category and tostring(category):sub(1,1):upper()..tostring(category):sub(2):lower(); assert(kind=="Gun" or kind=="Knife","Equip category must be Knife or Gun.")
         local e=findEntry(id,kind); assert(e,"Unsupported "..kind:lower().." cosmetic: "..tostring(id))
+        lastAttempt={id=e.id,kind=kind,definition=e.definition}
         allowPending=true; local ok,result=pcall(api.preview,e.id,kind); allowPending=false
-        if not ok then error(result) end
+        if not ok then equipError=tostring(result);error(result) end
+        equipError=nil;lastEquipResult=result
         ensureWatchers()
         return result
     end
@@ -289,9 +335,15 @@ return function(game, injectedRequire)
     function api.restore()
         if track then pcall(function() track:Stop(0);track:Destroy() end); track=nil end
         for _,old in pairs(snapshots) do restoreHandle(old) end
-        snapshots={}; pending={}; equipped={};equipError=nil; disconnectAll(); return "Restored local MM2 preview."
+        snapshots={}; pending={}; equipped={};equipError=nil;lastEquipResult=nil; disconnectAll(); return "Restored local MM2 preview."
     end
-    function api.destroy() if alive then alive=false; return api.restore() end end
+    function api.destroy()
+        if alive then
+            alive=false;api.restore()
+            for _,object in ipairs(assetRoots) do pcall(function() object:Destroy() end) end
+            assetRoots={};assetCache={}
+        end
+    end
     local function fullName(o) local fn=read(o,"GetFullName"); if type(fn)=="function" then local ok,v=pcall(fn,o); if ok and type(v)=="string" then return v end end; return tostring(read(o,"Name") or "") end
     local function samples(data)
         local entries={}
@@ -313,8 +365,21 @@ return function(game, injectedRequire)
     end
     function api.report()
         local rs=service("ReplicatedStorage"); local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local lines={"MM2 discovery (read-only)","GameId="..tostring(read(game,"GameId") or "?"),"PlaceId="..tostring(read(game,"PlaceId") or "?"),"ReplicatedStorage="..(rs and "available" or "missing"),"LocalPlayer="..(p and tostring(read(p,"Name") or "available") or "missing")}
-        lines[#lines+1]="Build: persistent local equip V2"
+        lines[#lines+1]="Build: ItemID asset equip V3"
         lines[#lines+1]="Selected Knife="..tostring(equipped.Knife).." Gun="..tostring(equipped.Gun).." Last equip error="..tostring(equipError or "none")
+        lines[#lines+1]="Pending Knife="..tostring(pending.Knife).." Gun="..tostring(pending.Gun).." Last result="..tostring(lastEquipResult or "none")
+        if lastAttempt then
+            lines[#lines+1]="Last attempted item="..lastAttempt.id.." kind="..lastAttempt.kind.." ItemID="..tostring(field(lastAttempt.definition,"ItemID")).." Model="..tostring(field(lastAttempt.definition,"Model"))
+        end
+        local ps=service("Players");local current=read(ps,"LocalPlayer")
+        for _,area in ipairs({"Character","Backpack"}) do
+            for _,object in ipairs(descendants(read(current,area))) do
+                if weaponTarget(object) then
+                    local handle=weaponHandle(object)
+                    lines[#lines+1]="Weapon target="..fullName(object).." class="..tostring(read(object,"ClassName")).." Handle="..tostring(handle and read(handle,"ClassName") or "missing")
+                end
+            end
+        end
         for _,pair in ipairs({{"Item","Knife"},{"Emotes","Emote"}}) do
             local label,kind=pair[1],pair[2]
             catalog(kind)
