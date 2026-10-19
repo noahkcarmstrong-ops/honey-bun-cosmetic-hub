@@ -5,6 +5,7 @@ local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
 local mm2API,mm2NativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
 local mm2GunLibraryAPI
+local accessorySoundsAPI
 local effectPlayerInput="qosra"
 local gunPlayerInput="BIearyEyed"
 local mm2Enabled,mm2EffectsEnabled=false,false
@@ -375,6 +376,14 @@ local function action(callback)
         render()
     end)
 end
+local function hatSounds()
+    if accessorySoundsAPI then return accessorySoundsAPI end
+    api()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/accessory_sounds.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    accessorySoundsAPI=chunk()(Players.LocalPlayer,playerGui)
+    return accessorySoundsAPI
+end
 local function mm2()
     assert(isMM2,"This menu is only available in MM2.")
     if mm2API then return mm2API end
@@ -654,6 +663,12 @@ render=function()
         caption(persistence and persistence.status() or persistenceNotice,44)
     elseif activePage=="Accessories" then
         caption("ACCESSORIES",24)
+        local soundsEnabled=playerGui:GetAttribute("HoneyBunCosmeticUI_HatSounds")~=false
+        button(soundsEnabled and "Hat sounds: ON" or "Hat sounds: OFF",function() action(function()
+            local sounds=hatSounds();return sounds.setEnabled(not sounds.isEnabled())
+        end) end)
+        button("Play hat sounds now",function() action(function()return hatSounds().playNow()end)end)
+        caption("Original hat audio, heard by you. Witches Brew laughs randomly every 5–15 seconds. Some audio may be restricted by Roblox.",56)
         caption("Wear several hats, masks, or hair items together. Paste links or IDs separated by spaces, commas, or new lines (20 items maximum).",60)
         local field=input("Paste accessory links or IDs here",accessoryInput,function(value) accessoryInput=value end)
         field.MultiLine=true;field.TextWrapped=true;field.Size=UDim2.new(1,-8,0,72)
@@ -909,6 +924,7 @@ gui.Destroying:Connect(function()
     if mm2EffectsLibraryAPI then mm2EffectsLibraryAPI.destroy() end
     if mm2NativeAPI then mm2NativeAPI.destroy() end
     if mm2API then mm2API.destroy() end
+    if accessorySoundsAPI then accessorySoundsAPI.destroy() end
     if persistence then persistence.destroy() end
     if avatarAPI then avatarAPI.destroy() end
     if motionAPI then motionAPI.destroy() end
@@ -918,7 +934,9 @@ gui.Destroying:Connect(function()
 end)
 render()
 action(function(editor)
+    local soundsLoaded=pcall(hatSounds)
     local message=reapplyAll(editor)
+    if not soundsLoaded then message=message.." Hat sounds could not load; try their control in Accessories." end
     if activePage=="Characters" then characterModules() end
     if isMM2 and gui:GetAttribute("HoneyBunCosmeticGuns") then mm2() end
     return message

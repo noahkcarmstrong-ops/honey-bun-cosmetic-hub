@@ -165,6 +165,10 @@ local hairEffect=node('ParticleEmitter','Hair effect');hairEffect.Enabled=true;h
 local liveDescription=node('HumanoidDescription','Live Description');liveDescription.Parent=body:FindFirstChildOfClass('Humanoid')
 local hatDescription=node('AccessoryDescription','Avatar Hat');hatDescription.Parent=liveDescription
 function hatDescription:GetAppliedInstance()return appliedHat end
+-- Original Korblox Deathspeaker asset 139607718 hides these R15ArtistIntent placeholders.
+for _,name in ipairs({'RightLowerLeg','RightFoot'}) do
+    template:FindFirstChild(name).Transparency=1;body:FindFirstChild(name).Transparency=0
+end
 local gearApi=create(player)
 local upper=body:FindFirstChild('LeftUpperArm');local lower=body:FindFirstChild('LeftLowerArm')
 upper.Size={X=1,Y=2,Z=1};template:FindFirstChild('LeftUpperArm').Size={X=0.8,Y=1.4,Z=0.8}
@@ -178,6 +182,7 @@ local templateGrip=node('Attachment','RightGripAttachment');templateGrip.CFrame=
 body:FindFirstChildOfClass('Humanoid').HipHeight=2
 local templateHumanoid=hum();templateHumanoid.HipHeight=1.5;templateHumanoid.Parent=template
 gearApi.applyBody("Girl")
+assert(body:FindFirstChild('RightLowerLeg').Transparency==1 and body:FindFirstChild('RightFoot').Transparency==1,'Korblox hidden lower-leg and foot placeholders must not become visible fragments')
 assert(upper.Size.Y==1.4 and elbow0.CFrame.y==-0.7 and elbow.C0.y==-0.7 and elbow.C1.y==0.6,'Package proportions and existing skeletal joints must match the source package')
 assert(not grip.destroyed and grip.Parent==rightHand and not gearScript.destroyed,"cosmetic body change destroyed equipped gear grip or controller")
 assert(body:FindFirstChild("RightHand")==rightHand and gear.Parent==body and not gear.destroyed,"cosmetics replaced the live gear-holding hand or equipped tool")
@@ -202,8 +207,13 @@ players.onGenerate=function()stayedHiddenDuringLoad=originalHandle.Transparency=
 local hiddenReplay=gearApi.reapplySaved();players.onGenerate=nil
 assert(stayedHiddenDuringLoad and not hiddenReplay:find('some could not load',1,true),'Replaying cosmetics keeps originals hidden throughout successful asset loading')
 gearApi.restoreBody()
+assert(body:FindFirstChild('RightLowerLeg').Transparency==0 and body:FindFirstChild('RightFoot').Transparency==0,'Restore reveals the original visible leg and foot')
 assert(upper.Size.Y==2 and elbow.C0.y==-1 and elbow.C1.y==1 and elbow0.CFrame.y==-1,'Restore returns original dimensions, attachment positions, and existing motor offsets')
 assert(body:FindFirstChildOfClass('Humanoid').HipHeight==2,'Restore returns original floor height')
+marketplace.assetType=31
+gearApi.applyBodyPart('RightLeg',139607718)
+assert(body:FindFirstChild('RightLowerLeg').Transparency==1 and body:FindFirstChild('RightFoot').Transparency==1,'A mixed Korblox right leg preserves the original hidden segments too')
+gearApi.restoreBody();marketplace.assetType=28
 body:FindFirstChildOfClass('Humanoid').failName='LeftLowerArm'
 assert(not pcall(gearApi.applyBodyPart,'LeftArm','https://www.roblox.com/bundles/555'),'A blocked region fails safely')
 body:FindFirstChildOfClass('Humanoid').failName=nil

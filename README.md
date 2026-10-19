@@ -22,6 +22,12 @@ Supports compatible rigid accessories, including hats, masks, and hair. Added ac
 
 **Remove current Roblox accessories** hides the accessories your avatar is already wearing, including your account's hats. Accessories added by the hub stay equipped. **Restore original appearance** brings the original accessories back. Refresh re-applies your saved choice. This does not remove anything from your Roblox inventory.
 
+### Hat sounds
+
+Equipped accessories can play their embedded original sounds locally. Brighteyes' Witches Brew Hat uses its original three laughs and randomly plays one every 5–15 seconds while worn, matching its original SoundPlayer behavior. Hidden or removed hats stop hub-started playback. Roblox audio permissions still apply; arbitrary accessory scripts are not executed.
+
+Original asset inspected: https://assetdelivery.roblox.com/v1/asset/?id=305888394 (WitchesBrewHat; Laugh 62777535, Laugh2 88108663, Laugh3 88108686).
+
 ## Clothes
 
 1. Open **CLOTHES** and paste a classic 2D shirt catalog link or ID, then click **Equip shirt**.
@@ -48,6 +54,8 @@ Clothing and textured bodies can cover skin colors. R6 and R15 limb groups are s
 4. Use **Restore original body** to restore your avatar's original body shapes while keeping accessories, clothing, and skin colors.
 
 The editor keeps your current character model, live limbs, rig, and gear connections. R6 uses compatible CharacterMesh bodies; R15 updates existing mesh appearance with ApplyMesh instead of replacing hands or other live body parts. Package limb dimensions and matching rig attachment offsets are applied to the existing limbs and body joints. Full packages also apply their floor height. Game gear attachments and tool joints are preserved; restore returns the original sizes, joint offsets, and floor height. Compatible Part-based heads use visual meshes. Unsupported conversions show an error instead of replacing a live part. Body bundles must expose a usable avatar outfit. The Girl and Robloxian 2.0 presets use Roblox's official outfits. Body-only package changes do not add the package's clothes or hair. Custom part selections save and reapply over your selected base package. Equipping a new full body package replaces the mixed part selections. Unsupported or restricted parts show an error; live compatibility depends on the asset and game.
+
+Package changes preserve the source body's hidden parts, including Korblox Deathspeaker's invisible lower-leg and foot pieces. Restore original body returns your original parts' visibility.
 
 ## Emotes
 

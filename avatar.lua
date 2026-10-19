@@ -248,6 +248,7 @@ return function(player,onStatus)
         else
             error("This body part cannot be changed safely on this avatar. Your gear was left alone.")
         end
+        if source.Transparency~=nil then target.Transparency=source.Transparency end
         for _,attachment in ipairs(source:GetChildren()) do
             if attachment:IsA("Attachment") and attachment.Name:match("RigAttachment$") then
                 local existing=target:FindFirstChild(attachment.Name)
