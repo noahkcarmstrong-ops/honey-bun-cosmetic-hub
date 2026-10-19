@@ -278,7 +278,6 @@ local statusText = "Local avatar editor. Saved selections reapply automatically.
 local statusLabel, render,lastRenderedPage
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
 local skyboxInput=uiSetting("skybox","")
-local lightingStrength=uiSetting("lightingStrength",75)
 local skyboxName=""
 local skyboxMenu,skyboxDelete,skyboxRename
 local skyboxMenuAction=0
@@ -1109,30 +1108,17 @@ render=function()
         caption("The standard wheel needs an R15 avatar and Roblox's emote menu enabled by the game. Some emotes may be restricted.",52)
     elseif activePage=="Atmosphere" then
         limits.MaxSize=Vector2.new(1050,850)
-        caption("REALISTIC LIGHTING",24)
-        local preset=realisticLightingAPI and realisticLightingAPI.state()
-        caption(preset and ("Active: "..preset.." · "..lightingStrength.."% intensity") or "Off · Choose a preset below.",28)
-        caption("Low keeps effects light. High adds richer highlights and sun rays. Both improve shadows, reflections, and color using Roblox lighting.",56)
-        local strengthField=input("Lighting intensity (0-100)",tostring(lightingStrength),function()end)
-        local function applyLighting(mode)
-            local strength=tonumber(strengthField.Text)
-            action(function()
-                assert(strength and strength==strength and strength>=0 and strength<=100,"Enter an intensity between 0 and 100.")
-                local ok,message=realisticLighting().apply(mode,strength/100);assert(ok,message)
-                lightingStrength=strength;playerGui:SetAttribute("HoneyBunCosmeticUI_lightingStrength",strength)
-                return message or (mode.." realistic lighting applied.")
-            end)
-        end
-        button("Realistic lighting: Low",function()applyLighting("Low")end)
-        button("Realistic lighting: High",function()applyLighting("High")end)
-        button("Apply lighting intensity",function()
-            applyLighting(realisticLightingAPI and realisticLightingAPI.state() or "High")
-        end)
-        button("Restore original lighting",function()action(function()
-            if realisticLightingAPI then realisticLightingAPI.restore() end
-            return "Original lighting restored. Your skybox stays as selected."
+        caption("SHADER",24)
+        local shaderOn=realisticLightingAPI and realisticLightingAPI.state()~=nil
+        button(shaderOn and "Shader: ON" or "Shader: OFF",function()action(function()
+            local lighting=realisticLighting()
+            if lighting.state() then
+                lighting.restore()
+                return "Shader off. Original lighting restored."
+            end
+            local ok,message=lighting.apply("High",1);assert(ok,message)
+            return "Shader on."
         end)end)
-        caption("Local lighting effects only. PBR textures must be supplied by the game. Shadows and reflections depend on your graphics settings.",48)
         caption("CUSTOM SKYBOX",24)
         caption("Paste a Roblox skybox model link or asset ID. The model must contain a Sky; a single image ID is not a complete skybox.",64)
         local field=input("Roblox skybox model link or ID",skyboxInput,function(value)skyboxInput=value end)
