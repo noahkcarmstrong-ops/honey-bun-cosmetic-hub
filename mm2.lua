@@ -431,46 +431,30 @@ return function(game, injectedRequire, gunLibrary)
         local p=read(service("Players"),"LocalPlayer")
         local character=read(p,"Character")
         local mount=def.Mounts and def.Mounts[held and "Held" or "Holster"]
-        -- A copied holster mount belongs to the other player's rig.  For
-        -- knives, resolve the default back position against this avatar so
-        -- R6/R15 and respawned characters do not inherit a side transform.
         if kind=="Knife" and not held then
-            local preferred=knifeSide and {"RightWaistAttachment","RightHipAttachment"}
-                or {"BodyBackAttachment","WaistBackAttachment","WaistCenterAttachment"}
-            local native
-            for _,name in ipairs(preferred) do
-                local candidate=child(character,name) or child(child(character,"UpperTorso"),name) or child(child(character,"LowerTorso"),name) or child(child(character,"Torso"),name)
-                if candidate and read(candidate,"CFrame") then native=candidate;break end
-            end
-            if native then
-                local parent=read(native,"Parent")
-                if parent and isA(parent,"BasePart") then
-                    local offset=read(native,"CFrame")
-                    -- Keep the captured weapon's rotation when the avatar
-                    -- provides a different attachment position.  Position
-                    -- extraction is guarded for the light-weight test stubs.
-                    local captured=mount and mount.Offset
-                    if captured then
-                        local ok,rotation=pcall(function() return captured-captured.Position end)
-                        if ok and rotation then
-                            local composedOk,composed=pcall(function() return CFrame.new(offset.Position)*rotation end)
-                            if composedOk and composed then offset=composed end
-                        end
-                    end
-                    mount={Part=read(parent,"Name"),Offset=offset}
-                end
-            else
-                local torso=(knifeSide and child(character,"LowerTorso") or child(character,"UpperTorso")) or child(character,"Torso") or child(character,"LowerTorso") or child(character,"UpperTorso")
-                if torso then
-                    -- Conservative R6/R15 fallback: behind the torso, or to
-                    -- its side when the optional layout is enabled.
-                    local offset=CFrame.new(knifeSide and 1 or 0,0,knifeSide and 0 or 0.75)
-                    if mount and mount.Offset then
-                        local ok,rotated=pcall(function()return offset*(mount.Offset-mount.Offset.Position)end)
-                        if ok then offset=rotated end
-                    end
-                    mount={Part=read(torso,"Name"),Offset=offset}
-                end
+            -- Roblox torso-local +Z is behind the avatar; -X is the knife hip.
+            -- Accessory attachments can be moved by body packages, so measure
+            -- the actual torso and the rotated saved weapon bounds instead.
+            local torso=child(character,"UpperTorso") or child(character,"Torso") or child(character,"LowerTorso")
+            if torso then
+                local captured=mount and mount.Offset
+                local relative=torso.CFrame:ToObjectSpace(handle.CFrame)
+                local orientation=captured or relative
+                local components={orientation:GetComponents()}
+                local rotation=CFrame.new(0,0,0,table.unpack(components,4,12))
+                local bodySize=read(torso,"Size") or Vector3.new(2,2,1)
+                local size=def.Size or Vector3.new(0.2,2,0.2)
+                local half
+                -- GetComponents stores rotation by rows.
+                if knifeSide then half=(math.abs(components[4])*size.X+math.abs(components[5])*size.Y+math.abs(components[6])*size.Z)/2
+                else half=(math.abs(components[10])*size.X+math.abs(components[11])*size.Y+math.abs(components[12])*size.Z)/2 end
+                local x=knifeSide and -(bodySize.X/2+half+0.03) or 0
+                local z=knifeSide and 0 or bodySize.Z/2+half+0.03
+                local offset=CFrame.new(x,read(relative,"Y") or 0,z)*rotation
+                -- SpecialMesh.Offset translates its visible center away from its Part.
+                local meshOffset=def.Offset
+                if meshOffset then offset=offset*CFrame.new(-meshOffset.X,-meshOffset.Y,-meshOffset.Z) end
+                mount={Part=read(torso,"Name"),Offset=offset}
             end
         end
         local anchor=mount and child(character,mount.Part)
@@ -502,7 +486,7 @@ return function(game, injectedRequire, gunLibrary)
             mesh.Parent=overlay
             local weld=Instance.new("WeldConstraint")
             weld.Part0=anchor;weld.Part1=overlay;weld.Parent=overlay
-            old={handle=handle,kind=kind,color=read(handle,"Color"),material=read(handle,"Material"),size=read(handle,"Size"),localTransparency=read(handle,"LocalTransparencyModifier") or 0,overlay=overlay,overlayId=e.id,overlayRevision=e.revision or 0,hidden={}}
+            old={handle=handle,kind=kind,mount=mount,color=read(handle,"Color"),material=read(handle,"Material"),size=read(handle,"Size"),localTransparency=read(handle,"LocalTransparencyModifier") or 0,overlay=overlay,overlayId=e.id,overlayRevision=e.revision or 0,hidden={}}
             snapshots[handle]=old
             -- A separate static visual preserves its dimensions without changing game joints or tools.
             overlay.Parent=service("Workspace")
@@ -1000,6 +984,12 @@ return function(game, injectedRequire, gunLibrary)
             top[#top+1]=tostring(read(object,"Name")).."["..tostring(read(object,"ClassName")).."]"
         end
         lines[#lines+1]="Avatar children="..table.concat(top,", ")
+        for _,old in pairs(snapshots) do
+            if old.kind=="Knife" and old.mount then
+                local torso=child(character,old.mount.Part)
+                lines[#lines+1]="Knife layout="..(knifeSide and "left side" or "back").." torso="..old.mount.Part.." torsoSize="..tostring(read(torso,"Size")).." localOffset="..tostring(old.mount.Offset)
+            end
+        end
         for _,kind in ipairs({"Knife","Gun"}) do
             local reference,target,handle=displayReference(kind)
             lines[#lines+1]="DisplayRef"..kind.."="..(reference and fullName(reference) or "missing").." Value="..(target and fullName(target) or "missing").." class="..(target and tostring(read(target,"ClassName")) or "missing").." Handle="..(handle and fullName(handle) or "missing")
