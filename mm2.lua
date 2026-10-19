@@ -1009,7 +1009,7 @@ return function(game, injectedRequire, gunLibrary)
     end
     function api.report()
         local rs=service("ReplicatedStorage"); local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local lines={"MM2 discovery (read-only)","GameId="..tostring(read(game,"GameId") or "?"),"PlaceId="..tostring(read(game,"PlaceId") or "?"),"ReplicatedStorage="..(rs and "available" or "missing"),"LocalPlayer="..(p and tostring(read(p,"Name") or "available") or "missing")}
-        lines[#lines+1]="Build: dual-display texture capture V12"
+        lines[#lines+1]="Build: native knife mount diagnostics V13"
         if gunLibrary then
             local names={};for _,entry in ipairs(gunLibrary.list()) do names[#names+1]=entry.name end
             lines[#lines+1]="Saved guns="..#names.."; "..table.concat(names,", ")
@@ -1050,6 +1050,48 @@ return function(game, injectedRequire, gunLibrary)
                 local matched=0
                 for tool,old in pairs(toolPresentations) do if toolKind(tool)==kind then for _ in pairs(old.sounds) do matched=matched+1 end end end
                 lines[#lines+1]=kind.." saved presentation: grip="..tostring(presentation.Grip~=nil).." icon="..tostring(presentation.ToolIcon~=nil).." sounds="..#(presentation.Sounds or {}).." matched="..matched
+            end
+        end
+        local function exactFrame(value)
+            local ok,values=pcall(function()return {value:GetComponents()}end)
+            if not ok then return "unavailable" end
+            for i,n in ipairs(values) do values[i]=string.format("%.9g",n) end
+            return table.concat(values,",")
+        end
+        local sampled=0
+        local actors={}
+        if p then actors[1]=p end
+        local getPlayers=read(ps,"GetPlayers")
+        if type(getPlayers)=="function" then
+            for _,actor in ipairs(getPlayers(ps)) do if actor~=p then actors[#actors+1]=actor end end
+        end
+        for _,actor in ipairs(actors) do
+            if sampled>=12 then break end
+            local rig=read(actor,"Character")
+            local ref=child(rig,"DisplayRefKnife")
+            local native=weaponHandle(read(ref,"Value"))
+            if native then
+                sampled=sampled+1
+                local owner=tostring(read(actor,"Name"))
+                local torso=child(rig,"LowerTorso") or child(rig,"Torso") or child(rig,"UpperTorso")
+                local ok,relative=pcall(function()return torso.CFrame:ToObjectSpace(native.CFrame)end)
+                local mesh=childClass(native,"SpecialMesh")
+                lines[#lines+1]="Native knife mount owner="..owner.." part="..fullName(native).." torso="..tostring(read(torso,"Name")).." relative="..(ok and exactFrame(relative) or "unavailable").." size="..tostring(read(native,"Size")).." mesh="..tostring(read(mesh or native,"MeshId"))
+                local inspected=0
+                for _,object in ipairs(descendants(native)) do
+                    if inspected>=16 then break end
+                    if isA(object,"Attachment") then
+                        inspected=inspected+1
+                        lines[#lines+1]="Native knife attachment owner="..owner.." path="..fullName(object).." local="..exactFrame(read(object,"CFrame"))
+                    elseif isA(object,"RigidConstraint") or isA(object,"Weld") or isA(object,"Motor6D") then
+                        inspected=inspected+1
+                        for _,key in ipairs({"Attachment0","Attachment1","Part0","Part1"}) do
+                            local endpoint=read(object,key)
+                            if endpoint then lines[#lines+1]="Native knife joint owner="..owner.." joint="..fullName(object).." "..key.."="..fullName(endpoint).." parent="..fullName(read(endpoint,"Parent")).." local="..exactFrame(read(endpoint,"CFrame")) end
+                        end
+                        if read(object,"C0") then lines[#lines+1]="Native knife C0="..exactFrame(read(object,"C0")).." C1="..exactFrame(read(object,"C1")) end
+                    end
+                end
             end
         end
         for _,entry in ipairs(loadedLookupLog) do lines[#lines+1]="Loaded source: "..entry end
