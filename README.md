@@ -120,6 +120,8 @@ API references: [Accessories](https://create.roblox.com/docs/reference/engine/cl
 
 ## MM2 local cosmetics
 
+The sheriff crosshair accepts Roblox image IDs and decal IDs or links, including Creator Store links. Decals are resolved to their image texture before previewing and saving.
+
 **Show all MM2 emotes** remembers ON or OFF across Refresh and rerunning the menu. With **Auto-save: on**, it also restores your choice when you run the menu after rejoining MM2, including the Game Emotes bar.
 
 Open MM2's Weapons inventory, then open **MM2 → Open MM2 menu** in the hub and enable **Show all weapons**. Supported native item cards are copied into the game's inventory window using the loaded knife/gun catalog. Click a local card to select it. The selection applies to a matching native weapon now or when it becomes available, and reapplies after respawning. Season 1, Classic, and Holiday use the loaded item metadata; cards sort by available order metadata, rarity, chroma status, and name. The local collection reconnects when MM2 reopens or rebuilds its inventory. Disable the toggle to restore the original inventory display and weapon appearance.

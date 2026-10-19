@@ -19,6 +19,8 @@ Instance={new=function(class,parent)
     objects[#objects+1]=o;return o
 end}
 function methods:GetChildren()local list={};for _,o in ipairs(objects)do if o.Parent==self then list[#list+1]=o end end;return list end
+function methods:GetDescendants()local list={};local function walk(parent)for _,child in ipairs(parent:GetChildren())do list[#list+1]=child;walk(child)end end;walk(self);return list end
+function methods:IsA(class)return self.ClassName==class end
 function methods:FindFirstChild(name)for _,o in ipairs(self:GetChildren())do if o.Name==name then return o end end end
 function methods:WaitForChild(name)return assert(self:FindFirstChild(name))end
 function methods:GetAttribute(key)return self.attributes and self.attributes[key]end
@@ -50,6 +52,7 @@ Enum=enum();DateTime={now=function()return{UnixTimestampMillis=123}end};task={sp
 local guiRoot=Instance.new('PlayerGui');local player=Instance.new('Player');guiRoot.Parent=player;player.CharacterAdded=signal()
 local input={InputBegan=signal(),GetFocusedTextBox=function()return nil end}
 local calls={equip=0,skin=0,body=0,destroy=0,restore=0,current=0}
+local decalRoot
 local slots={}
 local function createMotion()
     return {
@@ -123,8 +126,12 @@ local tweenService={Create=function(_,object,_,goal)
     end}
     return tween
 end}
-local marketplace={GetProductInfo=function(_,id)return{AssetTypeId=id==446366440 and 39 or 1}end}
-game={GetService=function(_,name)return({Players={LocalPlayer=player},UserInputService=input,HttpService=http,TweenService=tweenService,MarketplaceService=marketplace})[name]end}
+local marketplace={GetProductInfo=function(_,id)return{AssetTypeId=(id==4463666440 or id==999) and 13 or id==446366440 and 39 or 1}end}
+game={GetService=function(_,name)return({Players={LocalPlayer=player},UserInputService=input,HttpService=http,TweenService=tweenService,MarketplaceService=marketplace})[name]end,GetObjects=function(_,asset)
+    local id=tonumber(asset:match('(%d+)$'));decalRoot=Instance.new('Model');decalRoot.Name='CompetitiveCrosshairRoot'
+    if id==4463666440 then local decal=Instance.new('Decal',decalRoot);decal.Texture='rbxassetid://98765' end
+    return{decalRoot}
+end}
 function game:HttpGet(url)
     assert(url:find('/larpblox/',1,true),'Only the separate cosmetic repo is contacted')
     if url:find('/commits/main',1,true)then return'revision'end
@@ -356,6 +363,14 @@ assert(named(gui(),'CrosshairPreview').Image==calls.crosshair,'Applied crosshair
 local savedCrosshair=calls.crosshair
 field('Roblox crosshair image ID').Text='446366440';click('Apply crosshair')
 assert(calls.crosshair==savedCrosshair and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')==savedCrosshair,'Non-image asset IDs are rejected without replacing the saved crosshair')
+field('Roblox crosshair image ID').Text='https://create.roblox.com/store/asset/4463666440/Competitive-crosshair';click('Apply crosshair')
+assert(calls.crosshair=='rbxassetid://98765' and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')==calls.crosshair,'Decal asset links resolve to their image texture')
+assert(decalRoot and decalRoot.destroyed,'Temporary decal inspection roots are cleaned up after success')
+local resolvedCrosshair=calls.crosshair
+field('Roblox crosshair image ID').Text='https://www.roblox.com/catalog/999/Missing';click('Apply crosshair')
+assert(calls.crosshair==resolvedCrosshair and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')==resolvedCrosshair,'A decal without a texture preserves the previous crosshair')
+assert(decalRoot and decalRoot.destroyed,'Temporary decal inspection roots are cleaned up after failure')
+field('Roblox crosshair image ID').Text='12345';click('Apply crosshair')
 click('Refresh');assert(calls.crosshair=='rbxassetid://12345' and calls.crosshairDestroyed,'Refresh reapplies the saved crosshair and cleans up the old one')
 click('MM2');click('Open MM2 menu');click('Restore default crosshair')
 assert(calls.crosshair=='' and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')=='','Restore default clears saved crosshair')

@@ -700,7 +700,7 @@ render=function()
         caption(mm2MenuOpen and "MM2 MENU" or "MURDER MYSTERY 2",24)
         if mm2MenuOpen then
             caption("SHERIFF CROSSHAIR",24)
-            caption("Paste a Roblox image ID or image link. Shows while you hold your gun. Transparent images work best.",54)
+            caption("Paste a Roblox image or decal ID/link. Shows while you hold your gun. Transparent images work best.",54)
             local crosshairBox=input("Roblox crosshair image ID",crosshairInput,function(value)crosshairInput=value end)
             if crosshairImage~="" then
                 local preview=Instance.new("ImageLabel",content)
@@ -716,11 +716,31 @@ render=function()
                 end
                 assert(id and tonumber(id) and tonumber(id)>0,"Enter a Roblox image ID or image link.")
                 local info=game:GetService("MarketplaceService"):GetProductInfo(tonumber(id))
-                assert(info.AssetTypeId==1,"That ID is not an image. Use the image/texture ID for your crosshair, rather than a model or decal ID.")
                 local image="rbxassetid://"..id
+                if info.AssetTypeId==13 then
+                    local objects=game:GetObjects(image)
+                    local ok,texture=pcall(function()
+                        for _,root in ipairs(objects) do
+                            local items={root}
+                            for _,item in ipairs(root:GetDescendants()) do items[#items+1]=item end
+                            for _,item in ipairs(items) do
+                                if item:IsA("Decal") and item.Texture~="" then
+                                    local textureId=item.Texture:match("^rbxassetid://(%d+)$") or item.Texture:match("[?&]id=(%d+)")
+                                    if textureId then return "rbxassetid://"..textureId end
+                                end
+                            end
+                        end
+                        error("This decal's image could not load. Try its image/texture ID directly.")
+                    end)
+                    for _,root in ipairs(objects) do root:Destroy() end
+                    assert(ok,texture)
+                    image=texture
+                else
+                    assert(info.AssetTypeId==1,"That ID is not an image or decal. Choose a crosshair image or decal.")
+                end
                 customCrosshair().set(image)
                 crosshairImage=image;saveUI()
-                return "Custom crosshair saved. Hold your gun to see it. If it is blank, use the image ID rather than a model or decal ID."
+                return "Custom crosshair saved. Hold your gun to see it."
             end,true) end)
             button("Restore default crosshair",function() action(function()
                 if crosshairAPI then crosshairAPI.set("") end
