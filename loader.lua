@@ -422,7 +422,7 @@ render=function()
                 assert(ok~=false,message or "MM2 inventory could not be detected.")
                 mm2Enabled=true;return type(ok)=="string" and ok or message
             end) end)
-            caption("Click an item in MM2's inventory to equip it locally. Your choice applies when the matching weapon is available and stays selected through resets.",64)
+            caption("Select a skin in MM2's inventory. Only you see it; the avatar preview needs an available model. Your choice stays selected through resets.",64)
             button("Copy MM2 report",function() action(function()
                 local report=mm2().report().."\n"..nativeMM2().report()
                 if type(setclipboard)=="function" then

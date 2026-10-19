@@ -167,7 +167,8 @@ return function(game, injectedRequire)
         if isA(model,"Model") or isA(model,"Tool") then return child(model,"Handle") end
         if isA(model,"BasePart") then return model end
     end
-    local assetCache,assetRoots,assetFailures,resourceCache,assetLoaders={},{},{},{},{}
+    local assetCache,assetRoots,assetFailures,resourceCache,assetLoaders,loadedVisualCache={},{},{},{},{},{}
+    local loadedLookupLog={}
     local lastAttempt
     local function itemAsset(assetId)
         local id=tonumber(assetId)
@@ -216,6 +217,67 @@ return function(game, injectedRequire)
         assetCache[key]=visual
         return visual
     end
+    local identityKeys={itemkey=true,itemid=true,itemname=true,weaponid=true}
+    local function identityValue(object)
+        local values={}
+        local attributes=read(object,"GetAttributes")
+        if type(attributes)=="function" then local ok,result=pcall(attributes,object);if ok and type(result)=="table" then for key,value in pairs(result) do if identityKeys[lower(key)] then values[#values+1]=value end end end end
+        for _,childObject in ipairs(children(object)) do if identityKeys[lower(read(childObject,"Name"))] then values[#values+1]=read(childObject,"Value") end end
+        return values
+    end
+    local function identitySummary(object)
+        local values=identityValue(object);local out={}
+        for _,value in ipairs(values) do out[#out+1]=tostring(value) end
+        return #out>0 and table.concat(out,"|") or "none"
+    end
+    local function exactLoadedIdentity(object,entry)
+        if tostring(read(object,"Name"))==tostring(entry.id) then return true,"Name="..tostring(entry.id) end
+        local itemId=field(entry.definition,"ItemID")
+        local itemIdMatches=0
+        if itemId then for _,candidate in ipairs(catalog(entry.kind)) do if tostring(field(candidate.definition,"ItemID"))==tostring(itemId) then itemIdMatches=itemIdMatches+1 end end end
+        for _,value in ipairs(identityValue(object)) do
+            if tostring(value)==tostring(entry.id) then return true,"identity="..tostring(value) end
+            if itemId and itemIdMatches==1 and tostring(value)==tostring(itemId) then return true,"ItemID="..tostring(value) end
+        end
+    end
+    local function loadedVisual(entry)
+        local cacheKey=entry.kind..":"..entry.id
+        if loadedVisualCache[cacheKey] then return loadedVisualCache[cacheKey] end
+        local candidates,seen={},{}
+        local function add(object,reference)
+            if object and not seen[object] then seen[object]=true;candidates[#candidates+1]={object=object,reference=reference} end
+        end
+        local displays=child(service("Workspace"),"WeaponDisplays")
+        add(displays)
+        for _,object in ipairs(descendants(displays)) do add(object) end
+        local players=service("Players");local getPlayers=read(players,"GetPlayers")
+        if type(getPlayers)=="function" then
+            local ok,list=pcall(getPlayers,players)
+            if ok and type(list)=="table" then for _,player in ipairs(list) do
+                local character=read(player,"Character")
+                for _,reference in ipairs(children(character)) do if referenceKind(reference)==entry.kind then add(read(reference,"Value"),reference) end end
+            end end
+        end
+        for _,candidate in ipairs(candidates) do
+            local object,reference=candidate.object,candidate.reference
+            if #loadedLookupLog<24 then loadedLookupLog[#loadedLookupLog+1]="inspect "..tostring(read(object,"Name")).." identities="..identitySummary(reference).."/"..identitySummary(object) end
+            local matched,reason=exactLoadedIdentity(reference,entry)
+            if not matched then matched,reason=exactLoadedIdentity(object,entry) end
+            local handle=weaponHandle(object)
+            if matched and handle and not snapshots[handle] then
+                local cloneFn=read(handle,"Clone");local ok,clone=false,nil
+                if type(cloneFn)=="function" then ok,clone=pcall(cloneFn,handle) end
+                if ok and clone and weaponHandle(clone) then clone=weaponHandle(clone) end
+                if ok and clone and isA(clone,"BasePart") then
+                    for _,desc in ipairs(descendants(clone)) do if isA(desc,"LuaSourceContainer") then pcall(function() desc:Destroy() end) end end
+                    assetRoots[#assetRoots+1]=clone;loadedVisualCache[cacheKey]=clone
+                    loadedLookupLog[#loadedLookupLog+1]=entry.kind.." "..entry.id.." <- "..tostring(read(object,"Name")).." ("..tostring(reason)..")"
+                    return clone
+                end
+            end
+        end
+        if #loadedLookupLog<24 then loadedLookupLog[#loadedLookupLog+1]=entry.kind.." "..entry.id.." <- no exact loaded source" end
+    end
     local function resourceVisual(entry)
         if resourceCache[entry.id] then return resourceCache[entry.id] end
         local storage=service("ReplicatedStorage")
@@ -248,7 +310,7 @@ return function(game, injectedRequire)
         local mesh,texture=field(def,"MeshId") or field(def,"MeshID"),field(def,"TextureId") or field(def,"TextureID"); local color=field(def,"Color") or field(def,"Color3"); local material=field(def,"Material")
         local scale,meshType=field(def,"Scale"),field(def,"MeshType")
         local h=modelHandle(field(def,"Model"))
-        if not h and entry then h=resourceVisual(entry) end
+        if not h and entry then h=loadedVisual(entry) or resourceVisual(entry) end
         if not h and field(def,"ItemID") then h=itemAsset(field(def,"ItemID")) end
         if h then
             local m=isA(h,"SpecialMesh") and h or childClass(h,"SpecialMesh")
@@ -451,7 +513,7 @@ return function(game, injectedRequire)
         if alive then
             alive=false;api.restore()
             for _,object in ipairs(assetRoots) do pcall(function() object:Destroy() end) end
-            assetRoots={};assetCache={};assetFailures={};resourceCache={};assetLoaders={}
+            assetRoots={};assetCache={};assetFailures={};resourceCache={};assetLoaders={};loadedVisualCache={};loadedLookupLog={}
         end
     end
     local function fullName(o) local fn=read(o,"GetFullName"); if type(fn)=="function" then local ok,v=pcall(fn,o); if ok and type(v)=="string" then return v end end; return tostring(read(o,"Name") or "") end
@@ -475,7 +537,7 @@ return function(game, injectedRequire)
     end
     function api.report()
         local rs=service("ReplicatedStorage"); local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local lines={"MM2 discovery (read-only)","GameId="..tostring(read(game,"GameId") or "?"),"PlaceId="..tostring(read(game,"PlaceId") or "?"),"ReplicatedStorage="..(rs and "available" or "missing"),"LocalPlayer="..(p and tostring(read(p,"Name") or "available") or "missing")}
-        lines[#lines+1]="Build: client visual loading V9"
+        lines[#lines+1]="Build: verified loaded visuals V10"
         lines[#lines+1]="Selected Knife="..tostring(equipped.Knife).." Gun="..tostring(equipped.Gun).." Last equip error="..tostring(equipError or "none")
         lines[#lines+1]="Pending Knife="..tostring(pending.Knife).." Gun="..tostring(pending.Gun).." Last result="..tostring(lastEquipResult or "none")
         if lastAttempt then
@@ -498,6 +560,7 @@ return function(game, injectedRequire)
             local reference,target,handle=displayReference(kind)
             lines[#lines+1]="DisplayRef"..kind.."="..(reference and fullName(reference) or "missing").." Value="..(target and fullName(target) or "missing").." class="..(target and tostring(read(target,"ClassName")) or "missing").." Handle="..(handle and fullName(handle) or "missing")
         end
+        for _,entry in ipairs(loadedLookupLog) do lines[#lines+1]="Loaded source: "..entry end
         local visualCount=0
         for _,object in ipairs(descendants(character)) do
             if visualCount>=32 then break end

@@ -240,6 +240,40 @@ assert(forbiddenCalls==0 and emptyClientLoads==1,'Client selection never invokes
 assert(clientApi.getEquipped().Gun=='Fragile_G_2023' and clientApi.report():find('Avatar model unavailable on this client',1,true),'Menu choice remains selected while the visual failure is explicit')
 assert(displayMesh.MeshId=='old-display','Unavailable models cannot be reported as applied avatar appearances')
 print('Client-only asset failure reporting and retry suppression passed.')
+
+-- A bounded loaded WeaponDisplays source can replace an unavailable private ItemID asset.
+local loadedMesh=node('SpecialMesh','SpecialMesh');loadedMesh.MeshId='loaded-source';loadedMesh.TextureId='loaded-source-texture'
+local loadedScript=node('Script','LocalScript');loadedScript.IsA=function(_,c)return c=='LuaSourceContainer'end;loadedScript.Destroy=function(self)self.destroyed=true end
+local loadedHandle=node('Handle','Part',{loadedMesh,loadedScript});loadedHandle.IsA=function(_,c)return c=='Part'or c=='BasePart'end
+local loadedIdentity=node('ItemKey','StringValue');loadedIdentity.Value='Fragile_G_2023'
+local loadedRoot=node('GenericGunDisplay','Model',{loadedIdentity,loadedHandle})
+local loadedClone,loadedCloneScript
+loadedHandle.Clone=function()
+    local mesh=node('SpecialMesh','SpecialMesh');mesh.MeshId=loadedMesh.MeshId;mesh.TextureId=loadedMesh.TextureId
+    loadedCloneScript=node('Script','LocalScript');loadedCloneScript.IsA=function(_,c)return c=='LuaSourceContainer'end;loadedCloneScript.Destroy=function(self)self.destroyed=true end
+    loadedClone=node('Handle','Part',{mesh,loadedCloneScript});loadedClone.IsA=loadedHandle.IsA;loadedClone.Destroy=function(self)self.destroyed=true end
+    return loadedClone
+end
+local loadedWorkspace=node('Workspace','Workspace',{node('WeaponDisplays','Folder',{loadedRoot})})
+local loadedGame={GetService=function(_,name)return name=='Workspace' and loadedWorkspace or assetServices[name]end,GetObjects=function()error('Private ItemID is unavailable')end}
+local loadedApi=create(loadedGame,function(module)return module.Data end)
+loadedApi.equip('Fragile_G_2023','Gun');assert(displayMesh.MeshId=='loaded-source' and displayMesh.TextureId=='loaded-source-texture','Exact loaded display identity supplies a private weapon visual')
+assert(loadedCloneScript.destroyed and not loadedScript.destroyed,'Loaded display clone scripts are stripped without mutating the source')
+loadedMesh.MeshId='changed-source';loadedApi.equip('Fragile_G_2023','Gun');assert(displayMesh.MeshId=='loaded-source','Loaded visual cache is detached from later source changes')
+loadedApi.destroy();assert(loadedClone.destroyed,'Detached loaded visual clone is destroyed on cleanup')
+print('Bounded loaded WeaponDisplays source resolution and cleanup passed.')
+local wrongRoot=node('GenericGunDisplay','Model',{node('Handle','Part')})
+local wrongGame={GetService=function(_,name)return name=='Workspace' and node('Workspace','Workspace',{node('WeaponDisplays','Folder',{wrongRoot})}) or assetServices[name]end,GetObjects=function()error('No private asset')end}
+local wrongApi=create(wrongGame,function(module)return module.Data end)
+local wrongResult=wrongApi.equip('Fragile_G_2023','Gun');assert(wrongResult:find('avatar preview unavailable',1,true) and displayMesh.MeshId=='old-display','Generic loaded display names cannot guess a cosmetic source')
+local twinData=node('Item','ModuleScript');twinData.Data={TwinA={ItemName='Twin A',ItemType='Gun',ItemID=777},TwinB={ItemName='Twin B',ItemType='Gun',ItemID=777}}
+local twinRs=node('ReplicatedStorage','ReplicatedStorage',{node('Database','Folder',{node('Sync','Folder',{twinData})})})
+local twinHandle=node('Handle','Part');twinHandle.IsA=function(_,c)return c=='Part'or c=='BasePart'end
+local twinId=node('ItemID','IntValue');twinId.Value=777;local twinRoot=node('TwinDisplay','Model',{twinId,twinHandle})
+local twinGame={GetService=function(_,name)return name=='Workspace' and node('Workspace','Workspace',{node('WeaponDisplays','Folder',{twinRoot})}) or name=='ReplicatedStorage' and twinRs or assetServices[name]end,GetObjects=function()error('No private asset')end}
+local twinApi=create(twinGame,function(module)return module.Data end)
+local twinResult=twinApi.equip('TwinA','Gun');assert(twinResult:find('avatar preview unavailable',1,true),'Ambiguous numeric ItemID identities are rejected')
+print('Loaded display identity rejection and ambiguity checks passed.')
 -- An asynchronous GetObjects result must not bring back cosmetics after the hub closes.
 local cancelledAssetApi
 local cancelledRoot=node('CancelledAsset','Model');cancelledRoot.Destroy=function(self)self.destroyed=true end
