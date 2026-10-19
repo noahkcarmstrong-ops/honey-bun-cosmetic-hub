@@ -153,7 +153,7 @@ loadstring=function(source)
     if source=='mm2-effects-module'then return function()return function(_game,_status)calls.effectLoads=(calls.effectLoads or 0)+1;return{equip=function(id)calls.savedEffect=id;return'Equipped effect'end,getEquipped=function()return{}end,reloadLibrary=function()calls.libraryReloaded=true end,collectOriginals=function()calls.effectsCollecting=true end,restore=function()calls.effectsRestored=true end,destroy=function()calls.effectsDestroyed=true end,report=function()return'Effects fixture report'end}end end end
     if source=='mm2-module'then return function()return function()calls.weaponLoads=(calls.weaponLoads or 0)+1;return{setKnifeSide=function(value)calls.knifeSide=value;return value end,savedInventory=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,savedWeapons=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,equip=function(id,kind)calls.savedWeapon=id;calls.savedKind=kind;return'Equipped'end,collectPlayerWeapon=function(name,kind)calls.captureOwner=name;calls.captureKind=kind;if calls.failGun and kind=='Gun' then error('Gun not loaded')end;return'Copied '..kind end,report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
     if source=='atmosphere-module'then return function()return function()local environment,activeAsset;return{environment=function()if not environment then return end;return{time=environment.time,fog=environment.fog,color=environment.color}end,applyEnvironment=function(settings)environment=settings;calls.environment=settings;return true end,restoreEnvironment=function()environment=nil;calls.environment=nil;return true end,daylightEnabled=function()return calls.daylight~=false end,setDaylight=function(v)calls.daylight=v;return'Time updated'end,apply=function(id)activeAsset=id;calls.skybox=id;return true end,currentAsset=function()return activeAsset end,previewImage=function()return'rbxassetid://123456'end,restore=function()activeAsset=nil;calls.skyRestored=true;return'Sky restored'end,destroy=function()calls.skyDestroyed=true end}end end end
-    if source=='editor-module'then return function()return createEditor end end
+    if source=='editor-module'then return function()assert(not calls.failAvatarLoad,'Fixture avatar not ready');return createEditor end end
     if source=='motion-module'then return function()return createMotion end end
     if source=='animations-module'then return function()return createAnimations end end
     if source=='clothes-module'then return function()return createClothes end end
@@ -398,6 +398,12 @@ clickNamed('LoadSkybox_1');clickNamed('SkyboxOptions_2');click('Delete');click('
 assert(calls.skybox=='12345' and calls.daylight==true,'Load reapplies the saved asset and daylight preference')
 click('Refresh');click('ATMOSPHERE')
 assert(calls.skybox=='12345' and calls.environment and calls.environment.time==8 and calls.environment.fog=='Light' and calls.environment.color=='Warm','Refresh automatically reapplies active skybox time fog and color')
+calls.failAvatarLoad=true;click('Refresh');click('ATMOSPHERE')
+assert(calls.environment and calls.environment.time==8 and calls.environment.fog=='Light' and calls.environment.color=='Warm','All atmosphere choices restore even when the avatar editor cannot load')
+click('Restore game atmosphere');assert(not calls.environment,'Atmosphere changes do not require the avatar editor')
+clickNamed('LoadSkybox_1');assert(calls.environment and calls.environment.fog=='Light','Saved atmosphere loads independently of avatar readiness')
+calls.failAvatarLoad=false
+
 assert(named(gui(),'SkyboxCard_1') and named(gui(),'LoadSkybox_1'),'Skybox library survives Refresh')
 local skyScroll=named(gui(),'SkyboxGrid').Parent
 skyScroll.CanvasPosition=Vector2.new(0,480)

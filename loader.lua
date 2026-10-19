@@ -507,13 +507,16 @@ local function equipCharacter(id)
     local restored,_,all=pcall(loadCharacterValues,previous)
     error((ok and message or tostring(message))..((restored and all) and " Your previous look was restored." or " Use Reapply saved cosmetics after your avatar finishes loading."))
 end
-local function action(callback)
+local function action(callback,independent)
     if busy or not alive then return end
     actionRunning=true;busy=true
     statusText="Working..."
     if statusLabel then statusLabel.Text=statusText end
     task.spawn(function()
-        local ok,message=pcall(function() return callback(api()) end)
+        local ok,message=pcall(function()
+            if independent then return callback() end
+            return callback(api())
+        end)
         actionRunning=false;busy=false
         if not alive then return end
         statusText=ok and (message or "Done.") or ("Could not apply: "..tostring(message):gsub("^.-:%d+:%s*",""))
@@ -528,7 +531,7 @@ local function atmosphereAction(callback)
             playerGui:SetAttribute("HoneyBunCosmeticUI_activeAtmosphere",game:GetService("HttpService"):JSONEncode(saved))
         end
         return message
-    end)
+    end,true)
 end
 local function reapplyAtmosphere()
     local raw=uiSetting("activeAtmosphere","")
@@ -1426,9 +1429,10 @@ panel.GroupTransparency=1
 panel.Position=UDim2.new(1,-12,0.5,0)
 showMenu(true)
 render()
-action(function(editor)
-    local soundsLoaded=pcall(hatSounds)
+action(function()
     local atmosphereLoaded,atmosphereError=pcall(reapplyAtmosphere)
+    local editor=api()
+    local soundsLoaded=pcall(hatSounds)
     local message=reapplyAll(editor)
     if not atmosphereLoaded then message=message.." Your saved atmosphere could not fully load: "..tostring(atmosphereError) end
     if not soundsLoaded then message=message.." Hat sounds could not load; try their control in Accessories." end
@@ -1436,4 +1440,4 @@ action(function(editor)
     if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticGuns") then mm2();savedNativeMM2().enable() end
     if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticEffects") then effectsMM2();nativeEffectsMM2().enable() end
     return message
-end)
+end,true)
