@@ -6,6 +6,7 @@ return function(playerGui,catalog,onStatus)
     local panePath,gridPath
     local mounting,queued=false,false
     local cards,cardEntries,originals,connections,cardConnections={},{},{},{},{}
+    local sideSlots,sideSnapshots,sideCandidates={},{},{}
     local query,season="","season1"
     local lastReport="Native inventory has not been detected yet."
     local tabBindings,categoryCounts={},{season1=0,classic=0,holiday=0}
@@ -162,6 +163,69 @@ return function(playerGui,catalog,onStatus)
         for _,card in ipairs(cards) do destroy(card) end
         cards={};cardEntries={}
     end
+    local function restoreSideSlots()
+        for object,values in pairs(sideSnapshots) do
+            for key,value in pairs(values) do pcall(function() object[key]=value end) end
+        end
+        sideSnapshots={};sideSlots={};sideCandidates={}
+    end
+    local function snapshot(object,key)
+        sideSnapshots[object]=sideSnapshots[object] or {}
+        if sideSnapshots[object][key]==nil then sideSnapshots[object][key]=read(object,key) end
+    end
+    local function sideSlotFor(container,kind)
+        local wanted=lower(kind)
+        for _,object in ipairs(descendants(container)) do
+            if is(object,"GuiObject") and not localObject(object) and normalize(object.Name)==wanted then return object end
+        end
+    end
+    local function bindSideSlots()
+        sideSlots={};sideCandidates={}
+        for _,object in ipairs(descendants(root)) do
+            local ancestor,originalPane=object,false
+            while ancestor and ancestor~=root do
+                if originals[ancestor]~=nil then originalPane=true;break end
+                ancestor=ancestor.Parent
+            end
+            if is(object,"GuiObject") and not localObject(object) and not originalPane then
+                local name=normalize(object.Name)
+                if name:find("equipped",1,true) or name=="loadout" then
+                    local names={};for _,childObject in ipairs(children(object)) do if is(childObject,"GuiObject") and #names<24 then names[#names+1]=tostring(childObject.Name) end end
+                    if #sideCandidates<12 then sideCandidates[#sideCandidates+1]=object:GetFullName().." children="..table.concat(names,",") end
+                    sideSlots.Knife=sideSlotFor(object,"Knife") or sideSlots.Knife
+                    sideSlots.Gun=sideSlotFor(object,"Gun") or sideSlots.Gun
+                    if sideSlots.Knife and sideSlots.Gun then break end
+                end
+            end
+        end
+    end
+    local function sideText(slot,kind,rarity)
+        local wanted=rarity and "rarity" or nil
+        for _,object in ipairs(texts(slot)) do
+            if is(object,"TextLabel") or is(object,"TextButton") then
+                local name=normalize(object.Name)
+                if (wanted and name==wanted) or (not wanted and (name=="itemname" or name=="title" or name=="displayname")) then return object end
+                if not wanted and object.Text=="Default "..kind then return object end
+            end
+        end
+    end
+    local function updateSideSlots(equipped)
+        for kind,slot in pairs(sideSlots) do
+            local id=equipped[kind]
+            local entry
+            if id then
+                for _,candidate in ipairs(catalog.list(kind) or {}) do if candidate.id==id then entry=candidate;break end end
+            end
+            local image=entry and entry.image
+            if type(image)=="number" or (type(image)=="string" and image:match("^%d+$")) then image="rbxassetid://"..tostring(image) end
+            local target=icon(slot)
+            if target then snapshot(target,"Image");target.Image=type(image)=="string" and image or read(target,"Image") end
+            local name=sideText(slot,kind,false)
+            if name then snapshot(name,"Text");name.Text=entry and entry.name or read(name,"Text") end
+            local rarity=sideText(slot,kind,true)
+            if rarity and entry and entry.rarity then snapshot(rarity,"Text");rarity.Text=tostring(entry.rarity) end
+        end
+    end
     local function updateSelection(equipped)
         for _,card in ipairs(cards) do
             local entry=cardEntries[card]
@@ -212,7 +276,8 @@ return function(playerGui,catalog,onStatus)
                         local good,result=pcall(catalog.equip or catalog.preview,entry.id,entry.kind)
                         status(good and (result or "Local item selected.") or ("Could not equip locally: "..tostring(result)))
                         if good then
-                            updateSelection(catalog.getEquipped and catalog.getEquipped() or {})
+                            local equipped=catalog.getEquipped and catalog.getEquipped() or {}
+                            updateSelection(equipped);updateSideSlots(equipped)
                         end
                     end)
                     card.Parent=grid
@@ -235,7 +300,7 @@ return function(playerGui,catalog,onStatus)
         end)
     end
     local function releaseMount()
-        disconnect(connections);connections={};clearCards()
+        disconnect(connections);connections={};clearCards();restoreSideSlots()
         if ownedRoot then destroy(ownedRoot);ownedRoot=nil end
         for o,visible in pairs(originals) do pcall(function() o.Visible=visible end) end
         originals={};grid=nil
@@ -332,6 +397,7 @@ return function(playerGui,catalog,onStatus)
             if is(o,"GuiObject") and not own(o) and (o==source or (category(o.Name) and not is(o,"GuiButton"))) then hidePane(o) end
         end
         ownedRoot.Parent=nativeHost
+        bindSideSlots()
         connections[#connections+1]=ownedRoot:GetPropertyChangedSignal("Visible"):Connect(schedule)
         bindControls()
     end
@@ -347,6 +413,7 @@ return function(playerGui,catalog,onStatus)
         for pane in pairs(originals) do pcall(function() pane.Visible=false end) end
         local n,total=render()
         assert(total>0,"MM2's item database returned no knife/gun cosmetics. Copy MM2 report for details.")
+        updateSideSlots(catalog.getEquipped and catalog.getEquipped() or {})
         status("MM2 "..season.." inventory: "..n.." local cosmetic cards.")
         return lastReport
     end
@@ -372,7 +439,7 @@ return function(playerGui,catalog,onStatus)
         return true,message
     end
     function api.report()
-        return "Native inventory build: labelled category buttons V4\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.."\nBound tabs: "..table.concat(tabBindings,"; ")
+        return "Native inventory build: equipped side slots V5\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")
     end
     function api.destroy() if not dead then api.disable();dead=true end end
     return api

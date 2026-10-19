@@ -196,9 +196,9 @@ return function(game, injectedRequire)
     end
     local function resourceVisual(entry)
         if resourceCache[entry.id] then return resourceCache[entry.id] end
-        local resources=child(service("ReplicatedStorage"),"Resources")
+        local storage=service("ReplicatedStorage")
         local candidates={entry.id,field(entry.definition,"ItemName"),field(entry.definition,"Name"),field(entry.definition,"ItemID")}
-        local objects=descendants(resources)
+        local objects=descendants(storage)
         for i=1,4 do
             local name=candidates[i]
             if name then
@@ -409,11 +409,33 @@ return function(game, injectedRequire)
     end
     function api.report()
         local rs=service("ReplicatedStorage"); local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local lines={"MM2 discovery (read-only)","GameId="..tostring(read(game,"GameId") or "?"),"PlaceId="..tostring(read(game,"PlaceId") or "?"),"ReplicatedStorage="..(rs and "available" or "missing"),"LocalPlayer="..(p and tostring(read(p,"Name") or "available") or "missing")}
-        lines[#lines+1]="Build: resource-first pending equip V5"
+        lines[#lines+1]="Build: replicated visuals and avatar diagnostics V6"
         lines[#lines+1]="Selected Knife="..tostring(equipped.Knife).." Gun="..tostring(equipped.Gun).." Last equip error="..tostring(equipError or "none")
         lines[#lines+1]="Pending Knife="..tostring(pending.Knife).." Gun="..tostring(pending.Gun).." Last result="..tostring(lastEquipResult or "none")
         if lastAttempt then
             lines[#lines+1]="Last attempted item="..lastAttempt.id.." kind="..lastAttempt.kind.." ItemID="..tostring(field(lastAttempt.definition,"ItemID")).." Model="..tostring(field(lastAttempt.definition,"Model"))
+        end
+        local roots={}
+        for _,object in ipairs(children(rs)) do
+            if #roots>=40 then break end
+            roots[#roots+1]=tostring(read(object,"Name")).."["..tostring(read(object,"ClassName")).."]"
+        end
+        lines[#lines+1]="RS roots="..table.concat(roots,", ")
+        local character=read(p,"Character")
+        local top={}
+        for _,object in ipairs(children(character)) do
+            if #top>=40 then break end
+            top[#top+1]=tostring(read(object,"Name")).."["..tostring(read(object,"ClassName")).."]"
+        end
+        lines[#lines+1]="Avatar children="..table.concat(top,", ")
+        local visualCount=0
+        for _,object in ipairs(descendants(character)) do
+            if visualCount>=32 then break end
+            if isA(object,"Model") or isA(object,"Accessory") or isA(object,"MeshPart") or isA(object,"SpecialMesh") or isA(object,"Motor6D") or isA(object,"Weld") then
+                visualCount=visualCount+1
+                local mesh=read(object,"MeshId")
+                lines[#lines+1]="Avatar object="..fullName(object).." ["..tostring(read(object,"ClassName")).."]"..(mesh and " MeshId="..tostring(mesh) or "")
+            end
         end
         local resources=child(rs,"Resources")
         local resourceInfo={}

@@ -1,6 +1,6 @@
 local create=dofile('mm2.lua')
 local function node(name,class,items)
-    return {Name=name,ClassName=class,GetFullName=function()return name end,GetChildren=function()return items or {} end,GetDescendants=function()return items or {} end,IsA=function(self,c)return self.ClassName==c end}
+    return {Name=name,ClassName=class,GetFullName=function()return name end,GetChildren=function()return items or {} end,GetDescendants=function()local out={};local function walk(list)for _,v in ipairs(list)do out[#out+1]=v;if v.GetChildren then walk(v:GetChildren())end end end;walk(items or {});return out end,IsA=function(self,c)return self.ClassName==c end}
 end
 local db=node('ReplicatedStorage.Database.Items','ModuleScript')
 local ui=node('PlayerGui.Inventory.Equip','LocalScript')
@@ -170,3 +170,16 @@ assert(displayMesh.MeshId=='standalone-mesh','Matching replicated resource equip
 resourceApi.restore()
 assert(displayMesh.MeshId=='old-display','Replicated visual restores original native weapon')
 print('Missing weapon queue, empty asset caching and replicated resource resolution passed.')
+
+-- Report V5 showed Resources containing only Perks; visuals can live elsewhere in RS.
+local alternateRs=node('ReplicatedStorage','ReplicatedStorage',{node('Database','Folder',{node('Sync','Folder',{realData})}),node('Resources','Folder',{node('Perks','Folder')}),resourceSource})
+local alternateGame={GetService=function(_,name)return name=='ReplicatedStorage' and alternateRs or assetServices[name]end,GetObjects=function()error('Existing replicated visual must be used')end}
+local alternateApi=create(alternateGame,function(module)return module.Data end)
+alternateApi.equip('Fragile_G_2023','Gun')
+assert(displayMesh.MeshId=='standalone-mesh','Named models outside Resources are used before unavailable downloads')
+alternateApi.restore()
+assetPlayer.Character=node('Character','Model',{node('UnrecognizedHolster','Model')})
+local expandedReport=alternateApi.report()
+assert(expandedReport:find('UnrecognizedHolster',1,true),'Report includes character objects even when weapon matcher misses them')
+assert(expandedReport:find('RS roots=',1,true),'Report lists replicated top-level asset folders')
+print('Alternate replicated visuals and unmatched avatar diagnostics passed.')

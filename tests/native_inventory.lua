@@ -86,6 +86,9 @@ local function nativeInventory()
     end
     local knife=card('Knife','Default Knife')
     local gun=card('Gun','Default Gun');gun.Visible=false
+    local equipped=node('Frame','Equipped',inventory)
+    local knifeSlot=node('Frame','Knife',equipped);local knifeIcon=node('ImageLabel','Icon',knifeSlot);knifeIcon.Image='side-knife';local knifeName=node('TextLabel','ItemName',knifeSlot);knifeName.Text='Default Knife';local knifeRarity=node('TextLabel','Rarity',knifeSlot);knifeRarity.Text='Native Knife'
+    local gunSlot=node('Frame','Gun',equipped);local gunIcon=node('ImageLabel','Icon',gunSlot);gunIcon.Image='side-gun';local gunName=node('TextLabel','ItemName',gunSlot);gunName.Text='Default Gun';local gunRarity=node('TextLabel','Rarity',gunSlot);gunRarity.Text='Native Gun'
     local search=node('TextBox','Search',inventory)
     local buttons={}
     for _,name in ipairs({'Season 1','Classic','Holiday'})do
@@ -97,9 +100,9 @@ local function nativeInventory()
             seasonPane.Visible=name=='Season 1';classicPane.Visible=name=='Classic';holidayPane.Visible=name=='Holiday'
         end)
     end
-    return inventory,host,seasonPane,classicPane,holidayPane,knife,gun,search,buttons,layout
+    return inventory,host,seasonPane,classicPane,holidayPane,knife,gun,search,buttons,layout,equipped
 end
-local inventory,host,seasonPane,classicPane,holidayPane,knife,gun,search,buttons,layout=nativeInventory()
+local inventory,host,seasonPane,classicPane,holidayPane,knife,gun,search,buttons,layout,equipped=nativeInventory()
 local chosen={}
 local lastEquip
 local definitions={
@@ -144,6 +147,10 @@ assert(generated()[1]:FindFirstChild('Equipped').Visible,'Native equipped marker
 overlay(secondGenerated).Activated:Fire();assert(lastEquip=='rare:Knife','Second click equips the other cosmetic')
 assert(generated()[1]==firstGenerated and generated()[2]==secondGenerated,'Second click keeps the existing cards')
 assert(generated()[1]:FindFirstChild('Equipped').Visible and generated()[2]:FindFirstChild('Equipped').Visible,'Each weapon category keeps its selection marker without rebuilding')
+assert(equipped:FindFirstChild('Knife'):FindFirstChild('ItemName').Text=='Rare Knife','Native Knife side slot shows selected name')
+assert(equipped:FindFirstChild('Knife'):FindFirstChild('Icon').Image=='rbxassetid://123','Native Knife side slot shows selected image')
+assert(equipped:FindFirstChild('Knife'):FindFirstChild('Rarity').Text=='Rare','Native Knife side slot shows selected rarity')
+assert(equipped:FindFirstChild('Gun'):FindFirstChild('ItemName').Text=='Godly Gun','Native Gun side slot keeps its selected name')
 buttons.Classic.Activated:Fire();flush()
 assert(#generated()==1 and generated()[1].Name:find('classic',1,true),'Classic tab works even when native game changes panels')
 assert(collection().Visible and not classicPane.Visible,'Local collection remains visible after native category switch')
@@ -155,7 +162,7 @@ inventory.Visible=false;collection().Visible=false;inventory.Visible=true;flush(
 assert(#generated()==1 and collection().Visible,'Closing and reopening preserves local cards and selected category')
 -- MM2 replaces its entire inventory GUI, not just its visibility.
 inventory:Destroy()
-inventory,host,seasonPane,classicPane,holidayPane,knife,gun,search,buttons,layout=nativeInventory()
+inventory,host,seasonPane,classicPane,holidayPane,knife,gun,search,buttons,layout,equipped=nativeInventory()
 flush()
 assert(collection() and #generated()==1,'A rebuilt native inventory is rebound automatically')
 buttons.Classic.Activated:Fire();flush();assert(#generated()==1,'Recreated tab controls are rebound')
@@ -163,6 +170,7 @@ api.disable();flush()
 assert(not collection() and seasonPane.Visible and not classicPane.Visible and not holidayPane.Visible,'Disable restores exact native panel visibility')
 assert(knife.Visible and not gun.Visible and not knife.destroyed,'Native cards remain intact')
 assert(seasonPane.CanvasSize=='original-canvas' and seasonPane.AutomaticCanvasSize=='None','Original scrolling settings are untouched')
+assert(equipped:FindFirstChild('Knife'):FindFirstChild('ItemName').Text=='Default Knife' and equipped:FindFirstChild('Knife'):FindFirstChild('Icon').Image=='side-knife','Native side slot restores on disable')
 layout:Destroy();assert(api.enable(),'Manual card positions are supported');flush()
 assert(collection():FindFirstChildOfClass('UIGridLayout'),'Only owned collection receives fallback layout')
 api.disable();assert(not seasonPane:FindFirstChildOfClass('UIGridLayout'),'Original manual native layout remains unchanged')
