@@ -41,9 +41,16 @@ local guiRoot=Instance.new('PlayerGui');local player=Instance.new('Player');guiR
 local input={InputBegan=signal(),GetFocusedTextBox=function()return nil end}
 local calls={equip=0,skin=0,body=0,destroy=0,restore=0,current=0}
 local function createEditor()
+    local equipped,nextKey={},0
     return {
-        equipAccessory=function(value)calls.equip=calls.equip+1;calls.item=value;return'Equipped fixture'end,
-        listAccessories=function()return{}end,
+        equipAccessory=function(value)
+            if value=='bad' then error('Unavailable fixture') end
+            calls.equip=calls.equip+1;calls.item=value;nextKey=nextKey+1
+            equipped[#equipped+1]={key=nextKey,name='Hat '..value}
+            return'Equipped fixture'
+        end,
+        listAccessories=function()return equipped end,
+        removeAccessory=function(key)for i,item in ipairs(equipped)do if item.key==key then table.remove(equipped,i);return'Removed'end end end,
         clearAccessories=function()return'Cleared'end,
         removeCurrentAccessories=function()calls.current=calls.current+1;return'Removed current accessories'end,
         setSkin=function(color,region)calls.skin=calls.skin+1;calls.color=color;calls.region=region;return'Color applied'end,
@@ -82,8 +89,16 @@ local function field(placeholder)
 end
 dofile('loader.lua')
 assert(not guiRoot:FindFirstChild('HoneyBunHub'),'Cosmetic menu never creates the original hub')
-field('roblox.com/catalog/123456/... or item ID').Text='123'
-click('Equip accessory');assert(calls.equip==1 and calls.item=='123','Accessory input reaches backend')
+field('Paste accessory links or IDs here').Text='123, 456\nbad'
+click('Add accessories');assert(calls.equip==2 and calls.item=='456','Batch adds both hats')
+assert(field('Paste accessory links or IDs here').Text=='bad','Only failed entries remain for retry')
+assert(find(gui(),'TextLabel','YOUR ADDED ACCESSORIES (2 / 20)'),'Both hats remain listed')
+field('Paste accessory links or IDs here').Text='789'
+click('Add accessories');assert(calls.equip==3,'Another add keeps previous hats')
+assert(field('Paste accessory links or IDs here').Text=='','Successful input clears')
+click('2. Hat 456  |  Remove')
+assert(find(gui(),'TextButton','1. Hat 123  |  Remove') and find(gui(),'TextButton','2. Hat 789  |  Remove'),'Individual removal preserves other hats')
+click('Add accessories');assert(calls.equip==3,'Empty input does not equip')
 click('Remove current Roblox accessories');assert(calls.current==1,'Original accessory button reaches backend')
 click('SKIN');click('Roblox colors  >')
 local swatches={}

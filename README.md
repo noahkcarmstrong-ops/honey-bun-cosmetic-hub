@@ -13,8 +13,10 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/h
 ## Accessories
 
 1. Open **ACCESSORIES**.
-2. Paste a Roblox catalog link or numeric asset ID.
-3. Click **Equip accessory**.
+2. Paste Roblox catalog links or numeric asset IDs, separated by spaces, commas, or new lines.
+3. Click **Add accessories**. Existing hats stay on; you can keep adding more.
+
+The added accessory list shows your count and a separate Remove button for each item. Successful entries clear from the input; any failed entries stay there to retry, with an explanation above the list.
 
 Supports compatible rigid accessories, including hats, masks, and hair. Added accessories appear in a remove list. **Remove added accessories** leaves your existing accessories alone. Asset scripts are stripped before anything is equipped. At most 20 added accessories are allowed at once.
 

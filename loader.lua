@@ -258,21 +258,43 @@ render=function()
     statusLabel.AutomaticSize=Enum.AutomaticSize.Y
     if activePage=="Accessories" then
         caption("ACCESSORIES",24)
-        caption("Paste a Roblox catalog link or item ID. Add hats, masks, hair, and other rigid accessories.",44)
-        local field=input("roblox.com/catalog/123456/... or item ID",accessoryInput,function(value) accessoryInput=value end)
-        button("Equip accessory",function()
+        caption("Wear several hats, masks, or hair items together. Paste links or IDs separated by spaces, commas, or new lines (20 items maximum).",60)
+        local field=input("Paste accessory links or IDs here",accessoryInput,function(value) accessoryInput=value end)
+        field.MultiLine=true;field.TextWrapped=true;field.Size=UDim2.new(1,-8,0,72)
+        button("Add accessories",function()
+            if busy then return end
             accessoryInput=field.Text
             saveUI()
-            action(function(editor) return editor.equipAccessory(accessoryInput) end)
+            local submitted=accessoryInput
+            action(function(editor)
+                local addedCount,failed,firstError=0,{},nil
+                for value in submitted:gmatch("[^%s,;]+") do
+                    local ok,message=pcall(editor.equipAccessory,value)
+                    if ok then addedCount=addedCount+1
+                    else
+                        failed[#failed+1]=value
+                        firstError=firstError or tostring(message):gsub("^.-:%d+:%s*","")
+                    end
+                end
+                accessoryInput=table.concat(failed,"\n");saveUI()
+                if #failed>0 then
+                    return string.format("Added %d. %d could not load; left in the box to retry. %s",addedCount,#failed,firstError)
+                end
+                if addedCount==0 then return "Paste at least one accessory link or ID first." end
+                return string.format("Added %d. Your other accessories stay on. Paste more to add another.",addedCount)
+            end)
         end)
-        button("Remove added accessories",function() action(function(editor) return editor.clearAccessories() end) end)
-        button("Remove current Roblox accessories",function() action(function(editor) return editor.removeCurrentAccessories() end) end)
+        local accessories=avatarAPI and avatarAPI.listAccessories and avatarAPI.listAccessories() or {}
+        caption(string.format("YOUR ADDED ACCESSORIES (%d / 20)",#accessories),24)
+        if #accessories==0 then caption("Nothing added yet. Add an item above to start.",32) end
         if avatarAPI and avatarAPI.listAccessories then
-            for _,entry in ipairs(avatarAPI.listAccessories()) do
+            for index,entry in ipairs(accessories) do
                 local key=entry.key
-                button("Remove: "..entry.name,function() action(function(editor) return editor.removeAccessory(key) end) end)
+                button(index..". "..entry.name.."  |  Remove",function() action(function(editor) return editor.removeAccessory(key) end) end)
             end
         end
+        button("Remove added accessories",function() action(function(editor) return editor.clearAccessories() end) end)
+        button("Remove current Roblox accessories",function() action(function(editor) return editor.removeCurrentAccessories() end) end)
         caption("Remove current Roblox accessories hides your original hats and accessories. Restore original appearance brings them back.",48)
     elseif activePage=="Skin" then
         caption("SKIN COLOR",24)
