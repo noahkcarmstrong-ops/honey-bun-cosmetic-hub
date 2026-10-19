@@ -104,9 +104,9 @@ return function(game, injectedRequire, gunLibrary)
         categoryName=field(def,"Category") or categoryName
         local rarityColor,rarityOrder=rarityStyle(def)
         local chroma=field(def,"Chroma")
-        local presentation=field(e.definition,"Presentation")
         return {id=e.id,name=e.catalog and e.catalog.Name or e.name,kind=e.kind,rarity=rarity,
-            image=field(def,"Image") or field(def,"ImageId") or field(def,"ImageID") or (presentation and presentation.ToolIcon),
+            image=field(def,"Image") or field(def,"ImageId") or field(def,"ImageID"),
+            visual=field(e.definition,"PortableGun") and e.definition or nil,
             category=categoryName,year=year,event=event,rarityColor=rarityColor,rarityOrder=rarityOrder,
             season=field(def,"Season"),sortOrder=sortOrder,chroma=chroma==true or (type(chroma)=="string" and lower(chroma)~="" and lower(chroma)~="false")}
     end
@@ -779,8 +779,13 @@ return function(game, injectedRequire, gunLibrary)
             local id=field(candidate.definition,"ItemID")
             return identities[candidate.id] or (id and itemIds[tostring(id)]==1 and identities[tostring(id)])
         end)
+        if not match then match=unique(function(candidate)
+            for value in pairs(identities) do if lower(value)==lower(candidate.name) then return true end end
+            return false
+        end) end
         if not match and image then match=unique(function(candidate)
             local def=candidate.definition
+            if lower(candidate.name):match("^default") then return false end
             return assetKey(field(def,"Image") or field(def,"ImageId") or field(def,"ImageID"))==image
         end) end
         if not match and mesh then match=unique(function(candidate)

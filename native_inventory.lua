@@ -13,6 +13,7 @@ return function(playerGui,catalog,onStatus,mode)
     local renderedSeason,renderedQuery,catalogItems
     local cards,cardEntries,originals,connections,cardConnections={},{},{},{},{}
     local sideSlots,sideSnapshots,sideCandidates={},{},{}
+    local sideModelIcons={}
     local query,season="",initialCategory
     local lastReport="Native inventory has not been detected yet."
     local diagnosticDetails=""
@@ -217,6 +218,30 @@ return function(playerGui,catalog,onStatus,mode)
         button.ZIndex=z+1;button.Parent=card
         return button
     end
+    local function savedModelIcon(card,target,entry)
+        local def=entry.visual
+        if not target or not def or (type(entry.image)=="string" and entry.image~="") or type(entry.image)=="number" then return end
+        local viewport=Instance.new("ViewportFrame")
+        local ok=pcall(function()
+            viewport.Name="HoneyBunLocal_ModelIcon";viewport.BackgroundTransparency=1
+            viewport.Size=target.Size;viewport.Position=target.Position;viewport.AnchorPoint=target.AnchorPoint
+            viewport.ZIndex=target.ZIndex;viewport.Ambient=Color3.fromRGB(200,200,200);viewport.LightColor=Color3.fromRGB(255,255,255)
+            local model=Instance.new("Part");model.Size=def.Size;model.Anchored=true;model.CanCollide=false
+            model.Color=def.Color;model.Material=def.Material;model.CFrame=CFrame.new()
+            local mesh=Instance.new("SpecialMesh");mesh.MeshType=Enum.MeshType.FileMesh;mesh.MeshId=def.MeshId
+            mesh.TextureId=(def.SurfaceAppearance and def.SurfaceAppearance.ColorMap) or def.TextureId or ""
+            mesh.Scale=def.Scale;mesh.Offset=def.Offset or Vector3.new(0,0,0)
+            if def.VertexColor then mesh.VertexColor=def.VertexColor end
+            mesh.Parent=model;model.Parent=viewport
+            local camera=Instance.new("Camera");camera.FieldOfView=35
+            local extent=math.max(def.Size.X,def.Size.Y,def.Size.Z)
+            camera.CFrame=CFrame.lookAt(Vector3.new(extent*0.6,extent*0.3,extent*2.3),Vector3.new(0,0,0))
+            camera.Parent=viewport;viewport.CurrentCamera=camera
+            viewport.Parent=target.Parent
+        end)
+        if not ok then destroy(viewport);return end
+        return viewport
+    end
     local function clearCards()
         renderGeneration=renderGeneration+1;renderedSeason=nil;renderedQuery=nil
         disconnect(cardConnections);cardConnections={}
@@ -224,6 +249,8 @@ return function(playerGui,catalog,onStatus,mode)
         cards={};cardEntries={}
     end
     local function restoreSideSlots()
+        for _,preview in pairs(sideModelIcons) do destroy(preview.viewport) end
+        sideModelIcons={}
         for object,values in pairs(sideSnapshots) do
             for key,value in pairs(values) do pcall(function() object[key]=value end) end
         end
@@ -283,6 +310,15 @@ return function(playerGui,catalog,onStatus,mode)
             if type(image)=="number" or (type(image)=="string" and image:match("^%d+$")) then image="rbxassetid://"..tostring(image) end
             local target=icon(slot)
             if target then snapshot(target,"Image");target.Image=type(image)=="string" and image or read(target,"Image") end
+            local preview=sideModelIcons[slot]
+            if preview and (not entry or preview.id~=entry.id or (type(image)=="string" and image~="")) then
+                destroy(preview.viewport);sideModelIcons[slot]=nil;preview=nil
+            end
+            if entry and entry.visual and not preview and target and (not image or image=="") then
+                snapshot(target,"Image");target.Image=""
+                local viewport=savedModelIcon(slot,target,entry)
+                if viewport then sideModelIcons[slot]={id=entry.id,viewport=viewport} end
+            end
             local name=sideText(slot,kind,false)
             if name then snapshot(name,"Text");name.Text=entry and entry.name or read(name,"Text") end
             local rarity=sideText(slot,kind,true)
@@ -472,6 +508,7 @@ return function(playerGui,catalog,onStatus,mode)
                         end
                         local image=entry.image;if type(image)=="number" or (type(image)=="string" and image:match("^%d+$")) then image="rbxassetid://"..tostring(image) end
                         local targetIcon=icon(card);if targetIcon then targetIcon.Image=type(image)=="string" and image or "" end
+                        savedModelIcon(card,targetIcon,entry)
                         local click=overlay(card)
                         savedCardConnections[id]={click.Activated:Connect(function()
                             local good,result=pcall(catalog.equip or catalog.preview,entry.id,entry.kind)

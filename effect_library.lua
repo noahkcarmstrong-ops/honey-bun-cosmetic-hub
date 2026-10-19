@@ -66,6 +66,46 @@ return function(game,gui)
         return keys
     end
     local entries,templates={},{}
+    local metadataMigrated=false
+    local effectCatalog={}
+    local catalogByName={}
+    local function field(def,...)
+        if type(def)~="table" then return nil end
+        for i=1,select("#",...)do local value=def[select(i,...)]if value~=nil then return value end end
+    end
+    local function loadCatalog()
+        local rs=game:GetService("ReplicatedStorage")
+        local db=rs and rs:FindFirstChild("Database");local sync=db and db:FindFirstChild("Sync")
+        local mod=sync and sync:FindFirstChild("Effects")
+        if not mod then return end
+        local ok,data=pcall(require,mod);if not ok or type(data)~="table"then return end
+        for id,def in pairs(data)do
+            if type(def)=="table"then
+                local key=tostring(id);local name=field(def,"ItemName","Name")
+                effectCatalog[key]={id=key,name=type(name)=="string"and name or key,rarity=field(def,"Rarity"),image=field(def,"Image","ImageId","ImageID")}
+                local exact=type(name)=="string"and name or nil
+                if exact then catalogByName[exact]=catalogByName[exact]or{};catalogByName[exact][#catalogByName[exact]+1]=key end
+            end
+        end
+    end
+    loadCatalog()
+    local function catalogId(root,records)
+        local function known(value)return type(value)=="string"and effectCatalog[value]and value or nil end
+        local id=known(read(root,"Name"));if id then return id end
+        for _,attribute in ipairs({"EffectId","EffectID","CatalogId","CatalogID","ItemId","ItemID","Id","ID"})do
+            local ok,value=pcall(function()return root:GetAttribute(attribute)end)
+            id=ok and known(value)or nil;if id then return id end
+        end
+        local found={}
+        for _,record in ipairs(records or{})do
+            if not ({Fire=true,Smoke=true,Sparkles=true,Attachment=true,Trail=true,Beam=true,ParticleEmitter=true,Light=true})[record.name] then
+                local matches=catalogByName[record.name]
+                if matches then for _,candidate in ipairs(matches)do found[candidate]=true end end
+            end
+        end
+        local only;for candidate in pairs(found)do if only then return nil end;only=candidate end
+        return only
+    end
     local selected
     local notice="No player effects collected yet."
     local alive=true
@@ -143,7 +183,16 @@ return function(game,gui)
             for _,entry in ipairs(saved.entries)do
                 if type(entry)=="table"and type(entry.id)=="string"and #entry.id<100 and type(entry.name)=="string"and #entry.name<=150 then
                     local good,source=pcall(restore,entry)
-                    if good then entries[#entries+1]=entry;templates[entry.id]=source end
+                    if good then
+                        local catalogValue=type(entry.catalog)=="table" and entry.catalog.id
+                        if catalogValue and not effectCatalog[tostring(catalogValue)] then entry.catalog=nil end
+                        if entry.catalog then entry.catalog=effectCatalog[tostring(catalogValue)] end
+                        if not entry.catalog then
+                            local savedCatalogId=catalogId(source,entry.records)
+                            if savedCatalogId then entry.catalog=effectCatalog[savedCatalogId];metadataMigrated=true end
+                        end
+                        entries[#entries+1]=entry;templates[entry.id]=source
+                    end
                 end
             end
         end
@@ -152,6 +201,7 @@ return function(game,gui)
         local encoded=Http:JSONEncode({version=1,entries=entries,selected=selected})
         assert(#encoded<=MAX_BYTES,"Saved effect library is full.");gui:SetAttribute(KEY,encoded)
     end
+    if metadataMigrated then pcall(save) end
     local function roots(player)
         local result,seen={},{}
         local function add(o)if o and not seen[o]then seen[o]=true;result[#result+1]=o end end
@@ -190,6 +240,8 @@ return function(game,gui)
                     local fromCount=0;for _,saved in ipairs(entries)do if saved.from==tostring(player.Name)then fromCount=fromCount+1 end end
                     local label="Effect from "..tostring(player.Name)..(fromCount>0 and (" ("..(fromCount+1)..")")or"")
                     local entry={id=id,name=label,from=tostring(player.Name),records=records}
+                    local catalogIdValue=catalogId(root,records)
+                    if catalogIdValue then entry.catalog=effectCatalog[catalogIdValue] end
                     local good,source=pcall(restore,entry)
                     if good then
                         entries[#entries+1]=entry
@@ -223,7 +275,10 @@ return function(game,gui)
         return (results[1]or"No other players in this server.").." Server check: "..#results.." player(s), "..(#entries-before).." new effect(s). Full details in Copy MM2 report."
     end
     function api.list()
-        local out={};for _,entry in ipairs(entries)do out[#out+1]={id=entry.id,name=entry.name,kind="Effect",category="effects",definition={Effect=templates[entry.id]}}end;return out
+        local out={};for _,entry in ipairs(entries)do
+            local metadata=entry.catalog
+            out[#out+1]={id=entry.id,name=metadata and metadata.name or entry.name,kind="Effect",rarity=metadata and metadata.rarity,image=metadata and metadata.image,category="effects",definition={Effect=templates[entry.id]}}
+        end;return out
     end
     function api.report()return"Saved original effect library: "..#entries.."; "..notice end
     function api.destroy()alive=false;for _,source in pairs(templates)do source:Destroy()end;templates={}end

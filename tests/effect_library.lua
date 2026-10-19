@@ -66,7 +66,7 @@ local documents={};local nextDoc=0
 local http={JSONEncode=function(_,value)nextDoc=nextDoc+1;local key='json'..nextDoc;documents[key]=deep(value);return key end,JSONDecode=function(_,key)return deep(assert(documents[key]))end}
 local function gui(raw)local attrs={HoneyBunCosmeticEffects=raw};return{GetAttribute=function(_,k)return attrs[k]end,SetAttribute=function(_,k,v)attrs[k]=v end}end
 Instance={new=function(class)return node(class)end}
-local rs=node('Folder','ReplicatedStorage');local sync=node('Folder','Sync',node('Folder','Database',rs));local db=node('ModuleScript','Effects',sync);db.Data={Bats={Name='Bats'}}
+local rs=node('Folder','ReplicatedStorage');local sync=node('Folder','Sync',node('Folder','Database',rs));local db=node('ModuleScript','Effects',sync);db.Data={Bats={Name='Bats'},Known={Name='Known Effect',Image=123,Rarity='Godly'},AmbiguousA={Name='Shared'},AmbiguousB={Name='Shared'},Fire={Name='Fire',Image=456}}
 require=function(m)return m.Data end
 local localPlayer=node('Player','Duncan5783');localPlayer.Character=node('Model','LocalCharacter')
 local qosra=node('Player','qosra');qosra.Character=node('Model','qosra')
@@ -116,6 +116,15 @@ assert(count(replacement,'ParticleEmitter')==0 and count(back,'ParticleEmitter')
 api.destroy();assert(restored.getSelected()==effectId,'Closing hub preserves selected effect')
 assert(count(replacement,'ParticleEmitter')==0,'Replacement knife effect cleans up')
 restored.destroy();assert(#back:GetChildren()==0,'Saved effect playback cleans up')
+-- Catalog metadata is canonicalized by ID, while ambiguous and generic names stay unidentified.
+local knownRaw=http:JSONEncode({version=1,entries={{id='KnownSaved',name='Old label',catalog={id='Known',image='spoof',rarity='spoof'},records={{class='ParticleEmitter',name='Known Effect',values={}}}}}})
+local known=create(game,gui(knownRaw));local knownEntry=known.list()[1]
+assert(knownEntry.name=='Known Effect' and knownEntry.image==123 and knownEntry.rarity=='Godly','Known effect metadata comes from the exact catalog ID')
+known.destroy()
+local ambiguousRaw=http:JSONEncode({version=1,entries={{id='AmbiguousSaved',name='Shared',records={{class='ParticleEmitter',name='Shared',values={}}}}}})
+local ambiguous=create(game,gui(ambiguousRaw));assert(ambiguous.list()[1].name=='Shared' and ambiguous.list()[1].image==nil,'Ambiguous catalog names do not invent metadata');ambiguous.destroy()
+local genericRaw=http:JSONEncode({version=1,entries={{id='GenericSaved',name='Fire',records={{class='Fire',name='Fire',values={}}}}}})
+local generic=create(game,gui(genericRaw));assert(generic.list()[1].name=='Fire' and generic.list()[1].image==nil,'Generic visual names do not become catalog identities');generic.destroy()
 -- Saved files cannot introduce executable classes.
 local bad=http:JSONEncode({version=1,entries={{id='Bad',name='Bad',records={{class='Script',name='DoNotRun',values={}}}}}})
 local invalid=create(game,gui(bad));assert(#invalid.list()==0,'Invalid executable records are rejected');invalid.destroy()

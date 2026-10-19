@@ -408,3 +408,21 @@ assert(savedEffectCard,'Saved effects return when the game clears collection car
 savedEffectsApi.disable();assert(not savedEffectCard.Parent and not savedEffectsContainer:FindFirstChildOfClass('UIGridLayout'),'Disabling saved-effects removes only local effects')
 savedEffectsApi.destroy()
 print('Saved-effects native pane and plain container passed.')
+
+savedEffectsPane:Destroy()
+-- Unknown saved weapons use their own textured model, not a default weapon icon.
+Vector3={new=function(x,y,z)return {X=x,Y=y,Z=z}end}
+CFrame={new=function()return {}end,lookAt=function(position,target)return {position=position,target=target}end}
+Enum.MeshType={FileMesh='FileMesh'}
+local visual={MeshId='saved-mesh',TextureId='saved-texture',Size=Vector3.new(2,4,1),Scale=Vector3.new(1,1,1),Color={},Material='Metal'}
+local previewCatalog={list=function(kind)return kind=='Knife' and {{id='unknown-knife',name='Saved knife',kind='Knife',category='classic',visual=visual}} or {}end,getEquipped=function()return{}end}
+local previewApi=create(playerGui,previewCatalog,nil,'saved');previewApi.enable();flush()
+local previewCard=savedCardsIn(classicPane)[1]
+
+local viewport=previewCard and previewCard:FindFirstChild('HoneyBunLocal_ModelIcon',true)
+assert(viewport and viewport.CurrentCamera,'Unidentified saved knife has a model preview camera')
+local previewMesh
+for _,v in ipairs(viewport:GetDescendants()) do if v.ClassName=='SpecialMesh' then previewMesh=v end end
+assert(previewMesh and previewMesh.MeshId=='saved-mesh' and previewMesh.TextureId=='saved-texture','Model icon uses the actual captured mesh and texture')
+previewApi.destroy()
+print('Saved weapon model icon fallback passed.')
