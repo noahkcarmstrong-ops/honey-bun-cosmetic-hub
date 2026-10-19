@@ -61,3 +61,70 @@ local missingCharacter = module({Character = nil})
 local ok, message = pcall(missingCharacter.capture)
 assert(not ok and message:find('Wait for your avatar to finish spawning', 1, true), 'requires a usable spawned avatar')
 print('Character preview capture, tool filtering, rendering, and validation passed.')
+
+local shirt=Instance.new('Shirt',character);shirt.Name='HoneyBunShirt';shirt.ShirtTemplate='saved-shirt-template'
+local pants=Instance.new('Pants',character);pants.Name='HoneyBunPants';pants.PantsTemplate='saved-pants-template'
+local h=Instance.new('Humanoid',character);h.RigType='R15'
+Enum.HumanoidRigType={R15='R15',R6='R6'}
+function meshPart:Clone()
+    local copy=Instance.new('MeshPart')
+    for k,v in pairs(self.props)do if k~='Parent'then copy[k]=v end end
+    Instance.new('Script',copy)
+    return copy
+end
+local dressed=api.capture()
+shirt.ShirtTemplate='different-current-shirt';pants.PantsTemplate='different-current-pants'
+local dressedViewport=Instance.new('ViewportFrame')
+assert(api.show(dressedViewport,dressed),'Saved dressed snapshot renders')
+local dressedAvatar=dressedViewport:FindFirstChild('CharacterPreview'):FindFirstChild('Avatar')
+assert(dressedAvatar:FindFirstChild('Head').ClassName=='MeshPart','R15 preview preserves native body MeshParts for classic clothing')
+assert(dressedAvatar:FindFirstChildOfClass('Shirt').ShirtTemplate=='saved-shirt-template' and dressedAvatar:FindFirstChildOfClass('Pants').PantsTemplate=='saved-pants-template','Preview uses saved clothes rather than current clothes')
+assert(dressedAvatar:FindFirstChildOfClass('Humanoid').RigType=='R15','Preview uses the saved avatar rig type')
+for _,item in ipairs(dressedAvatar:GetDescendants())do assert(item.ClassName~='Script','Native body clones cannot bring scripts into the preview')end
+assert(meshPart.Parent==character and shirt.ShirtTemplate=='different-current-shirt','Preview never changes the live avatar')
+print('Saved clothes and native R15 body preview checks passed.')
+
+-- Saved outfits still reconstruct native body meshes after rejoining with another avatar.
+local meshLoads=0
+local generatedSources={}
+game={GetService=function(_,name)
+    assert(name=='AssetService')
+    return{CreateMeshPartAsync=function(_,content)
+        meshLoads=meshLoads+1
+        local part=Instance.new('MeshPart');part.MeshId=content
+        generatedSources[#generatedSources+1]=part
+        return part
+    end}
+end}
+function methods:Clone()
+    local copy=Instance.new(self.ClassName)
+    for k,v in pairs(self.props)do if k~='Parent'then copy[k]=v end end
+    for _,child in ipairs(self:GetChildren())do child:Clone().Parent=copy end
+    return copy
+end
+local rejoined=module({Character=nil})
+local rejoinViewport=Instance.new('ViewportFrame')
+assert(rejoined.show(rejoinViewport,dressed),'Saved clothes preview loads without the original live character')
+local rejoinAvatar=rejoinViewport:FindFirstChild('CharacterPreview'):FindFirstChild('Avatar')
+assert(rejoinAvatar:FindFirstChild('Head').ClassName=='MeshPart' and rejoinAvatar:FindFirstChildOfClass('Shirt').ShirtTemplate=='saved-shirt-template','Old saved preview reconstructs a native clothed body')
+assert(rejoined.show(Instance.new('ViewportFrame'),dressed) and meshLoads==1,'Repeated saved outfit cards share the loaded native mesh')
+rejoined.destroy();assert(generatedSources[1].destroyed,'Preview cache releases loaded native meshes when the hub closes')
+assert(not rejoined.show(rejoinViewport,dressed),'Closed preview module cannot repopulate cards')
+local parent=Instance.new('Frame');local cancelledViewport=Instance.new('ViewportFrame',parent)
+local cancelledAPI=module({Character=nil})
+local lateSource
+local created=game.GetService
+game.GetService=function()return{CreateMeshPartAsync=function()
+    cancelledViewport.Parent=nil
+    lateSource=Instance.new('MeshPart')
+    return lateSource
+end}end
+assert(not cancelledAPI.show(cancelledViewport,dressed),'Removed card cancels a yielding preview before parenting loaded parts')
+cancelledAPI.destroy();assert(lateSource.destroyed,'Cancelled native mesh is cleaned with the preview cache')
+game.GetService=created
+for i=1,110 do local extra=Instance.new('Part',character);extra.Name='Extra'..i;extra.Size=Vector3.new(1,1,1);extra.CFrame=cframe(0,0,0)end
+local crowded=api.capture();local savedShirt,savedPants=false,false
+for _,record in ipairs(crowded.records)do savedShirt=savedShirt or record.class=='Shirt';savedPants=savedPants or record.class=='Pants'end
+assert(#crowded.records<=96 and savedShirt and savedPants,'Clothing records survive the preview size limit on crowded avatars')
+api.destroy()
+print('Rejoined native mesh loading, shared cache, card cancellation, cleanup and clothing priority checks passed.')

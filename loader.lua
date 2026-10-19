@@ -542,12 +542,15 @@ render=function()
                 local viewport=Instance.new("ViewportFrame",image)
                 viewport.Name="CharacterPreview_"..id;viewport.Position=UDim2.new(0.06,0,0.04,0);viewport.Size=UDim2.new(0.88,0,0.92,0)
                 viewport.BackgroundTransparency=1;viewport.Active=false
-                local shown,result=false,false
-                if previewsAPI then shown,result=pcall(previewsAPI.show,viewport,entry.preview) end
-                if not shown or not result then
-                    local missing=text(image,"Preview unavailable",UDim2.new(0,4,0.4,0),UDim2.new(1,-8,0,30),10,190)
-                    missing.TextWrapped=true
-                end
+                local previewData,previewAPI=entry.preview,previewsAPI
+                task.spawn(function()
+                    local shown,result=false,false
+                    if previewAPI then shown,result=pcall(previewAPI.show,viewport,previewData) end
+                    if alive and image.Parent and (not shown or not result) then
+                        local missing=text(image,"Preview unavailable",UDim2.new(0,4,0.4,0),UDim2.new(1,-8,0,30),10,190)
+                        missing.TextWrapped=true
+                    end
+                end)
                 local title=text(card,name,UDim2.new(0,0,1,-32),UDim2.new(1,-2,0,32),16,235)
                 title.Font=Enum.Font.BuilderSansBold;title.TextWrapped=true;title.TextTruncate=Enum.TextTruncate.AtEnd;title.TextYAlignment=Enum.TextYAlignment.Top
                 local cog=Instance.new("TextButton",image)
@@ -860,6 +863,7 @@ gui.Destroying:Connect(function()
     if motionAPI then motionAPI.destroy() end
     if animationAPI then animationAPI.destroy() end
     if clothesAPI then clothesAPI.destroy() end
+    if previewsAPI and previewsAPI.destroy then previewsAPI.destroy() end
 end)
 render()
 action(function(editor)

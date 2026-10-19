@@ -166,9 +166,58 @@ return function(player)
         if totalString > MAX_TOTAL_STRING then return nil end
         return data.records
     end
-    local function createRecord(record, parent)
-        local meshFallback = record.class == "MeshPart" and record.meshId ~= nil
-        local object = Instance.new(meshFallback and "Part" or record.class)
+    local alive=true
+    local meshSources,meshFailures,meshPending,meshOrder={},{},{},{}
+    local shows=setmetatable({}, {__mode="k"})
+    local function cleanMesh(source)
+        local ok,copy=pcall(function()return source:Clone()end)
+        if not ok or not copy then return nil end
+        for _,child in ipairs(copy:GetChildren())do child:Destroy()end
+        return copy
+    end
+    local function rememberMesh(id,source)
+        if not meshSources[id] then meshOrder[#meshOrder+1]=id end
+        meshSources[id]=source
+        if #meshOrder>MAX_RECORDS then
+            local oldest=table.remove(meshOrder,1)
+            if meshSources[oldest] then meshSources[oldest]:Destroy();meshSources[oldest]=nil end
+        end
+    end
+    local function nativeMesh(record)
+        local id=record.meshId
+        if not id or not alive then return nil end
+        if meshSources[id] then return cleanMesh(meshSources[id]) end
+        local character=player and read(player,"Character")
+        for _,part in ipairs(character and character:GetDescendants() or {})do
+            if read(part,"ClassName")=="MeshPart" and read(part,"MeshId")==id then
+                local copy=cleanMesh(part)
+                if copy then rememberMesh(id,copy);return cleanMesh(copy) end
+            end
+        end
+        if meshFailures[id] then return nil end
+        if meshPending[id] then
+            if not task or not task.wait then return nil end
+            while alive and meshPending[id]do task.wait()end
+            return alive and meshSources[id] and cleanMesh(meshSources[id]) or nil
+        end
+        meshPending[id]=true
+        local ok,source=pcall(function()
+            local content=Content and Content.fromUri and Content.fromUri(id) or id
+            return game:GetService("AssetService"):CreateMeshPartAsync(content,{})
+        end)
+        meshPending[id]=nil
+        if not alive then if ok and source then source:Destroy()end;return nil end
+        if ok and source and read(source,"ClassName")=="MeshPart" then
+            for _,child in ipairs(source:GetChildren())do child:Destroy()end
+            rememberMesh(id,source);return cleanMesh(source)
+        end
+        meshFailures[id]=true
+    end
+    local function createRecord(record, parent, current)
+        local native=record.class=="MeshPart" and nativeMesh(record)
+        local meshFallback = record.class == "MeshPart" and record.meshId ~= nil and not native
+        local object = native or Instance.new(meshFallback and "Part" or record.class)
+        if current and not current() then object:Destroy();return nil end
         set(object, "Name", stringValue(record.name, 128) or record.class)
         if partClasses[record.class] then
             set(object, "Size", record.size and Vector3.new(record.size[1], record.size[2], record.size[3]))
@@ -219,7 +268,17 @@ return function(player)
         local records, indices = {}, {}
         local hasPart = false
         local descendants = character.GetDescendants and character:GetDescendants() or {}
-        for _, instance in ipairs(descendants) do
+        -- Reserve room for saved clothes even on avatars with many accessory parts.
+        local ordered={}
+        for _,instance in ipairs(descendants)do
+            local class=read(instance,"ClassName")
+            if class=="Shirt" or class=="Pants" or class=="ShirtGraphic" then ordered[#ordered+1]=instance end
+        end
+        for _,instance in ipairs(descendants)do
+            local class=read(instance,"ClassName")
+            if class~="Shirt" and class~="Pants" and class~="ShirtGraphic" then ordered[#ordered+1]=instance end
+        end
+        for _, instance in ipairs(ordered) do
             local class = read(instance, "ClassName")
             if visualClasses[class] and appearanceInstance(instance, character) and not hasToolAncestor(instance, character) and #records < MAX_RECORDS then
                 local parent = indices[read(instance, "Parent")] or 0
@@ -237,17 +296,37 @@ return function(player)
     end
     function api.show(viewportFrame, data)
         local records = safeRecords(data)
-        if not viewportFrame or not records then return false end
+        if not alive or not viewportFrame or not records then return false end
+        local ticket={};shows[viewportFrame]=ticket
+        local viewportParent=viewportFrame.Parent
         for _, child in ipairs(viewportFrame:GetChildren()) do child:Destroy() end
         local world = Instance.new("WorldModel"); world.Name = "CharacterPreview"; world.Parent = viewportFrame
         local model = Instance.new("Model"); model.Name = "Avatar"; model.Parent = world
         local humanoid = Instance.new("Humanoid"); humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType and Enum.HumanoidDisplayDistanceType.None or nil; humanoid.AutoRotate = false
         humanoid.RequiresNeck=false;humanoid.BreakJointsOnDeath=false
         if (data.rigType=="R15" or data.rigType=="R6") and Enum.HumanoidRigType then humanoid.RigType=Enum.HumanoidRigType[data.rigType] end
-        humanoid.Parent = model
         viewportFrame.Ambient=Color3.new(0.7,0.7,0.7);viewportFrame.LightColor=Color3.new(1,1,1)
         local made = {}
-        for index, record in ipairs(records) do made[index] = createRecord(record, made[record.parent] or model) end
+        local function current()
+            return alive and shows[viewportFrame]==ticket and viewportFrame.Parent==viewportParent and world.Parent==viewportFrame
+        end
+        for index, record in ipairs(records) do
+            local object=createRecord(record,made[record.parent] or model,current)
+            if not object or not current() then
+                if object then object:Destroy()end
+                humanoid:Destroy();world:Destroy();return false
+            end
+            made[index]=object
+        end
+        local root=Instance.new("Part");root.Name="HumanoidRootPart";root.Size=Vector3.new(2,2,1)
+        root.CFrame=CFrame.new(0,0,0);root.Transparency=1;root.Anchored=true;root.CanCollide=false;root.Parent=model
+        model.PrimaryPart=root
+        if not data.rigType then
+            local rig=model:FindFirstChild("UpperTorso") and "R15" or "R6"
+            if Enum.HumanoidRigType then humanoid.RigType=Enum.HumanoidRigType[rig] end
+        end
+        -- Let the Humanoid discover a complete body and its saved clothing together.
+        humanoid.Parent=model
         local camera = Instance.new("Camera"); camera.Name = "PreviewCamera"; camera.Parent = viewportFrame; viewportFrame.CurrentCamera = camera
         local minX, minY, minZ, maxX, maxY, maxZ = math.huge, math.huge, math.huge, -math.huge, -math.huge, -math.huge
         for index, record in ipairs(records) do
@@ -273,6 +352,11 @@ return function(player)
         local position = Vector3.new(center.X, center.Y, center.Z-distance)
         camera.CFrame = CFrame.lookAt and CFrame.lookAt(position, center) or CFrame.new(position, center)
         return true
+    end
+    function api.destroy()
+        alive=false
+        for _,source in pairs(meshSources)do source:Destroy()end
+        meshSources={};meshFailures={};meshOrder={}
     end
     return api
 end
