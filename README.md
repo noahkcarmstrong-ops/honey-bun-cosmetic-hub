@@ -68,8 +68,9 @@ The bundle changes its included walk, run, idle, jump, fall, climb, and swimming
 ## Saved characters
 
 1. Put together your look using the cosmetic tabs.
-2. Open **CHARACTERS**, enter a name, and click **Save current character**.
-3. Each card shows a static preview with **Equip** and **Delete** underneath. Delete asks for confirmation and leaves your equipped look alone.
+2. Open **CHARACTERS**, click **Create New Character**, enter a name, and click **Create**.
+3. Click a square character preview to equip it. Names appear underneath; **Search by name...** filters the grid as you type. The grid widens on desktop and adapts to smaller screens.
+4. Click the cog in the top-right of a preview for **Update**, **Rename**, **Delete**, and **Cancel**. Update replaces that saved character with your current look and preview; Rename changes its name. Delete asks for confirmation and leaves your equipped look alone.
 
 Save up to 12 looks. Each snapshot keeps your hub accessories, skin colors, body package and individual parts, classic clothes, emote slots, and movement bundle. Equipping replaces all those selections and makes that look the one that returns after resets and rejoining. Saved looks use your current account avatar as their original base; they do not change your Roblox account. File access is required to keep the wardrobe after leaving, just like the other saved settings. Previews are local visual snapshots; asset permissions and unusual game characters can limit rendering.
 

@@ -10,7 +10,10 @@ local function signal()
     return s
 end
 local objects,methods={},{}
-local meta={__index=function(t,k)return methods[k] or t.props[k]end,__newindex=function(t,k,v)t.props[k]=v end}
+local meta={__index=function(t,k)return methods[k] or t.props[k]end,__newindex=function(t,k,v)
+    t.props[k]=v
+    if t.props.propertySignals and t.props.propertySignals[k] then t.props.propertySignals[k]:Fire() end
+end}
 Instance={new=function(class,parent)
     local o=setmetatable({props={ClassName=class,Name=class,Parent=parent,Visible=true,Activated=signal(),FocusLost=signal(),Destroying=signal()}},meta)
     objects[#objects+1]=o;return o
@@ -19,6 +22,11 @@ function methods:GetChildren()local list={};for _,o in ipairs(objects)do if o.Pa
 function methods:FindFirstChild(name)for _,o in ipairs(self:GetChildren())do if o.Name==name then return o end end end
 function methods:WaitForChild(name)return assert(self:FindFirstChild(name))end
 function methods:GetAttribute(key)return self.attributes and self.attributes[key]end
+function methods:GetPropertyChangedSignal(key)
+    self.propertySignals=self.propertySignals or {}
+    self.propertySignals[key]=self.propertySignals[key] or signal()
+    return self.propertySignals[key]
+end
 function methods:SetAttribute(key,value)self.attributes=self.attributes or {};self.attributes[key]=value end
 function methods:Destroy()
     if self.destroyed then return end
@@ -205,34 +213,59 @@ assert(calls.storageLoaded and calls.storageDestroyed,'Persistent settings load 
 assert(calls.clothesDestroy,'Refresh cleans clothing editor')
 click('BODY')
 assert(field('Head catalog or bundle link / asset ID').Text=='https://www.roblox.com/catalog/123/Head','Custom part editor links survive Refresh')
+local function named(root,name)
+    if root.Name==name then return root end
+    for _,child in ipairs(root:GetChildren())do local found=named(child,name);if found then return found end end
+end
+local function clickNamed(name)assert(named(gui(),name),'Missing button '..name).Activated:Fire()end
+local function cog()clickNamed('CharacterOptions_1')end
+local function tile()clickNamed('EquipCharacter_1')end
+
 guiRoot:SetAttribute('HoneyBunCosmeticSettings','saved-cat-look')
 guiRoot:SetAttribute('HoneyBunCosmeticClothes','saved-shirt')
 guiRoot:SetAttribute('HoneyBunCosmeticAnimationBundle',82)
 click('CHARACTERS')
-assert(find(gui(),'TextLabel','YOUR CHARACTERS (0 / 12)'),'Empty wardrobe explains its state')
-click('Save current character')
-assert(find(gui(),'TextLabel','YOUR CHARACTERS (0 / 12)'),'Blank names cannot save')
-field('Name your character (for example: Cat outfit)').Text='Cat outfit';click('Save current character')
-assert(find(gui(),'TextLabel','YOUR CHARACTERS (1 / 12)') and calls.characterPreview,'Saved character card includes preview')
+assert(named(gui(),'CharacterGrid'),'Characters uses a thumbnail grid')
+assert(not find(gui(),'TextButton','Equip') and not find(gui(),'TextButton','Delete'),'No equip/delete buttons beneath previews')
+click('Create New Character');click('Create')
+assert(not named(gui(),'CharacterCard_1'),'Blank name cannot create a character')
+field('Character name').Text='Cat outfit';click('Create')
+assert(named(gui(),'CharacterCard_1') and calls.characterPreview,'Created character includes preview')
+local grid=named(gui(),'CharacterGrid')
+grid.AbsoluteSize={X=940,Y=300}
+assert(grid:FindFirstChild('UIGridLayout').FillDirectionMaxCells==7,'Wide layout fits reference-sized square cards')
+grid.AbsoluteSize={X=300,Y=300}
+assert(grid:FindFirstChild('UIGridLayout').FillDirectionMaxCells==2,'Narrow layout keeps cards in two columns')
+field('Search by name...').Text='missing'
+assert(not named(gui(),'CharacterCard_1').Visible,'Search hides unmatched characters live')
+field('Search by name...').Text='CAT'
+assert(named(gui(),'CharacterCard_1').Visible,'Search matches names without case sensitivity')
+field('Search by name...').Text=''
+cog();assert(find(gui(),'TextButton','Update') and find(gui(),'TextButton','Rename') and find(gui(),'TextButton','Delete') and find(gui(),'TextButton','Cancel'),'Cog shows all four Roblox menu labels')
+cog();assert(not named(gui(),'CharacterMenu_1'),'Cog closes an open menu')
 guiRoot:SetAttribute('HoneyBunCosmeticSettings','different-look')
 guiRoot:SetAttribute('HoneyBunCosmeticEmotes','different-wheel')
 guiRoot:SetAttribute('HoneyBunCosmeticAnimationBundle',99)
-click('Equip')
-assert(calls.loadedCharacterSettings=='saved-cat-look','Equip rebuilds cached editor with saved settings')
-assert(guiRoot:GetAttribute('HoneyBunCosmeticClothes')=='saved-shirt' and guiRoot:GetAttribute('HoneyBunCosmeticAnimationBundle')==82,'Equip restores other cosmetic selections')
-assert(guiRoot:GetAttribute('HoneyBunCosmeticEmotes')==nil,'Unassigned saved categories clear previous selections')
+tile()
+assert(calls.loadedCharacterSettings=='saved-cat-look','Clicking thumbnail equips the saved look')
+assert(guiRoot:GetAttribute('HoneyBunCosmeticClothes')=='saved-shirt' and guiRoot:GetAttribute('HoneyBunCosmeticAnimationBundle')==82,'Equip restores all saved categories')
+assert(guiRoot:GetAttribute('HoneyBunCosmeticEmotes')==nil,'Equip clears categories absent from the saved character')
+cog();click('Rename');field('Character name').Text='Pumpkin dude';click('Save Name')
+assert(find(gui(),'TextLabel','Pumpkin dude'),'Renamed character label appears beneath the preview')
+guiRoot:SetAttribute('HoneyBunCosmeticSettings','updated-cat-look')
+cog();click('Update');guiRoot:SetAttribute('HoneyBunCosmeticSettings','other-look');tile()
+assert(calls.loadedCharacterSettings=='updated-cat-look','Update stores current look without creating a duplicate')
 guiRoot:SetAttribute('HoneyBunCosmeticSettings','previous-look')
-calls.failReplay=true;click('Equip');calls.failReplay=false
-assert(guiRoot:GetAttribute('HoneyBunCosmeticSettings')=='previous-look','Failed equip puts previous selections back')
-assert(find(gui(),'TextLabel','YOUR CHARACTERS (1 / 12)'),'Failed equip preserves the saved character')
-click('Equip')
-click('Delete');assert(find(gui(),'TextButton','Confirm delete'),'Deletion requires confirmation')
-click('Cancel deleting Cat outfit');assert(find(gui(),'TextButton','Delete'),'Deletion can be cancelled')
+calls.failReplay=true;tile();calls.failReplay=false
+assert(guiRoot:GetAttribute('HoneyBunCosmeticSettings')=='previous-look','Failed equip restores previous selections')
+tile()
+cog();click('Delete');assert(find(gui(),'TextButton','Confirm delete'),'Delete asks for confirmation')
+click('Cancel');assert(named(gui(),'CharacterCard_1'),'Cancelled deletion keeps character')
 click('Refresh')
-assert(find(gui(),'TextLabel','YOUR CHARACTERS (1 / 12)'),'Saved cards and active Characters tab survive Refresh')
-click('Delete');click('Confirm delete')
-assert(find(gui(),'TextLabel','YOUR CHARACTERS (0 / 12)'),'Confirmed deletion removes card')
-assert(guiRoot:GetAttribute('HoneyBunCosmeticSettings')=='saved-cat-look','Deleting a character leaves equipped look intact')
+assert(find(gui(),'TextLabel','Pumpkin dude'),'Renamed and updated character survives Refresh')
+cog();click('Delete');click('Confirm delete')
+assert(not named(gui(),'CharacterCard_1'),'Confirmed deletion removes the card')
+assert(guiRoot:GetAttribute('HoneyBunCosmeticSettings')=='updated-cat-look','Deleting character leaves equipped look on')
 gui():Destroy()
 for _,c in ipairs(input.InputBegan.listeners)do assert(not c.Connected,'Input listeners disconnected')end
 print('Cosmetic tabs, accessory/body actions, color validation, separate repo, Refresh and cleanup passed.')

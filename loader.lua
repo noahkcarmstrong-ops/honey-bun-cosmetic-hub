@@ -170,7 +170,8 @@ local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle
 local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animationBundle","")
 local shirtInput,pantsInput=uiSetting("shirt",""),uiSetting("pants","")
 local characterName=uiSetting("characterName","")
-local deleteCharacter
+local deleteCharacter,characterMenu,characterDialog
+local characterSearch=""
 local bodyPartRegions={"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"}
 local bodyPartNames={"Head","Torso","Left arm","Right arm","Left leg","Right leg"}
 local bodyPartInputs={}
@@ -378,60 +379,140 @@ render=function()
         item.BackgroundColor3=Color3.fromRGB(name==activePage and 235 or 30,name==activePage and 235 or 30,name==activePage and 235 or 30)
         item.TextColor3=name==activePage and Color3.fromRGB(20,20,20) or Color3.fromRGB(200,200,200)
     end
+    if activePage~="Characters" then limits.MaxSize=Vector2.new(520,760) end
     statusLabel=caption(statusText,56)
     statusLabel.AutomaticSize=Enum.AutomaticSize.Y
     persistenceLabel=caption(persistence and persistence.status() or persistenceNotice,44)
     if activePage=="Characters" then
-        caption("SAVED CHARACTERS",24)
-        caption("Save your current hub look, then equip it with one click. Includes accessories, skin, body, clothes, emotes, and movement animations.",62)
-        local field=input("Name your character (for example: Cat outfit)",characterName,function(value) characterName=value end)
-        button("Save current character",function()
+        limits.MaxSize=Vector2.new(1050,850)
+        statusLabel.Visible=false;persistenceLabel.Visible=false
+        local toolbar=row("Frame",34)
+        local search=Instance.new("TextBox",toolbar)
+        search.Name="CharacterSearch";search.Size=UDim2.new(1,-176,1,0)
+        search.BackgroundColor3=Color3.fromRGB(35,37,44);search.BorderSizePixel=0
+        search.Font=Enum.Font.Gotham;search.TextSize=13;search.TextColor3=Color3.fromRGB(235,235,240)
+        search.PlaceholderText="Search by name...";search.PlaceholderColor3=Color3.fromRGB(180,183,195)
+        search.Text=characterSearch;search.ClearTextOnFocus=false
+        Instance.new("UICorner",search).CornerRadius=UDim.new(0,7)
+        local create=Instance.new("TextButton",toolbar)
+        create.Position=UDim2.new(1,-166,0,0);create.Size=UDim2.fromOffset(166,34)
+        styleButton(create,"Create New Character")
+        create.Activated:Connect(function()
             if busy then return end
-            characterName=field.Text;saveUI()
-            action(function()
-                characterModules()
-                local saved=charactersAPI.save(characterName,previewsAPI.capture())
-                characterName="";deleteCharacter=nil;saveUI()
-                return "Saved "..saved.name.."."
-            end)
+            characterDialog={kind="create"};characterMenu=nil;characterName="";render()
         end)
+        if characterDialog then
+            local rename=characterDialog.kind=="rename"
+            caption(rename and "Rename Character" or "Create New Character",24)
+            local field=input("Character name",characterName,function(value) characterName=value end)
+            button(rename and "Save Name" or "Create",function()
+                if busy then return end
+                characterName=field.Text;saveUI()
+                local dialog=characterDialog
+                action(function()
+                    characterModules()
+                    local saved
+                    if dialog.kind=="rename" then saved=charactersAPI.rename(dialog.id,characterName)
+                    else saved=charactersAPI.save(characterName,previewsAPI.capture()) end
+                    characterName="";characterDialog=nil;characterSearch="";saveUI()
+                    return "Saved "..saved.name.."."
+                end)
+            end)
+            button("Cancel",function() if not busy then characterDialog=nil;render() end end)
+        end
         if charactersAPI then
             local saved=charactersAPI.list()
-            caption(string.format("YOUR CHARACTERS (%d / 12)",#saved),24)
-            if #saved==0 then caption("Your wardrobe is empty. Put together a look in the other tabs, give it a name above, and save it here.",64) end
-            for _,entry in ipairs(saved) do
+            local grid=row("Frame",0);grid.Name="CharacterGrid"
+            local arrangement=Instance.new("UIGridLayout",grid)
+            arrangement.SortOrder=Enum.SortOrder.LayoutOrder;arrangement.CellPadding=UDim2.fromOffset(10,20)
+            local cards={}
+            local empty=caption(#saved==0 and "No characters yet. Choose Create New Character to save your current look." or "No characters found.",44)
+            local function fitGrid()
+                local width=grid.AbsoluteSize and grid.AbsoluteSize.X or 440
+                if width<=0 then width=440 end
+                local columns=math.max(1,math.floor((width+10)/134))
+                local cell=(width-(columns-1)*10)/columns
+                arrangement.FillDirectionMaxCells=columns
+                arrangement.CellSize=UDim2.new(1/columns,-10*(columns-1)/columns,0,cell+38)
+                local count=0
+                for _,entry in ipairs(cards) do
+                    entry.card.Visible=entry.name:lower():find(characterSearch:lower(),1,true)~=nil
+                    if entry.card.Visible then count=count+1 end
+                end
+                local rows=math.ceil(count/columns)
+                grid.Size=UDim2.new(1,-8,0,rows>0 and rows*(cell+58)-20 or 0)
+                empty.Visible=count==0
+            end
+            for index,entry in ipairs(saved) do
                 local id,name=entry.id,entry.name
-                local card=row("Frame",262)
-                card.BackgroundTransparency=0;card.BackgroundColor3=Color3.fromRGB(26,26,26)
-                Instance.new("UICorner",card).CornerRadius=UDim.new(0,8)
-                local title=text(card,name,UDim2.fromOffset(12,8),UDim2.new(1,-24,0,24),14,235)
-                title.TextTruncate=Enum.TextTruncate.AtEnd
-                local viewport=Instance.new("ViewportFrame",card)
-                viewport.Name="CharacterPreview_"..id
-                viewport.Position=UDim2.fromOffset(12,38);viewport.Size=UDim2.new(1,-24,0,166)
-                viewport.BackgroundTransparency=1
+                local card=Instance.new("Frame",grid)
+                card.Name="CharacterCard_"..id;card.BackgroundTransparency=1;card.LayoutOrder=index
+                cards[#cards+1]={card=card,name=name}
+                local image=Instance.new("TextButton",card)
+                image.Name="EquipCharacter_"..id;image.Text="";image.BorderSizePixel=0
+                image.Size=UDim2.new(1,0,1,-38);image.BackgroundColor3=Color3.fromRGB(59,61,72)
+                Instance.new("UICorner",image).CornerRadius=UDim.new(0,8)
+                image.Activated:Connect(function() action(function() return equipCharacter(id) end) end)
+                local viewport=Instance.new("ViewportFrame",image)
+                viewport.Name="CharacterPreview_"..id;viewport.Position=UDim2.new(0.06,0,0.04,0);viewport.Size=UDim2.new(0.88,0,0.92,0)
+                viewport.BackgroundTransparency=1;viewport.Active=false
                 local shown,result=false,false
                 if previewsAPI then shown,result=pcall(previewsAPI.show,viewport,entry.preview) end
-                if not shown or not result then text(card,"Preview unavailable",UDim2.fromOffset(12,90),UDim2.new(1,-24,0,24),12,140) end
-                local equip=Instance.new("TextButton",card)
-                equip.Position=UDim2.new(0,12,1,-46);equip.Size=UDim2.new(0.5,-18,0,34)
-                styleButton(equip,"Equip")
-                equip.Activated:Connect(function() action(function() return equipCharacter(id) end) end)
-                local remove=Instance.new("TextButton",card)
-                remove.Position=UDim2.new(0.5,6,1,-46);remove.Size=UDim2.new(0.5,-18,0,34)
-                styleButton(remove,deleteCharacter==id and "Confirm delete" or "Delete")
-                remove.Activated:Connect(function()
+                if not shown or not result then
+                    local missing=text(image,"Preview unavailable",UDim2.new(0,4,0.4,0),UDim2.new(1,-8,0,30),10,190)
+                    missing.TextWrapped=true
+                end
+                local title=text(card,name,UDim2.new(0,0,1,-32),UDim2.new(1,-2,0,32),16,235)
+                title.Font=Enum.Font.BuilderSansBold;title.TextWrapped=true;title.TextTruncate=Enum.TextTruncate.AtEnd;title.TextYAlignment=Enum.TextYAlignment.Top
+                local cog=Instance.new("TextButton",image)
+                cog.Name="CharacterOptions_"..id;cog.Text="⚙";cog.Font=Enum.Font.Gotham;cog.TextSize=20
+                cog.Size=UDim2.fromOffset(30,30);cog.Position=UDim2.new(1,-31,0,1)
+                cog.BackgroundTransparency=1;cog.TextColor3=Color3.fromRGB(205,208,218);cog.ZIndex=5
+                cog.Activated:Connect(function()
                     if busy then return end
-                    if deleteCharacter~=id then deleteCharacter=id;render();return end
-                    action(function() charactersAPI.delete(id);deleteCharacter=nil;return "Deleted "..name..". Your equipped look stays on." end)
+                    if characterMenu==id then characterMenu=nil else characterMenu=id end
+                    deleteCharacter=nil;render()
                 end)
-                if deleteCharacter==id then
-                    button("Cancel deleting "..name,function() if not busy then deleteCharacter=nil;render() end end)
+                if characterMenu==id then
+                    local menu=Instance.new("Frame",image)
+                    menu.Name="CharacterMenu_"..id;menu.Size=UDim2.new(1,0,1,0)
+                    menu.Active=true;menu.BackgroundColor3=Color3.fromRGB(16,17,21);menu.BackgroundTransparency=0.12;menu.BorderSizePixel=0;menu.ZIndex=3
+                    Instance.new("UICorner",menu).CornerRadius=UDim.new(0,8)
+                    local function option(label,position,callback)
+                        local item=Instance.new("TextButton",menu)
+                        item.Text=label;item.Font=Enum.Font.GothamMedium;item.TextSize=12
+                        item.TextColor3=Color3.fromRGB(245,245,250);item.BackgroundTransparency=1
+                        item.Position=UDim2.new(0,0,position,0);item.Size=UDim2.new(1,0,0.20,0);item.ZIndex=4
+                        item.Activated:Connect(callback)
+                    end
+                    if deleteCharacter==id then
+                        option("Confirm delete",0.34,function() action(function()
+                            charactersAPI.delete(id);deleteCharacter=nil;characterMenu=nil
+                            return "Deleted "..name..". Your equipped look stays on."
+                        end) end)
+                        option("Cancel",0.56,function() if not busy then deleteCharacter=nil;characterMenu=nil;render() end end)
+                    else
+                        option("Update",0.17,function() action(function()
+                            local saved=charactersAPI.update(id,previewsAPI.capture());characterMenu=nil
+                            return "Updated "..saved.name.." with your current look."
+                        end) end)
+                        option("Rename",0.37,function()
+                            if busy then return end
+                            characterDialog={kind="rename",id=id};characterName=name;characterMenu=nil;render()
+                        end)
+                        option("Delete",0.57,function() if not busy then deleteCharacter=id;render() end end)
+                        option("Cancel",0.77,function() if not busy then characterMenu=nil;render() end end)
+                    end
                 end
             end
+            search:GetPropertyChangedSignal("Text"):Connect(function() characterSearch=search.Text;fitGrid() end)
+            grid:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitGrid)
+            fitGrid()
         else
             caption("Open this tab again to load your saved characters.",40)
         end
+        caption(statusText,44)
+        caption(persistence and persistence.status() or persistenceNotice,44)
     elseif activePage=="Accessories" then
         caption("ACCESSORIES",24)
         caption("Wear several hats, masks, or hair items together. Paste links or IDs separated by spaces, commas, or new lines (20 items maximum).",60)
@@ -641,6 +722,7 @@ render=function()
         button("Restore original body",function() action(function(editor) return editor.restoreBody() end) end)
         caption("R6 and R15 use different body parts. Unsupported packages show a message instead of changing your avatar rig.",48)
     end
+    if activePage~="Characters" then
     button("Reapply saved cosmetics",function() action(reapplyAll) end)
     button("Restore original appearance",function() action(function(editor)
         if motionAPI then motionAPI.restore() end
@@ -648,6 +730,7 @@ render=function()
         if clothesAPI then clothesAPI.restore() end
         return editor.restore()
     end) end)
+    end
     if savedScroll then content.CanvasPosition=savedScroll end
 end
 for index,name in ipairs({"Accessories", "Clothes", "Skin", "Body", "Emotes", "Animations", "Characters"}) do
@@ -660,7 +743,7 @@ for index,name in ipairs({"Accessories", "Clothes", "Skin", "Body", "Emotes", "A
     styleButton(item,string.upper(page))
     item.Activated:Connect(function()
         if busy then return end
-        activePage=page;deleteCharacter=nil;saveUI()
+        activePage=page;deleteCharacter=nil;characterMenu=nil;characterDialog=nil;saveUI()
         if page=="Characters" and not charactersAPI then action(function() characterModules();return "Save a look or equip one from your wardrobe below." end)
         else render() end
     end)

@@ -70,6 +70,36 @@ return function(playerGui)
         local profile={id=document.nextId,name=label,values=snapshot};if preview~=nil then profile.preview=copy(preview) end
         local nextDocument={version=1,nextId=document.nextId+1,profiles={}};for i,item in ipairs(document.profiles) do nextDocument.profiles[i]=copy(item) end;table.insert(nextDocument.profiles,profile);write(nextDocument);return copy(profile)
     end
+    function api.rename(id,label)
+        assert(type(id)=="number" and id==id and id>=1 and id<maxSafe and id%1==0,"Character id is invalid")
+        label=name(label)
+        local nextDocument={version=1,nextId=document.nextId,profiles={}};local found=false;local renamed
+        for i,profile in ipairs(document.profiles) do
+            local nextProfile=copy(profile)
+            if profile.id==id then found=true;nextProfile.name=label;renamed=nextProfile end
+            nextDocument.profiles[i]=nextProfile
+        end
+        assert(found,"Character not found")
+        write(nextDocument);return copy(renamed)
+    end
+    function api.update(id,preview)
+        assert(type(id)=="number" and id==id and id>=1 and id<maxSafe and id%1==0,"Character id is invalid")
+        assert(preview==nil or type(preview)=="table","Character preview is malformed")
+        if preview then assert(#encode(preview)<=maxPreview,"Character preview is too large") end
+        local exists=false;for _,profile in ipairs(document.profiles) do if profile.id==id then exists=true;break end end
+        assert(exists,"Character not found")
+        local snapshot={};for key in pairs(names) do local value=playerGui:GetAttribute(key);if value~=nil then snapshot[key]=value end end;snapshot=values(snapshot)
+        local nextDocument={version=1,nextId=document.nextId,profiles={}};local found=false;local updated
+        for i,profile in ipairs(document.profiles) do
+            local nextProfile=copy(profile)
+            if profile.id==id then
+                found=true;nextProfile.values=copy(snapshot);nextProfile.preview=preview and copy(preview) or nil;updated=nextProfile
+            end
+            nextDocument.profiles[i]=nextProfile
+        end
+        assert(found,"Character not found")
+        write(nextDocument);return copy(updated)
+    end
     function api.delete(id)
         local nextDocument={version=1,nextId=document.nextId,profiles={}};local found=false
         for _,profile in ipairs(document.profiles) do if profile.id==id then found=true else table.insert(nextDocument.profiles,copy(profile)) end end
