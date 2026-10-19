@@ -108,6 +108,6 @@ API references: [Accessories](https://create.roblox.com/docs/reference/engine/cl
 
 ## MM2 local cosmetics
 
-In MM2, open **MM2 → Open MM2 menu** and enable **Local cosmetics**. Browse Knife, Gun, or Emote cosmetics, search by name, and click Preview. Hold the matching weapon first. Disable the toggle or use Restore MM2 previews to undo previews.
+Open MM2's Weapons inventory, then open **MM2 → Open MM2 menu** in the hub and enable **Show all cosmetics**. Supported native item cards are copied into the game's inventory window using the loaded knife/gun catalog. Click a local card to preview it on your matching held weapon. Disable the toggle to restore the original inventory display and weapon appearance.
 
-This browser reads the item definitions loaded by the game. It does not add ownership, alter trading, or populate MM2's own inventory screen. Weapon previews support available explicit mesh/texture definitions; unsupported item formats give an explanation. Emote previews require an accessible animation. Availability depends on the game's current data and assets; the hub does not promise every item works. Copy MM2 report includes field samples to diagnose unsupported formats.
+This changes the local inventory display; it does not add ownership or trading rights. It requires a recognizable native card layout and loaded catalog. Unsupported layouts or model formats report an explanation. Use **Copy MM2 report** if the inventory cannot be detected. Live compatibility with every rare item and emote is not yet verified.

@@ -3,8 +3,8 @@ local Players = game:GetService("Players")
 local Input = game:GetService("UserInputService")
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
-local mm2API
-local mm2Enabled,mm2Items,mm2Category,mm2Search,mm2Page=false,{},"Knife","",1
+local mm2API,mm2NativeAPI
+local mm2Enabled=false
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 for _, name in ipairs({"HoneyBunCosmeticHub"}) do
     local old = playerGui:FindFirstChild(name)
@@ -381,10 +381,17 @@ local function mm2()
     mm2API=chunk()(game)
     return mm2API
 end
-local function loadMM2Items()
-    mm2Items={};mm2Page=1
-    mm2Items=mm2().list(mm2Category,mm2Search)
-    return "Found "..#mm2Items.." "..string.lower(mm2Category).." cosmetics."
+local function nativeMM2()
+    if mm2NativeAPI then return mm2NativeAPI end
+    local catalog=mm2()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/native_inventory.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    mm2NativeAPI=chunk()(playerGui,catalog,function(message)
+        if not alive then return end
+        statusText=message
+        if statusLabel then statusLabel.Text=message end
+    end)
+    return mm2NativeAPI
 end
 render=function()
     if not alive then return end
@@ -404,40 +411,20 @@ render=function()
     if activePage=="MM2" and isMM2 then
         caption(mm2MenuOpen and "MM2 MENU" or "MURDER MYSTERY 2",24)
         if mm2MenuOpen then
-            caption("LOCAL SKIN CHANGER",24)
-            caption("Browse MM2's loaded catalog here. Previews change only what you see; this does not modify the game's inventory.",60)
-            button(mm2Enabled and "Local cosmetics: ON" or "Local cosmetics: OFF",function() action(function()
+            caption("MM2 INVENTORY COSMETICS",24)
+            caption("Open MM2's Weapons inventory first, then enable this option to show local cosmetic cards inside that inventory window.",64)
+            button(mm2Enabled and "Show all cosmetics: ON" or "Show all cosmetics: OFF",function() action(function()
                 if mm2Enabled then
-                    mm2().restore();mm2Enabled=false;mm2Items={}
-                    return "Local previews disabled. Original weapon visuals restored."
+                    nativeMM2().disable();mm2().restore();mm2Enabled=false
+                    return "Original inventory display and weapon visuals restored."
                 end
-                local message=loadMM2Items();mm2Enabled=true;return message
+                local ok,message=nativeMM2().enable()
+                assert(ok~=false,message or "MM2 inventory could not be detected.")
+                mm2Enabled=true;return type(ok)=="string" and ok or message
             end) end)
-            if mm2Enabled then
-                for _,kind in ipairs({"Knife","Gun","Emote"}) do
-                    local category=kind
-                    button((mm2Category==category and "> " or "")..category.." cosmetics",function() action(function()
-                        mm2Category=category;return loadMM2Items()
-                    end) end)
-                end
-                local search=input("Search MM2 cosmetics",mm2Search,function(value) mm2Search=value end)
-                button("Search cosmetics",function() action(function() mm2Search=search.Text;return loadMM2Items() end) end)
-                local first=(mm2Page-1)*24+1
-                caption(string.format("%d items | Page %d / %d",#mm2Items,mm2Page,math.max(1,math.ceil(#mm2Items/24))),28)
-                if #mm2Items==0 then caption("No matching items loaded. Clear your search or copy the MM2 report if the catalog stays empty.",52) end
-                for index=first,math.min(first+23,#mm2Items) do
-                    local entry=mm2Items[index]
-                    button(entry.name..(entry.rarity and " | "..tostring(entry.rarity) or "").." | Preview",function() action(function()
-                        return mm2().preview(entry.id,mm2Category)
-                    end) end)
-                end
-                if mm2Page>1 then button("Previous page",function() mm2Page=mm2Page-1;render() end) end
-                if first+23<#mm2Items then button("Next page",function() mm2Page=mm2Page+1;render() end) end
-                caption("Hold your knife or gun before previewing that type. Items with unavailable models or animations show an explanation.",56)
-                button("Restore MM2 previews",function() action(function() return mm2().restore() end) end)
-            end
+            caption("Click a cosmetic in MM2's inventory to preview it on your matching held weapon. These cards are local previews.",56)
             button("Copy MM2 report",function() action(function()
-                local report=mm2().report()
+                local report=mm2().report().."\n"..nativeMM2().report()
                 if type(setclipboard)=="function" then
                     setclipboard(report)
                     return "MM2 report copied. Paste it into chat if a preview cannot load."
@@ -831,6 +818,7 @@ gui.Destroying:Connect(function()
     alive=false
     connection:Disconnect()
     respawn:Disconnect()
+    if mm2NativeAPI then mm2NativeAPI.destroy() end
     if mm2API then mm2API.destroy() end
     if persistence then persistence.destroy() end
     if avatarAPI then avatarAPI.destroy() end

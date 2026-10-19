@@ -17,7 +17,7 @@ print('MM2 read-only discovery checks passed.')
 
 -- Catalog and reversible local preview checks use an injected ordinary require.
 local itemModule=node('Item','ModuleScript')
-itemModule.Data={KnifeAlpha={ItemName='Nebula Knife',ItemType='Knife',MeshId='mesh-new',TextureId='texture-new',Rarity='Godly'},KnifeBeta={ItemName='Second Knife',ItemType='Knife',MeshId='mesh-second'},GunAlpha={Name='Dart Gun',Type='Gun',Color='blue'}}
+itemModule.Data={KnifeAlpha={ItemName='Nebula Knife',ItemType='Knife',MeshId='mesh-new',TextureId='texture-new',Rarity='Godly',Image='rbxassetid://123',Season=1},KnifeBeta={ItemName='Second Knife',ItemType='Knife',MeshId='mesh-second'},GunAlpha={Name='Dart Gun',Type='Gun',Color='blue'}}
 local emoteModule=node('Emotes','ModuleScript')
 emoteModule.Data={Wave={Name='Wave',Type='Emote',AnimationId=12345},Dance={Name='Dance',AnimationId='67890'}}
 local sync=node('Sync','Folder',{itemModule,emoteModule})
@@ -33,6 +33,7 @@ local previewGame={GetService=function(_,name)return previewServices[name]end}
 local injected=function(module)return module.Data end
 local mm2=create(previewGame,injected)
 local knives=mm2.list('Knife','nebula'); assert(#knives==1 and knives[1].kind=='Knife' and knives[1].rarity=='Godly','Lists and searches knife catalog')
+assert(knives[1].image=='rbxassetid://123' and knives[1].season==1,'Native cards receive the real catalog image and season')
 local guns=mm2.list('Gun'); assert(#guns==1 and guns[1].kind=='Gun','Classifies guns from Type: '..tostring(#guns))
 local emotes=mm2.list('Emote'); assert(#emotes==2 and emotes[1].id~='' ,'Lists emotes including records without Type')
 assert(mm2.preview('KnifeAlpha','Knife'):find('locally',1,true),'Previews an equipped knife locally')

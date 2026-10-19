@@ -56,7 +56,7 @@ return function(game, injectedRequire)
     function api.list(category,search)
         local kind=category and tostring(category):sub(1,1):upper()..tostring(category):sub(2):lower() or nil; if kind~="Knife" and kind~="Gun" and kind~="Emote" then kind=nil end
         local source={}; if kind then for _,e in ipairs(catalog(kind)) do source[#source+1]=e end else for _,k in ipairs({"Knife","Gun","Emote"}) do for _,e in ipairs(catalog(k)) do source[#source+1]=e end end end
-        local query,out=lower(search),{}; for _,e in ipairs(source) do if query=="" or lower(e.name):find(query,1,true) or lower(e.id):find(query,1,true) then out[#out+1]={id=e.id,name=e.name,kind=e.kind,rarity=e.rarity} end end; return out
+        local query,out=lower(search),{}; for _,e in ipairs(source) do if query=="" or lower(e.name):find(query,1,true) or lower(e.id):find(query,1,true) then out[#out+1]={id=e.id,name=e.name,kind=e.kind,rarity=e.rarity,image=field(e.definition,"Image") or field(e.definition,"ImageId"),season=field(e.definition,"Season") or field(e.definition,"Event")} end end; return out
     end
     local snapshots,track = {},nil
     local function set(o,k,v) if not o then return false end; local ok=pcall(function() o[k]=v end); return ok and (v==nil or read(o,k)~=nil) end
