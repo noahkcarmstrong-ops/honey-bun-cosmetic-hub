@@ -270,6 +270,18 @@ assert(find(gui(),'TextLabel','Pumpkin dude'),'Renamed and updated character sur
 cog();click('Delete');click('Confirm delete')
 assert(not named(gui(),'CharacterCard_1'),'Confirmed deletion removes the card')
 assert(guiRoot:GetAttribute('HoneyBunCosmeticSettings')=='updated-cat-look','Deleting character leaves equipped look on')
+assert(not find(gui(),'TextButton','MM2'),'Other games do not show the MM2 entry')
+game.GameId=66654135
+dofile('loader.lua')
+click('MM2');click('Open MM2 menu')
+assert(find(gui(),'TextLabel','MM2 MENU'),'MM2 entry opens its own menu')
+assert(not find(gui(),'TextButton','Restore original appearance'),'MM2 menu contains no cosmetic actions')
+click('Back');assert(find(gui(),'TextButton','Open MM2 menu'),'Back returns to the MM2 entry')
+click('ACCESSORIES');assert(find(gui(),'TextButton','Add accessories'),'Cosmetic tabs remain usable')
+game.GameId=0;game.PlaceId=142823291
+dofile('loader.lua');assert(find(gui(),'TextButton','MM2'),'MM2 main place is recognized')
+game.PlaceId=0
+dofile('loader.lua');assert(not find(gui(),'TextButton','MM2'),'MM2 entry is absent outside MM2')
 gui():Destroy()
 for _,c in ipairs(input.InputBegan.listeners)do assert(not c.Connected,'Input listeners disconnected')end
 print('Cosmetic tabs, accessory/body actions, color validation, separate repo, Refresh and cleanup passed.')

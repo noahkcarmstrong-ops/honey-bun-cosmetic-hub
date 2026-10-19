@@ -1,6 +1,8 @@
 -- Honey Bun Cosmetic Hub: standalone cosmetic menu.
 local Players = game:GetService("Players")
 local Input = game:GetService("UserInputService")
+local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
+local mm2MenuOpen = false
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 for _, name in ipairs({"HoneyBunCosmeticHub"}) do
     local old = playerGui:FindFirstChild(name)
@@ -163,7 +165,7 @@ local function uiSetting(key,default)
 end
 local alive, busy, activePage = true, false, uiSetting("page","Accessories")
 local actionRunning=false
-if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" and activePage~="Characters" then activePage="Accessories" end
+if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" and activePage~="Characters" and not (isMM2 and activePage=="MM2") then activePage="Accessories" end
 local statusText = "Local avatar editor. Saved selections reapply automatically."
 local statusLabel, render,lastRenderedPage
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
@@ -383,7 +385,16 @@ render=function()
     statusLabel=caption(statusText,56)
     statusLabel.AutomaticSize=Enum.AutomaticSize.Y
     persistenceLabel=caption(persistence and persistence.status() or persistenceNotice,44)
-    if activePage=="Characters" then
+    if activePage=="MM2" and isMM2 then
+        caption(mm2MenuOpen and "MM2 MENU" or "MURDER MYSTERY 2",24)
+        if mm2MenuOpen then
+            caption("No options added yet. MM2 options will appear here.",48)
+            button("Back",function() mm2MenuOpen=false;render() end)
+        else
+            caption("Open your dedicated MM2 menu below.",40)
+            button("Open MM2 menu",function() mm2MenuOpen=true;render() end)
+        end
+    elseif activePage=="Characters" then
         limits.MaxSize=Vector2.new(1050,850)
         statusLabel.Visible=false;persistenceLabel.Visible=false
         local toolbar=row("Frame",34)
@@ -727,7 +738,7 @@ render=function()
         button("Restore original body",function() action(function(editor) return editor.restoreBody() end) end)
         caption("R6 and R15 use different body parts. Unsupported packages show a message instead of changing your avatar rig.",48)
     end
-    if activePage~="Characters" then
+    if activePage~="Characters" and activePage~="MM2" then
     button("Reapply saved cosmetics",function() action(reapplyAll) end)
     button("Restore original appearance",function() action(function(editor)
         if motionAPI then motionAPI.restore() end
@@ -738,7 +749,9 @@ render=function()
     end
     if savedScroll then content.CanvasPosition=savedScroll end
 end
-for index,name in ipairs({"Accessories", "Clothes", "Skin", "Body", "Emotes", "Animations", "Characters"}) do
+local pages={"Accessories", "Clothes", "Skin", "Body", "Emotes", "Animations", "Characters"}
+if isMM2 then table.insert(pages,"MM2") end
+for index,name in ipairs(pages) do
     local page=name
     local item=Instance.new("TextButton")
     item.Name=page
