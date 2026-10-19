@@ -68,10 +68,10 @@ local function gui(raw)local attrs={HoneyBunCosmeticEffects=raw};return{GetAttri
 Instance={new=function(class)return node(class)end}
 local rs=node('Folder','ReplicatedStorage');local sync=node('Folder','Sync',node('Folder','Database',rs));local db=node('ModuleScript','Effects',sync);db.Data={Bats={Name='Bats'},Known={Name='Known Effect',Image=123,Rarity='Godly'},AmbiguousA={Name='Shared'},AmbiguousB={Name='Shared'},Fire={Name='Fire',Image=456}}
 require=function(m)return m.Data end
-local localPlayer=node('Player','Duncan5783');localPlayer.Character=node('Model','LocalCharacter')
-local qosra=node('Player','qosra');qosra.Character=node('Model','qosra')
+local localPlayer=node('Player','LocalTestPlayer');localPlayer.Character=node('Model','LocalCharacter')
+local EffectPlayer=node('Player','EffectPlayer');EffectPlayer.Character=node('Model','EffectPlayer')
 local other=node('Player','Other');other.Character=node('Model','Other')
-local display=node('Part','KnifeDisplay');local ref=node('ObjectValue','DisplayRefKnife',qosra.Character);ref.Value=display
+local display=node('Part','KnifeDisplay');local ref=node('ObjectValue','DisplayRefKnife',EffectPlayer.Character);ref.Value=display
 local a=node('Attachment','Origin',display);a.CFrame=CFrame.new(0,1,0,1,0,0,0,1,0,0,0,1)
 local b=node('Attachment','End',display)
 local emitter=node('ParticleEmitter','OriginalParticles',a);emitter.Texture='rbxassetid://123';emitter.Rate=0;emitter.Enabled=false
@@ -80,12 +80,12 @@ emitter.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(1,0,0)),
 emitter.Size=NumberSequence.new({NumberSequenceKeypoint.new(0,0.5,0.1),NumberSequenceKeypoint.new(1,0)})
 local trail=node('Trail','OriginalTrail',display);trail.Attachment0=a;trail.Attachment1=b;trail.Lifetime=0.3
 node('Script','NeverSave',display);node('Tool','NeverSaveGear',display)
-local players={LocalPlayer=localPlayer,GetPlayers=function()return{other,localPlayer,qosra}end}
+local players={LocalPlayer=localPlayer,GetPlayers=function()return{other,localPlayer,EffectPlayer}end}
 local game={GetService=function(_,name)return({HttpService=http,Players=players,ReplicatedStorage=rs})[name]end}
 local screen=gui();local create=dofile('effect_library.lua');local library=create(game,screen)
-assert(library.capturePlayer('qosra'):find('1 new',1,true),'qosra loaded effect can be captured')
-assert(#library.list()==1 and library.list()[1].name=='Effect from qosra','Unidentified effect uses an honest player label')
-assert(library.capturePlayer('qosra'):find('1 already saved',1,true),'Identical captures are deduplicated')
+assert(library.capturePlayer('EffectPlayer'):find('1 new',1,true),'EffectPlayer loaded effect can be captured')
+assert(#library.list()==1 and library.list()[1].name=='Effect from EffectPlayer','Unidentified effect uses an honest player label')
+assert(library.capturePlayer('EffectPlayer'):find('1 already saved',1,true),'Identical captures are deduplicated')
 assert(emitter.Rate==0 and emitter.Parent==a and trail.Attachment0==a,'The source player visuals are unchanged')
 assert(library.capturePlayer('Missing'):find('not in this server',1,true),'Missing player is reported')
 local saved=screen:GetAttribute('HoneyBunCosmeticEffects');assert(saved,'Capture stores portable data for hub persistence')
@@ -101,7 +101,7 @@ assert(count(source,'ParticleEmitter')==1 and count(source,'Trail')==1,'Original
 local restoredParticle=first(source,'ParticleEmitter');assert(restoredParticle.Texture=='rbxassetid://123'and restoredParticle.Rate==0,'Original texture and emission settings round trip')
 assert(restoredParticle.Lifetime.Min==1 and restoredParticle.Color.Keypoints[2].Value.G==1 and restoredParticle.Size.Keypoints[1].Envelope==0.1,'Particle ranges, colors and envelopes round trip')
 local restoredTrail=first(source,'Trail');assert(restoredTrail.Attachment0.Parent==source and restoredTrail.Attachment1.Parent==source,'Trail links reconnect to saved attachments')
-assert(restored.captureServer('qosra'):sub(1,6)=='qosra:','Server collection starts with qosra')
+assert(restored.captureServer('EffectPlayer'):sub(1,#'EffectPlayer:')=='EffectPlayer:','Server collection starts with EffectPlayer')
 -- The real playback module can equip the portable captured source.
 local back=node('Part','BackKnife');local backRef=node('ObjectValue','DisplayRefKnife',localPlayer.Character);backRef.Value=back
 local api=dofile('mm2_effects.lua')(game,nil,restored)

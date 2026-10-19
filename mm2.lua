@@ -863,11 +863,6 @@ return function(game, injectedRequire, gunLibrary)
             local otherTexture=assetKey(field(def,"TextureId") or field(def,"TextureID"))
             return assetKey(field(def,"MeshId") or field(def,"MeshID"))==mesh and (not otherTexture or texture==otherTexture)
         end) end
-        -- The user identified this legacy, unlabeled capture as regular Gingerscope.
-        if not match and entry.kind=="Gun" and lower(entry.name)=="gun from biearyeyed" then
-            for _,candidate in ipairs(candidates) do if candidate.id=="Gingerscope" then match=candidate;break end end
-            match=match or unique(function(candidate)return candidate.name=="Gingerscope"end)
-        end
         if not match then return end
         local def=match.definition
         local category=metadata(def)

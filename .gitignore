@@ -1,0 +1,3 @@
+# Personal runtime saves must never be included with the hub.
+HoneyBunCosmeticHub_*.json
+HoneyBunCosmeticHub_*.json.bak

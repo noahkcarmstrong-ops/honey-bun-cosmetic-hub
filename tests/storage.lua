@@ -113,6 +113,14 @@ assert(value(restoredGui, 'HoneyBunCosmeticClothes') == '{"Shirt":123,"Pants":45
 assert(value(restoredGui, 'HoneyBunCosmeticUI_Theme') == 'dark' and value(restoredGui, 'HoneyBunCosmeticUI_Scale') == 1.25, 'UI values restore after rejoin')
 restored:destroy()
 
+-- An account's save cannot be reused just by renaming its file for another ID.
+local ownerDocument=http:JSONDecode(files['HoneyBunCosmeticHub_101.json'])
+assert(ownerDocument.userId==101,'Saved documents identify the account that owns them')
+files['HoneyBunCosmeticHub_909.json']=files['HoneyBunCosmeticHub_101.json']
+local misplacedGui,misplaced=rejoin(909)
+assert(value(misplacedGui,'HoneyBunCosmeticSettings')==nil,'Mismatched account saves are not loaded')
+misplaced:destroy()
+
 -- Attributes already present for this session win over disk values.
 local precedenceGui, precedence = rejoin(101, {
     HoneyBunCosmeticSettings = 'session-settings',

@@ -33,7 +33,7 @@ return function(gui,userId,onStatus)
         local ok,raw=pcall(readfile,pathToRead)
         if not ok or type(raw)~="string" or #raw>8388608 then return nil end
         local decoded,saved=pcall(function() return Http:JSONDecode(raw) end)
-        if decoded and type(saved)=="table" and saved.version==1 and type(saved.values)=="table" then return saved,raw end
+        if decoded and type(saved)=="table" and saved.version==1 and type(saved.values)=="table" and (saved.userId==nil or saved.userId==userId) then return saved,raw end
     end
     local saved,lastValid=read(path)
     if not saved then saved,lastValid=read(path..".bak") end
@@ -49,7 +49,7 @@ return function(gui,userId,onStatus)
         local values={}
         for key,value in pairs(gui:GetAttributes()) do if allowed(key,value) then values[key]=value end end
         local ok,message=pcall(function()
-            local raw=Http:JSONEncode({version=1,values=values})
+            local raw=Http:JSONEncode({version=1,userId=userId,values=values})
             assert(#raw<=8388608,"Saved settings exceed the file size limit.")
             writefile(path..".bak",lastValid or raw)
             writefile(path,raw)

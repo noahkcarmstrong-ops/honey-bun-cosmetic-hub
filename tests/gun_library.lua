@@ -34,12 +34,12 @@ local staleSpecial=object("SpecialMesh",{MeshId="stale",TextureId="stale",Scale=
     Offset=Vector3.new(0,0,0),VertexColor=Vector3.new(1,1,1)})
 local source=object("MeshPart",{Name="EquippedGun",MeshId="rbxassetid://123",TextureID="rbxassetid://456",
     Size=size,MeshSize=Vector3.new(1,2,3),Color=Color3.new(0.2,0.3,0.4),Material=material},staleSpecial)
-local entry=library.capture(source,"BIearyEyed")
-assert(entry.kind=="Gun"and entry.name=="Gun from BIearyEyed","capture labels the source player")
+local entry=library.capture(source,"SourcePlayer")
+assert(entry.kind=="Gun"and entry.name=="Gun from SourcePlayer","capture labels the source player")
 assert(entry.definition.PortableGun and entry.definition.MeshId=="rbxassetid://123"and entry.definition.TextureId=="rbxassetid://456","MeshPart mesh properties are captured")
 assert(entry.definition.Scale.X==2 and entry.definition.Scale.Y==2 and entry.definition.Scale.Z==2,"MeshPart size is normalized by mesh size")
 assert(entry.definition.Size==size and source.Parent==nil,"capture preserves original part size and does not mutate source")
-assert(library.capture(source,"BIearyEyed")==entry and #library.list()==1,"identical gun meshes are deduplicated")
+assert(library.capture(source,"SourcePlayer")==entry and #library.list()==1,"identical gun meshes are deduplicated")
 library.select(entry.id)
 assert(library.getSelected()==entry.id,"selection is stored in the library")
 local saved=screen:GetAttribute("HoneyBunCosmeticGuns");assert(saved,"capture writes the persistence attribute")
@@ -48,16 +48,16 @@ local saved=screen:GetAttribute("HoneyBunCosmeticGuns");assert(saved,"capture wr
 local special=object("SpecialMesh",{MeshId="rbxassetid://789",TextureId="rbxassetid://987",Scale=Vector3.new(1,2,3),
     Offset=Vector3.new(0,0.5,0),VertexColor=Vector3.new(1,0.5,0.25)})
 local part=object("Part",{Name="GunHandle",Size=Vector3.new(1,1,1),Color=Color3.new(1,1,1),Material=material},special)
-local specialEntry=library.capture(part,"BIearyEyed")
+local specialEntry=library.capture(part,"SourcePlayer")
 assert(specialEntry.definition.MeshId=="rbxassetid://789"and specialEntry.definition.Scale.Y==2 and specialEntry.definition.Offset.Y==0.5,"SpecialMesh properties are captured")
-local knifeEntry=library.capture(part,"BIearyEyed",nil,"Knife")
+local knifeEntry=library.capture(part,"SourcePlayer",nil,"Knife")
 
 -- SurfaceAppearance maps must survive capture and portable persistence.
 local surface=object("SurfaceAppearance",{ColorMap="rbxassetid://color",MetalnessMap="rbxassetid://metal",
     NormalMap="rbxassetid://normal",RoughnessMap="rbxassetid://rough"})
 local surfacePart=object("MeshPart",{Name="SurfaceGun",MeshId="rbxassetid://surface-mesh",TextureID="",
     Size=Vector3.new(2,2,2),MeshSize=Vector3.new(1,1,1),Color=Color3.new(1,1,1),Material=material},surface)
-local surfaceEntry=library.capture(surfacePart,"BIearyEyed")
+local surfaceEntry=library.capture(surfacePart,"SourcePlayer")
 assert(surfaceEntry.definition.SurfaceAppearance.ColorMap=="rbxassetid://color","SurfaceAppearance maps are captured")
 local latestSaved=screen:GetAttribute("HoneyBunCosmeticGuns")
 
@@ -67,7 +67,7 @@ local modernSurface=object("SurfaceAppearance",{ColorMapContent=content("rbxasse
     MetalnessMapContent=content(""),MetalnessMap="rbxassetid://legacy-metal"})
 local modernPart=object("MeshPart",{Name="ModernGun",MeshId="rbxassetid://modern-mesh",TextureContent=content("rbxassetid://modern-texture"),TextureID="rbxassetid://legacy-texture",
     Size=Vector3.new(2,2,2),MeshSize=Vector3.new(1,1,1),Color=Color3.new(1,1,1),Material=material},modernSurface)
-local modernEntry=library.capture(modernPart,"BIearyEyed")
+local modernEntry=library.capture(modernPart,"SourcePlayer")
 assert(modernEntry.definition.TextureId=="rbxassetid://modern-texture","MeshPart TextureContent is captured as its URI")
 assert(modernEntry.definition.SurfaceAppearance.ColorMap=="rbxassetid://modern-color","SurfaceAppearance ColorMapContent is captured as its URI")
 assert(modernEntry.definition.SurfaceAppearance.MetalnessMap=="rbxassetid://legacy-metal","empty modern content falls back to the legacy map")
@@ -80,14 +80,14 @@ local fallbackAlternate=object("MeshPart",{Name="FallbackAlternate",MeshId="rbxa
     Size=Vector3.new(2,2,2),MeshSize=Vector3.new(1,1,1),Color=Color3.new(1,1,1),Material=material},object("SurfaceAppearance",{ColorMap="rbxassetid://borrowed-color",NormalMap="rbxassetid://alternate-normal",RoughnessMap="rbxassetid://borrowed-rough"}))
 fallbackPrimary.GetAttribute=function(_,name)return name=="ItemID" and "same-item" or nil end
 fallbackAlternate.GetAttribute=function(_,name)return name=="ItemID" and "same-item" or nil end
-local fallbackEntry=library.capture(fallbackPrimary,"BIearyEyed",nil,"Gun",nil,fallbackAlternate)
+local fallbackEntry=library.capture(fallbackPrimary,"SourcePlayer",nil,"Gun",nil,fallbackAlternate)
 assert(fallbackEntry.definition.TextureId=="rbxassetid://borrowed-texture" and fallbackEntry.definition.SurfaceAppearance.ColorMap=="rbxassetid://borrowed-color",
     "matching mesh fallback fills missing texture and color maps")
 assert(fallbackEntry.definition.SurfaceAppearance.NormalMap=="rbxassetid://primary-normal" and fallbackEntry.definition.SurfaceAppearance.RoughnessMap=="rbxassetid://borrowed-rough",
     "primary surface maps win while missing maps are borrowed")
 local mismatched=object("MeshPart",{Name="MismatchedFallback",MeshId="rbxassetid://different-mesh",TextureID="rbxassetid://primary-texture",
     Size=Vector3.new(2,2,2),MeshSize=Vector3.new(1,1,1),Color=Color3.new(1,1,1),Material=material},object("SurfaceAppearance",{ColorMap="rbxassetid://primary-color"}))
-local mismatchEntry=library.capture(mismatched,"BIearyEyed",nil,"Gun",nil,fallbackAlternate)
+local mismatchEntry=library.capture(mismatched,"SourcePlayer",nil,"Gun",nil,fallbackAlternate)
 assert(mismatchEntry.definition.TextureId=="rbxassetid://primary-texture" and mismatchEntry.definition.SurfaceAppearance.ColorMap=="rbxassetid://primary-color",
     "different mesh fallback leaves primary textures unchanged")
 local fallbackReload=create(game,gui(screen:GetAttribute("HoneyBunCosmeticGuns")))
@@ -158,7 +158,7 @@ function methods:Destroy()self.Destroying:Fire();for _,v in ipairs(self:GetChild
 local localPlayer=node("Player","LocalPlayer");localPlayer.Character=node("Model","LocalCharacter");localPlayer.Backpack=node("Backpack","Backpack")
 local native=node("MeshPart","NativeGun");native.Size=Vector3.new(1,2,3);native.CFrame={native=true};native.Color=Color3.new(1,1,1);native.Material=material;native.LocalTransparencyModifier=0.25
 local localRef=node("ObjectValue","DisplayRefGun",localPlayer.Character);localRef.Value=native
-local sourcePlayer=node("Player","BIearyEyed");sourcePlayer.Character=node("Model","SourceCharacter")
+local sourcePlayer=node("Player","SourcePlayer");sourcePlayer.Character=node("Model","SourceCharacter")
 local sourceMesh=node("MeshPart","Gun",sourcePlayer.Character);sourceMesh.MeshId="rbxassetid://321";sourceMesh.TextureID="rbxassetid://654"
 sourceMesh.Size=Vector3.new(2,4,6);sourceMesh.MeshSize=Vector3.new(1,2,3);sourceMesh.Color=Color3.new(0.1,0.2,0.3);sourceMesh.Material=material
 local sourceRef=node("ObjectValue","DisplayRefGun",sourcePlayer.Character);sourceRef.Value=sourceMesh
@@ -170,7 +170,7 @@ Instance={new=function(class)return node(class)end}
 Enum.MeshType={FileMesh=typed("EnumItem",{label="Enum.MeshType.FileMesh"})}
 local renderGui=gui();local renderLibrary=create(mm2Game,renderGui)
 local mm2=dofile("mm2.lua")(mm2Game,function()return{}end,renderLibrary)
-assert(mm2.collectPlayerGun("BIearyEyed"):find("Saved to your gun library",1,true),"MM2 captures and equips the loaded player gun")
+assert(mm2.collectPlayerGun("SourcePlayer"):find("Saved to your gun library",1,true),"MM2 captures and equips the loaded player gun")
 local selectedId=renderLibrary.getSelected();assert(selectedId and native.LocalTransparencyModifier==1,"equipping saved gun selects it and hides the native mesh")
 local overlay
 for _,child in ipairs(workspace:GetChildren())do if child.Name=="HoneyBunSavedGun"then overlay=child end end
@@ -212,7 +212,7 @@ local originalChild=node('MeshPart','OriginalGunDetail',native);originalChild.Lo
 players.GetPlayers=function()return{localPlayer,sourcePlayer}end
 local mountLibrary=create(mm2Game,gui())
 local mountApi=dofile('mm2.lua')(mm2Game,function()return{}end,mountLibrary)
-mountApi.collectPlayerGun('BIearyEyed')
+mountApi.collectPlayerGun('SourcePlayer')
 local positioned
 for _,o in ipairs(workspace:GetChildren())do if o.Name=='HoneyBunSavedGun'then positioned=o end end
 assert(positioned.CFrame.X==103 and positioned.CFrame.Y==2,'The copied gun keeps the source torso mount offset instead of the old gun pivot')
@@ -241,7 +241,7 @@ realGun.Grip=frame(1,0,0);realGun.TextureId='rbxassetid://pistol-icon'
 local realShot=node('Sound','Shoot',realHandle);realShot.SoundId='rbxassetid://pistol-shot';realShot.Volume=0.4;realShot.PlaybackSpeed=1
 local presentationGui=gui();local presentationLibrary=create(mm2Game,presentationGui)
 local presentationApi=dofile('mm2.lua')(mm2Game,function()return{}end,presentationLibrary)
-presentationApi.collectPlayerGun('BIearyEyed')
+presentationApi.collectPlayerGun('SourcePlayer')
 assert(realGun.TextureId=='rbxassetid://scope-icon','Toolbar icon follows captured Tool even while in Backpack')
 assert(realShot.SoundId=='rbxassetid://scope-shot' and realShot.Volume==0.7,'Real weapon triggers use captured original shot sound')
 realGun.Parent=localPlayer.Character
@@ -250,7 +250,7 @@ assert(gripOverlay.CFrame.X==107,'Rifle grip corrects the native pistol handle w
 assert(realGun.Grip.X==1 and sourceTool.Grip.X==4,'Source and gameplay Tool grips remain unchanged')
 local sourceHand=node('MeshPart','RightHand',sourcePlayer.Character);sourceHand.CFrame=frame(20,0,0)
 local localHand=node('MeshPart','RightHand',localPlayer.Character);localHand.CFrame=frame(200,0,0)
-presentationApi.collectPlayerGun('BIearyEyed')
+presentationApi.collectPlayerGun('SourcePlayer')
 gripOverlay=realHandle:FindFirstChild('HoneyBunCosmeticVisual').Value
 assert(gripOverlay.CFrame.X==193,'Exact captured hand position takes priority over generic Tool grip correction')
 presentationApi.restore()

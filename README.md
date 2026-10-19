@@ -136,3 +136,9 @@ Use **Open saved guns** to list saved captures and their Equip buttons. Captures
 Open MM2's **Effects** inventory and enable **MM2 → Show all effects**. This separately lists the entries in the loaded `Database.Sync.Effects` catalog using native item cards. Clicking a card selects a local knife effect; supported, available visual templates are copied onto your knife display and knife tool. The selected preview reapplies when those targets arrive after a reset. The effects toggle does not change the weapons toggle.
 
 An inventory entry alone does not guarantee its effect assets are available. Missing templates and effects that depend on game-controlled kill behavior report an unavailable explanation instead of inventing a substitute effect. These previews do not grant ownership or change what other players see. Turning effects off or closing the hub removes the added visuals and restores the native inventory display.
+
+## Personal saves and distribution
+
+Distribute the published source files, not your executor workspace or personal save files. Outfits, saved MM2 weapons/effects, cosmetic selections, custom names, and menu preferences are saved locally per Roblox account in `HoneyBunCosmeticHub_<UserId>.json` (plus its `.bak` backup). They are not uploaded by the save system or bundled in the repository. New users start with their own empty saved collections. Existing local save files remain compatible; newly written files also include the owning account ID.
+
+Personal save files are excluded by `.gitignore`. These are local files, not encrypted storage; someone with access to the same computer can read them.
