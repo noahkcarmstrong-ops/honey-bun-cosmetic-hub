@@ -93,7 +93,14 @@ panel.Parent = gui
 local limits = Instance.new("UISizeConstraint", panel)
 limits.MaxSize = Vector2.new(520, 760)
 Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 3)
-local border = Instance.new("UIStroke", panel)
+-- Draw the edge inside the fading canvas, not on its clipped outer boundary.
+local outline=Instance.new("Frame",panel)
+outline.Name="MenuOutline";outline.BackgroundTransparency=1;outline.BorderSizePixel=0
+outline.Position=UDim2.fromOffset(1,1);outline.Size=UDim2.new(1,-2,1,-2)
+outline.ZIndex=10;outline.Active=false
+Instance.new("UICorner",outline).CornerRadius=UDim.new(0,2)
+local border = Instance.new("UIStroke", outline)
+border.Thickness=1
 border.Color = Color3.fromRGB(55,80,105)
 local header=Instance.new("Frame",panel)
 header.Name="ClassicTitleBar";header.Size=UDim2.new(1,0,0,96)
