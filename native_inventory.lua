@@ -1,7 +1,10 @@
--- Local cards in the existing MM2 Weapons/Effects inventory; no ownership or remote changes.
+-- Local cards in the existing MM2 inventory; no ownership or remote changes.
 return function(playerGui,catalog,onStatus,mode)
-    local effects=mode=="effects" or mode=="saved-effects"
-    local savedOnly=mode=="saved" or mode=="saved-effects"
+    local emotes=mode=="emotes"
+    local collectionName=emotes and "emotes" or "effects"
+    local collectionKind=emotes and "Emote" or "Effect"
+    local effects=mode=="effects" or mode=="saved-effects" or emotes
+    local savedOnly=mode=="saved" or mode=="saved-effects" or emotes
     local initialCategory=effects and "effects" or "season1"
     local api={}
     local enabled,dead=false,false
@@ -104,7 +107,7 @@ return function(playerGui,catalog,onStatus,mode)
         if not effects then return detectWeapon() end
         local _,_,weaponTemplate=detectWeapon()
         for _,branch in ipairs(descendants(playerGui)) do
-            local effectBranch=normalize(branch.Name)=="effects"
+            local effectBranch=normalize(branch.Name)==collectionName
             local ancestor,excludedBranch=branch,false
             while effectBranch and ancestor and ancestor~=playerGui do
                 local name=normalize(ancestor.Name)
@@ -689,7 +692,7 @@ return function(playerGui,catalog,onStatus,mode)
         if not enabled or dead then return end
         local inventory,detectedGrid,detectedTemplate
         if effects then inventory,detectedGrid,detectedTemplate=detect() else inventory,detectedGrid,detectedTemplate=detectWeapon() end
-        if not inventory then status("Waiting for MM2 Weapons inventory to load.");return end
+        if not inventory then status("Waiting for MM2 "..(emotes and "Emotes" or effects and "Effects" or "Weapons").." inventory to load.");return end
         if savedRoot and savedRoot~=inventory then
             clearSaved()
         end
@@ -713,7 +716,7 @@ return function(playerGui,catalog,onStatus,mode)
         bindSideSlots()
         local wanted={}
         local pending={}
-        for _,kind in ipairs(effects and {"Effect"} or {"Knife","Gun"}) do
+        for _,kind in ipairs(effects and {collectionKind} or {"Knife","Gun"}) do
             for _,entry in ipairs(catalog.list(kind) or {}) do
                 local key=entryCategory(entry);local target=grids[key]
                 if target and (query=="" or lower(entry.name):find(query,1,true) or lower(entry.id):find(query,1,true)) then
@@ -927,7 +930,7 @@ return function(playerGui,catalog,onStatus,mode)
         savedSelection(equipped)
         updateSideSlots(equipped)
         local count=0;for _ in pairs(savedCards) do count=count+1 end
-        status("MM2 native collection: "..count.." saved "..(effects and "effect" or "weapon").." cards.")
+        status("MM2 native collection: "..count.." saved "..(emotes and "emote" or effects and "effect" or "weapon").." cards.")
     end
     local render
     render=function()
@@ -938,7 +941,7 @@ return function(playerGui,catalog,onStatus,mode)
         renderPasses=renderPasses+1
         if not catalogItems then
             catalogItems={}
-            for _,kind in ipairs(effects and {"Effect"} or {"Knife","Gun"}) do
+            for _,kind in ipairs(effects and {collectionKind} or {"Knife","Gun"}) do
                 local list=catalog.list(kind)
                 assert(type(list)=="table","MM2 catalog did not return an item list.")
                 for _,entry in ipairs(list) do catalogItems[#catalogItems+1]=entry end
@@ -1201,7 +1204,7 @@ return function(playerGui,catalog,onStatus,mode)
             local count=0;for _,card in pairs(savedCards) do if alive(card) then count=count+1 end end
             if savedTabMode then return "Native inventory build: saved weapons V3\n"..lastReport.."\nGenerated="..count.."\nSaved pane: "..(savedGrid and savedGrid:GetFullName() or "none") end
             local paths={};for _,key in ipairs(effects and {"effects"} or {"season1","classic","holiday"}) do paths[#paths+1]=key.."="..(savedGrids[key] and savedGrids[key]:GetFullName() or "none") end
-            return "Native inventory build: "..(effects and "saved effects V4" or "saved weapons V3").."\n"..lastReport.."\nGenerated="..count.."\nCategory grids: "..table.concat(paths,"; ")
+            return "Native inventory build: "..(emotes and "emotes V1" or effects and "saved effects V4" or "saved weapons V3").."\n"..lastReport.."\nGenerated="..count.."\nCategory grids: "..table.concat(paths,"; ")
         end
         return "Native inventory build: weapons and effects V9\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nRender passes="..renderPasses.."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.." Effects="..tostring(categoryCounts.effects or 0).."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").." Effect="..(sideSlots.Effect and sideSlots.Effect:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")..(diagnosticDetails~="" and ("\nInventory diagnostics:\n"..diagnosticDetails) or "")
     end

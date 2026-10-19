@@ -44,6 +44,7 @@ end
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
 local mm2API,mm2NativeAPI,mm2SavedNativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
+local mm2EmotesNativeAPI
 local mm2WeaponEditorAPI
 local mm2GunLibraryAPI
 local accessorySoundsAPI
@@ -563,6 +564,16 @@ local function nativeEffectsMM2()
     end,"saved-effects")
     return mm2EffectsNativeAPI
 end
+local function nativeEmotesMM2()
+    if mm2EmotesNativeAPI then return mm2EmotesNativeAPI end
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/native_inventory.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    local backend=mm2()
+    mm2EmotesNativeAPI=chunk()(playerGui,{list=backend.list,preview=backend.preview},function(message)
+        if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
+    end,"emotes")
+    return mm2EmotesNativeAPI
+end
 render=function()
     if not alive then return end
     local savedScroll=activePage=="Characters" and lastRenderedPage==activePage and content.CanvasPosition
@@ -664,22 +675,17 @@ render=function()
             end
             caption("MM2 EMOTES",24)
             button(mm2EmotesShown and "Show all MM2 emotes: ON" or "Show all MM2 emotes: OFF",function() action(function()
-                mm2EmotesShown=not mm2EmotesShown
-                if not mm2EmotesShown then mm2().stopEmote() end
-                return mm2EmotesShown and "MM2 emote catalog opened below." or "MM2 emote catalog hidden."
+                if mm2EmotesShown then
+                    nativeEmotesMM2().disable();mm2().stopEmote();mm2EmotesShown=false
+                    return "Original MM2 Emotes inventory restored."
+                end
+                local ok,message=nativeEmotesMM2().enable()
+                assert(ok~=false,message)
+                mm2EmotesShown=true
+                return "Open MM2's inventory and select Emotes. Click an emote there to try it."
             end) end)
             if mm2EmotesShown then
-                caption("Uses MM2's animation IDs or your avatar's matching animations. Special props and visibility to others depend on the game.",64)
                 button("Stop emote",function()action(function()return mm2().stopEmote()end)end)
-                local good,emotes=pcall(function()return mm2().list("Emote")end)
-                if good then
-                    caption(tostring(#emotes).." MM2 emotes",24)
-                    for _,emote in ipairs(emotes) do
-                        local id=emote.id
-                        button(emote.name,function()action(function()return mm2().preview(id,"Emote")end)end)
-                    end
-                    if #emotes==0 then caption("MM2's emote database is not available yet. Close and reopen this toggle after the game loads.",56) end
-                else caption("Unable to read MM2 emotes: "..tostring(emotes),56) end
             end
             caption("OPTIONAL MM2 INVENTORY DISPLAY",24)
             caption("Saved copies appear only in Saved Weapons. Show all weapons displays the separate game catalog.",48)
@@ -712,6 +718,7 @@ render=function()
                 if mm2SavedNativeAPI then report=report.."\n"..mm2SavedNativeAPI.report() end
                 if mm2EffectsAPI then report=report.."\n"..mm2EffectsAPI.report() end
                 if mm2EffectsLibraryAPI then report=report.."\n"..mm2EffectsLibraryAPI.report() end
+                if mm2EmotesNativeAPI then report=report.."\n"..mm2EmotesNativeAPI.report() end
                 if mm2EffectsNativeAPI then report=report.."\n"..mm2EffectsNativeAPI.report() end
                 if type(setclipboard)=="function" then
                     setclipboard(report)
@@ -1130,6 +1137,7 @@ gui.Destroying:Connect(function()
     connection:Disconnect()
     for object,tween in pairs(tweens) do tween:Cancel();tweens[object]=nil end
     respawn:Disconnect()
+    if mm2EmotesNativeAPI then mm2EmotesNativeAPI.destroy() end
     if mm2EffectsNativeAPI then mm2EffectsNativeAPI.destroy() end
     if mm2EffectsAPI then mm2EffectsAPI.destroy() end
     if mm2EffectsLibraryAPI then mm2EffectsLibraryAPI.destroy() end

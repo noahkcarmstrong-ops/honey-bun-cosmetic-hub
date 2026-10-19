@@ -521,3 +521,29 @@ for _,v in ipairs(viewport:GetDescendants()) do if v.ClassName=='SpecialMesh' th
 assert(previewMesh and previewMesh.MeshId=='saved-mesh' and previewMesh.TextureId=='saved-texture','Model icon uses the actual captured mesh and texture')
 previewApi.destroy()
 print('Saved weapon model icon fallback passed.')
+
+-- Emotes are additive cards in the native Emotes pane and use preview locally.
+local emotesPane=node('Frame','Emotes',inventory)
+local emotesItems=node('ScrollingFrame','Items',emotesPane)
+local emotesContainer=node('Frame','Container',emotesItems)
+node('UIGridLayout','Grid',emotesContainer)
+local nativeToy=node('Frame','Toy',emotesContainer)
+node('TextLabel','ItemName',nativeToy).Text='Native Toy'
+node('ImageLabel','Icon',nativeToy).Image='native-toy'
+local previewCalls={}
+local emoteCatalog={list=function(kind)
+    assert(kind=='Emote','Emotes mode requests only Emote entries')
+    return{{id='wave',kind='Emote',name='Wave',image=999}}
+end,preview=function(id,kind)previewCalls[#previewCalls+1]={id=id,kind=kind};return'Previewed' end}
+local emotesApi=create(playerGui,emoteCatalog,nil,'emotes')
+assert(emotesApi.enable(),'Emotes mode detects the native Emotes pane');flush()
+local emoteCard=emotesContainer:FindFirstChild('HoneyBunLocal_Saved_Emote_wave')
+assert(emoteCard and emoteCard:FindFirstChild('ItemName').Text=='Wave','Emote card uses the catalog name')
+assert(emoteCard:FindFirstChild('Icon').Image=='rbxassetid://999','Emote card uses the catalog icon')
+assert(emoteCard.Parent==emotesContainer and nativeToy.Parent==emotesContainer,'Emotes are additive to native toys')
+overlay(emoteCard).Activated:Fire()
+assert(previewCalls[1] and previewCalls[1].id=='wave' and previewCalls[1].kind=='Emote','Emote click calls catalog.preview')
+emotesApi.disable();flush()
+assert(not emoteCard.Parent and nativeToy.Parent==emotesContainer,'Disabling removes generated emotes and preserves native toys')
+emotesApi.destroy()
+print('Native emote cards, preview callback and cleanup passed.')
