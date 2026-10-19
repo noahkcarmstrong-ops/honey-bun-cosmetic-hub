@@ -5,6 +5,7 @@ return function(playerGui, catalog, onStatus)
     local gui,entry,original,workingByMode,working,dragging
     local mode,refreshPending,openToken="Holster",false,0
     local accepted=false
+    local cancelled=false
     local controls, statusLabel, viewport, worldModel, camera
     local persist,sceneMode, cameraTarget, cameraYaw, cameraDistance, cameraPitch
     local orbitDragging,previousMouseBehavior,panOffset
@@ -169,6 +170,7 @@ return function(playerGui, catalog, onStatus)
     local function setValue(group, axis, value, released)
         working[group][axis] = value
         queueRefresh()
+        if released then persist(working,true) end
     end
     local function slider(parent, group, axis, minimum, maximum, step)
         local row = make("Frame", parent, {Name=group..axis,Size=UDim2.new(1,-14,0,38), BackgroundTransparency=1})
@@ -206,7 +208,7 @@ return function(playerGui, catalog, onStatus)
     end
     local api = {}
     function api.open(newEntry, requestedMode)
-        api.destroy();accepted=false; openToken=openToken+1; entry=newEntry; mode=requestedMode=="Held" and "Held" or "Holster"; original={Holster=adjustment(entry.adjustments and entry.adjustments.Holster),Held=adjustment(entry.adjustments and entry.adjustments.Held)}; workingByMode={Holster=copy(original.Holster),Held=copy(original.Held)}; working=workingByMode[mode]
+        api.destroy();accepted=false;cancelled=false; openToken=openToken+1; entry=newEntry; mode=requestedMode=="Held" and "Held" or "Holster"; original={Holster=adjustment(entry.adjustments and entry.adjustments.Holster),Held=adjustment(entry.adjustments and entry.adjustments.Held)}; workingByMode={Holster=copy(original.Holster),Held=copy(original.Held)}; working=workingByMode[mode]
         gui=make("ScreenGui",playerGui,{Name="HoneyBunWeaponEditor",IgnoreGuiInset=true,ResetOnSpawn=false,DisplayOrder=100})
         local shade=make("Frame",gui,{Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=.35,Active=true})
         local panel=make("Frame",shade,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.new(.92,0,.9,0),BackgroundColor3=Color3.fromRGB(35,38,44),BorderSizePixel=0})
@@ -270,18 +272,21 @@ return function(playerGui, catalog, onStatus)
         end)
         connect(UserInputService.InputEnded,function(input)
             if input.UserInputType==orbitDragging then stopOrbit() end
-            if dragging and (input==dragging.input or input.UserInputType==Enum.UserInputType.MouseButton1 and dragging.input.UserInputType==Enum.UserInputType.MouseButton1) then dragging=nil end
+            if dragging and (input==dragging.input or input.UserInputType==Enum.UserInputType.MouseButton1 and dragging.input.UserInputType==Enum.UserInputType.MouseButton1) then dragging=nil;persist(working,true) end
         end)
         local function paintModeButtons() holster.BackgroundColor3=mode=="Holster" and Color3.fromRGB(70,125,205) or Color3.fromRGB(52,65,82); held.BackgroundColor3=mode=="Held" and Color3.fromRGB(70,125,205) or Color3.fromRGB(52,65,82) end
         local function choose(nextMode) stopOrbit();dragging=nil;persist(working,false);workingByMode[mode]=working; mode=nextMode; working=workingByMode[mode]; paintModeButtons(); paintControls(); refreshScene(); end
         connect(holster.Activated,function() choose("Holster") end); connect(held.Activated,function() choose("Held") end)
-        connect(reset.Activated,function() working=defaults(); paintControls(); persist(working,false); refreshScene(); status("Reset current mode") end)
-        connect(cancel.Activated,function()local ok=true;for name,value in pairs(original)do if not persist(value,true,name)then ok=false end end;if ok then api.destroy()end end)
+        connect(reset.Activated,function() working=defaults(); paintControls(); persist(working,true); refreshScene(); status("Reset current mode") end)
+        connect(cancel.Activated,function()local ok=true;for name,value in pairs(original)do if not persist(value,true,name)then ok=false end end;if ok then cancelled=true;api.destroy()end end)
         connect(done.Activated,function() workingByMode[mode]=working; local ok=true; for name,value in pairs(workingByMode) do if not persist(value,true,name) then ok=false end end; if ok then accepted=true;api.destroy() end end)
         paintModeButtons(); refreshScene(); paintControls(); return api
     end
     function api.destroy()
-        if entry and original and not accepted then for name,value in pairs(original) do persist(value,false,name) end end
+        if entry and original and not accepted and not cancelled then
+            workingByMode[mode]=working
+            for name,value in pairs(workingByMode) do persist(value,true,name) end
+        end
         openToken=openToken+1;refreshPending=false; stopConnections(); clearScene(); if gui then pcall(function() gui:Destroy() end) end; gui=nil;axisLabels={}; viewport=nil; worldModel=nil; statusLabel=nil; entry=nil
     end
     return api

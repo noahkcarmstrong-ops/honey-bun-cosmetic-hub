@@ -252,6 +252,9 @@ local adjustmentGui=gui(previewGui:GetAttribute('HoneyBunCosmeticGuns'));local a
 local persistedAdjustment=adjustmentLibrary.setWeaponAdjustment(previewId,'Held',{Position={X=3,Y=0,Z=0},Rotation={X=0,Y=0,Z=-180},Scale={X=.25,Y=1,Z=2}},true)
 local adjustmentRecord=http:JSONDecode(adjustmentGui:GetAttribute('HoneyBunCosmeticGuns')).entries[1]
 assert(persistedAdjustment.Position.X==3 and adjustmentRecord.adjustments.Held.Scale.X==.25 and adjustmentRecord.definition.previewOffset==nil,'saved adjustments persist outside the definition')
+local rejoinedAdjustmentLibrary=create(game,gui(adjustmentGui:GetAttribute('HoneyBunCosmeticGuns')))
+local rejoinedAdjustments=rejoinedAdjustmentLibrary.list()[1].adjustments.Held
+assert(rejoinedAdjustments.Position.X==3 and rejoinedAdjustments.Rotation.Z==-180 and rejoinedAdjustments.Scale.X==.25,'Fresh library restores saved holding position, rotation and scale')
 assert(not pcall(function()adjustmentLibrary.setWeaponAdjustment(previewId,'Held',{Position={X=4,Y=0,Z=0}},true)end),'weapon adjustment position bounds are enforced')
 
 print('Preview, held rotation and full weapon adjustment storage checks passed.')

@@ -165,22 +165,25 @@ input.WindowFocusReleased:Fire()
 assert(input.MouseBehavior=='Default' and actualCamera.CameraType=='Custom','Focus loss ends right-button pan and restores camera')
 button('Hip / Back').Activated:Fire()
 
+local writesBeforeNumeric=writes
 local x=field('PositionX');x.Text='1.25';x.FocusLost:Fire();flush()
-assert(values.Holster.Position.X==1.25 and writes==0,'Numeric placement updates live without disk writes')
+assert(values.Holster.Position.X==1.25 and writes==writesBeforeNumeric+1,'Numeric placement persists when editing completes')
 assert(clones==clonesBeforePan+2,'Slider updates reuse the avatar clone')
 local ySlider;for _,o in ipairs(objects)do if o.Parent==named('PositionY') and o.Name=='Slider'then ySlider=o end end
+local writesBeforeSlider=writes
 local down={UserInputType='MouseButton1',Position={X=100}}
 ySlider.InputBegan:Fire(down)
 input.InputChanged:Fire({UserInputType='MouseMovement',Position={X=150}})
 input.InputEnded:Fire({UserInputType='MouseButton1',Position={X=0}});flush()
-assert(values.Holster.Position.Y==1.5 and writes==0,'Dragging updates once and release does not jump to the release event position')
+assert(values.Holster.Position.Y==1.5 and writes==writesBeforeSlider+1,'Dragging persists once on release without jumping to the release event position')
 
 button('Holding').Activated:Fire()
 local tilt=field('RotationX');tilt.Text='45';tilt.FocusLost:Fire();flush()
 button('Hip / Back').Activated:Fire()
 assert(field('PositionX').Text=='1.25','Switching modes preserves placement edits')
+local writesBeforeSave=writes
 button('Save / Done').Activated:Fire()
-assert(writes==2 and values.Held.Rotation.X==45,'Save persists both modes')
+assert(writes==writesBeforeSave+2 and values.Held.Rotation.X==45,'Save persists both modes')
 assert(not named('HoneyBunWeaponEditor'),'Save closes editor')
 entry.adjustments=copy(values);api.open(entry,'Held')
 field('RotationX').Text='90';field('RotationX').FocusLost:Fire();flush()
@@ -192,6 +195,10 @@ assert(values.Held.Rotation.X==45 and values.Holster.Position.X==1.25,'Cancel re
 assert(actualCamera.CameraType=='Custom' and not boundAction(),'Cancel restores the camera and unbinds the wheel action')
 api.open(entry,'Holster');button('Reset').Activated:Fire()
 assert(field('PositionX').Text=='0.00','Reset restores current mode controls')
+field('PositionX').Text='2';field('PositionX').FocusLost:Fire();flush();api.destroy()
+assert(values.Holster.Position.X==2 and writes>=4,'Leaving the editor persists unsaved adjustment changes')
+entry.adjustments=copy(values);api.open(entry,'Holster')
+assert(field('PositionX').Text=='2.00','Reopening the editor restores an adjustment saved on close')
 local closingView;for _,o in ipairs(objects)do if o.ClassName=='ViewportFrame' and not o.destroyed then closingView=o end end
 closingView.MouseEnter:Fire()
 closingView.InputBegan:Fire({UserInputType='MouseButton2'})

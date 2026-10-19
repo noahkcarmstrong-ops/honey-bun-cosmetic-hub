@@ -29,11 +29,18 @@ local function object(class, name, parent)
 end
 
 local player = object("Player", "LocalPlayer")
+local guiRoot=object("PlayerGui")
+function player:WaitForChild(name)assert(name=="PlayerGui");return guiRoot end
+local created={}
+Instance={new=function(class,parent)local item=object(class);item.Parent=parent;function item:Destroy()self.destroyed=true end;created[class]=item;return item end}
+Vector2={new=function(x,y)return{X=x,Y=y}end}
+UDim2={fromOffset=function(x,y)return{X=x,Y=y}end}
+local input={MouseIconEnabled=true,GetMouseLocation=function()return{X=300,Y=200}end}
 local mouse = {Icon = "native://default"}
 function player:GetMouse() return mouse end
 local players = {LocalPlayer = player}
 local run = {RenderStepped = signal(), Heartbeat = signal()}
-local fakeGame = {GetService = function(_, name) return name == "Players" and players or run end}
+local fakeGame = {GetService = function(_, name) return name == "Players" and players or name=="UserInputService" and input or run end}
 
 local module = dofile("crosshair.lua")
 local api = module(fakeGame)
@@ -45,10 +52,16 @@ player.Character = character
 api.set("rbxassetid://123")
 run.RenderStepped:Fire()
 assert(mouse.Icon == "rbxassetid://123", "equipped Gun overrides the icon")
+assert(created.ImageLabel.Visible and created.ImageLabel.Size.X==24 and not input.MouseIconEnabled,'Crosshair defaults to a small overlay and hides native pointer')
+assert(created.ImageLabel.Position.X==300 and created.ImageLabel.Position.Y==200,'Crosshair follows mouse location')
+api.setSize(16)
+assert(created.ImageLabel.Size.X==16 and created.ImageLabel.Size.Y==16,'Crosshair can be resized')
+assert(not pcall(api.setSize,0) and not pcall(api.setSize,129),'Invalid sizes are rejected')
 gun.Parent = nil
 local knife = character:Add(object("Tool", "Knife"))
 run.RenderStepped:Fire()
 assert(mouse.Icon == "native://default", "knife does not override the icon")
+assert(not created.ImageLabel.Visible and input.MouseIconEnabled,'Unequipping restores the pointer and hides overlay')
 knife.Parent = nil; gun.Parent = character
 run.RenderStepped:Fire()
 mouse.Icon = "native://changed-before-disable"
@@ -67,6 +80,7 @@ assert(mouse.Icon == "native://changed", "death restores the native icon")
 humanoid.Health = 100; gun.Parent = character; run.RenderStepped:Fire()
 assert(mouse.Icon == "rbxassetid://456", "respawn/live state can activate again")
 api.destroy()
+assert(created.ScreenGui.destroyed and input.MouseIconEnabled,'Destroy removes overlay and restores pointer')
 assert(mouse.Icon == "native://changed", "destroy restores the native icon")
 assert(not run.RenderStepped.listeners[1].Connected, "destroy disconnects fallback rendering")
 assert(not pcall(function() api.set("rbxassetid://789") end), "set after destroy is rejected")

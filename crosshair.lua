@@ -1,7 +1,8 @@
--- MM2 sheriff/hero crosshair. The module only changes the local mouse icon.
+-- MM2 sheriff/hero crosshair, sized independently of the source image.
 return function(game)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
+    local Input = game:GetService("UserInputService")
     local player = Players.LocalPlayer
     local mouse = player:GetMouse()
     local renderName = "HoneyBunMM2Crosshair"
@@ -12,6 +13,14 @@ return function(game)
     local lastApplied
     local connection
     local destroyed = false
+    local savedMouseEnabled
+    local size = 24
+    local gui = Instance.new("ScreenGui")
+    gui.Name="HoneyBunCrosshair";gui.IgnoreGuiInset=true;gui.ResetOnSpawn=false;gui.DisplayOrder=1000
+    gui.Parent=player:WaitForChild("PlayerGui")
+    local cursor=Instance.new("ImageLabel",gui)
+    cursor.Name="Crosshair";cursor.BackgroundTransparency=1;cursor.AnchorPoint=Vector2.new(.5,.5)
+    cursor.Size=UDim2.fromOffset(size,size);cursor.Visible=false
 
     local function disconnect()
         if connection then connection:Disconnect(); connection = nil end
@@ -50,6 +59,8 @@ return function(game)
         if live then
             if mouse.Icon ~= lastApplied then savedIcon = mouse.Icon end
             mouse.Icon = savedIcon
+            Input.MouseIconEnabled=savedMouseEnabled
+            cursor.Visible=false
             live = false
             lastApplied = nil
         end
@@ -62,12 +73,16 @@ return function(game)
         if shouldLive then
             if not live then
                 savedIcon = mouse.Icon
+                savedMouseEnabled=Input.MouseIconEnabled
                 live = true
             elseif mouse.Icon ~= lastApplied then
                 savedIcon = mouse.Icon
             end
             mouse.Icon = image
             lastApplied = image
+            local position=Input:GetMouseLocation()
+            cursor.Image=image;cursor.Position=UDim2.fromOffset(position.X,position.Y)
+            cursor.Visible=true;Input.MouseIconEnabled=false
         else
             restore()
         end
@@ -89,6 +104,12 @@ return function(game)
     bind()
 
     return {
+        setSize = function(value)
+            assert(not destroyed,"crosshair is destroyed")
+            assert(type(value)=="number" and value==value and value>=8 and value<=128,"Crosshair size must be between 8 and 128 pixels.")
+            size=math.floor(value+.5)
+            cursor.Size=UDim2.fromOffset(size,size)
+        end,
         set = function(value)
             assert(not destroyed, "crosshair is destroyed")
             assert(type(value) == "string", "crosshair image must be a string")
@@ -101,6 +122,7 @@ return function(game)
             destroyed = true
             restore()
             disconnect()
+            gui:Destroy()
         end,
     }
 end

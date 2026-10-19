@@ -273,6 +273,8 @@ local copyPlayerInput=uiSetting("copyPlayer","")
 mm2EmotesShown=uiSetting("mm2EmotesShown",false)
 local knifeSide=uiSetting("mm2KnifeSide",false)
 local crosshairImage=uiSetting("mm2Crosshair","")
+local crosshairSize=uiSetting("mm2CrosshairSize",24)
+if crosshairSize~=crosshairSize or crosshairSize<8 or crosshairSize>128 then crosshairSize=24 end
 local crosshairInput=crosshairImage
 local alive, busy, activePage = true, false, uiSetting("page","Accessories")
 local actionRunning=false
@@ -336,6 +338,7 @@ local function saveUI()
     values.copyPlayer=copyPlayerInput
     values.mm2KnifeSide=knifeSide
     values.mm2Crosshair=crosshairImage
+    values.mm2CrosshairSize=crosshairSize
     values.mm2EmotesShown=mm2EmotesShown
     for _,region in ipairs(bodyPartRegions) do values["part_"..region]=bodyPartInputs[region] end
     for key,value in pairs(values) do playerGui:SetAttribute("HoneyBunCosmeticUI_"..key,value) end
@@ -566,6 +569,7 @@ local function customCrosshair()
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/crosshair.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     crosshairAPI=chunk()(game)
+    crosshairAPI.setSize(crosshairSize)
     return crosshairAPI
 end
 local function mm2()
@@ -741,6 +745,15 @@ render=function()
                 customCrosshair().set(image)
                 crosshairImage=image;saveUI()
                 return "Custom crosshair saved. Hold your gun to see it."
+            end,true) end)
+            caption("CROSSHAIR SIZE",24)
+            local sizeBox=input("Size in pixels (8–128)",tostring(crosshairSize),function()end)
+            button("Apply crosshair size",function() action(function()
+                local size=tonumber(sizeBox.Text)
+                assert(size and size==size and size>=8 and size<=128,"Choose a size between 8 and 128 pixels.")
+                crosshairSize=math.floor(size+.5)
+                customCrosshair().setSize(crosshairSize);saveUI()
+                return "Crosshair size saved: "..crosshairSize.." pixels."
             end,true) end)
             button("Restore default crosshair",function() action(function()
                 if crosshairAPI then crosshairAPI.set("") end

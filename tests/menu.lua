@@ -162,7 +162,7 @@ loadstring=function(source)
     if source=='gun-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Weapon library uses persistent PlayerGui');return{}end end end
     if source=='effect-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Effect library uses persistent PlayerGui');return{list=function()return{{id='Effect1',name='Effect from PlayerOne'}}end,capturePlayer=function(name)calls.capturePlayer=name;return'Captured player',{'Effect1'}end,captureServer=function(name)calls.capturePriority=name;return'Captured server'end,report=function()return'Library fixture'end,destroy=function()calls.libraryDestroyed=true end}end end end
     if source=='mm2-effects-module'then return function()return function(_game,_status)calls.effectLoads=(calls.effectLoads or 0)+1;return{equip=function(id)calls.savedEffect=id;return'Equipped effect'end,getEquipped=function()return{}end,reloadLibrary=function()calls.libraryReloaded=true end,collectOriginals=function()calls.effectsCollecting=true end,restore=function()calls.effectsRestored=true end,destroy=function()calls.effectsDestroyed=true end,report=function()return'Effects fixture report'end}end end end
-    if source=='crosshair-module'then return function()return function()return{set=function(image)calls.crosshair=image end,destroy=function()calls.crosshairDestroyed=true end}end end end
+    if source=='crosshair-module'then return function()return function()return{set=function(image)calls.crosshair=image end,setSize=function(size)calls.crosshairSize=size end,destroy=function()calls.crosshairDestroyed=true end}end end end
     if source=='mm2-module'then return function()return function()calls.weaponLoads=(calls.weaponLoads or 0)+1;return{setKnifeSide=function(value)calls.knifeSide=value;return value end,savedInventory=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,savedWeapons=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,equip=function(id,kind)calls.savedWeapon=id;calls.savedKind=kind;return'Equipped'end,collectPlayerWeapon=function(name,kind)calls.captureOwner=name;calls.captureKind=kind;if calls.failGun and kind=='Gun' then error('Gun not loaded')end;return'Copied '..kind end,report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,stopEmote=function()calls.emoteStopped=true;return'Stopped'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
     if source=='atmosphere-module'then return function()return function()local environment,activeAsset;return{environment=function()if not environment then return end;return{time=environment.time,fog=environment.fog,color=environment.color}end,applyEnvironment=function(settings)environment=settings;calls.environment=settings;return true end,restoreEnvironment=function()environment=nil;calls.environment=nil;return true end,daylightEnabled=function()return calls.daylight~=false end,setDaylight=function(v)calls.daylight=v;return'Time updated'end,apply=function(id)activeAsset=id;calls.skybox=id;return true end,currentAsset=function()return activeAsset end,previewImage=function()return'rbxassetid://123456'end,restore=function()activeAsset=nil;calls.skyRestored=true;return'Sky restored'end,destroy=function()calls.skyDestroyed=true end}end end end
     if source=='editor-module'then return function()assert(not calls.failAvatarLoad,'Fixture avatar not ready');return createEditor end end
@@ -360,6 +360,11 @@ assert(not calls.crosshair,'Invalid crosshair input is rejected')
 field('Roblox crosshair image ID').Text='https://www.roblox.com/library/12345/Crosshair';click('Apply crosshair')
 assert(calls.crosshair=='rbxassetid://12345' and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')==calls.crosshair,'Crosshair link applies and saves')
 assert(named(gui(),'CrosshairPreview').Image==calls.crosshair,'Applied crosshair shows a preview')
+assert(calls.crosshairSize==24,'Custom crosshair starts at a small default size')
+field('Size in pixels (8–128)').Text='16';click('Apply crosshair size')
+assert(calls.crosshairSize==16 and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2CrosshairSize')==16,'Custom crosshair size applies and saves')
+field('Size in pixels (8–128)').Text='999';click('Apply crosshair size')
+assert(calls.crosshairSize==16,'Invalid crosshair size preserves previous choice')
 local savedCrosshair=calls.crosshair
 field('Roblox crosshair image ID').Text='446366440';click('Apply crosshair')
 assert(calls.crosshair==savedCrosshair and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')==savedCrosshair,'Non-image asset IDs are rejected without replacing the saved crosshair')
@@ -372,6 +377,7 @@ assert(calls.crosshair==resolvedCrosshair and guiRoot:GetAttribute('HoneyBunCosm
 assert(decalRoot and decalRoot.destroyed,'Temporary decal inspection roots are cleaned up after failure')
 field('Roblox crosshair image ID').Text='12345';click('Apply crosshair')
 click('Refresh');assert(calls.crosshair=='rbxassetid://12345' and calls.crosshairDestroyed,'Refresh reapplies the saved crosshair and cleans up the old one')
+assert(calls.crosshairSize==16,'Refresh restores saved crosshair size')
 click('MM2');click('Open MM2 menu');click('Restore default crosshair')
 assert(calls.crosshair=='' and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')=='','Restore default clears saved crosshair')
 
