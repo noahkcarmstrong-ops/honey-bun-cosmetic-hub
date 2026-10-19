@@ -27,7 +27,11 @@ math.clamp=function(v,a,b)return math.max(a,math.min(b,v))end
 local pending={};task={delay=function(_,fn)pending[#pending+1]=fn end}
 local function flush()local q=pending;pending={};for _,fn in ipairs(q)do fn()end end
 Enum.MouseBehavior={Default='Default',LockCurrentPosition='LockCurrentPosition'}
-local input={InputChanged=signal(),InputEnded=signal(),WindowFocusReleased=signal(),MouseBehavior='Default'};game={GetService=function(_,name)assert(name=='UserInputService');return input end}
+local input={InputChanged=signal(),InputEnded=signal(),WindowFocusReleased=signal(),MouseBehavior='Default'}
+Enum.CameraType={Scriptable='Scriptable',Custom='Custom'}
+local originalFrame,originalFocus={},{}
+local actualCamera={CameraType='Custom',CFrame=originalFrame,Focus=originalFocus}
+game={GetService=function(_,name)if name=='Workspace'then return {CurrentCamera=actualCamera}end;assert(name=='UserInputService');return input end}
 local function copy(v)if type(v)~='table'then return v end;local out={};for k,x in pairs(v)do out[k]=copy(x)end;return out end
 local function default()return {Position={X=0,Y=0,Z=0},Rotation={X=0,Y=0,Z=0},Scale={X=1,Y=1,Z=1}}end
 local values={Holster=default(),Held=default()};local writes,previews,clones=0,0,0
@@ -49,10 +53,12 @@ view.InputBegan:Fire({UserInputType='MouseButton1'})
 input.InputChanged:Fire({UserInputType='MouseMovement',Delta={X=40,Y=25}})
 assert(camera.CFrame.Position.X~=startX and camera.CFrame.Position.Y~=20,'Left drag orbits horizontally and vertically')
 assert(input.MouseBehavior=='LockCurrentPosition','Orbit locks the cursor for continuous dragging')
+assert(actualCamera.CameraType=='Scriptable' and actualCamera.CFrame==originalFrame,'Preview drag freezes the real camera without moving it')
 input.InputEnded:Fire({UserInputType='MouseButton1'})
 local endedX=camera.CFrame.Position.X
 input.InputChanged:Fire({UserInputType='MouseMovement',Delta={X=40,Y=25}})
 assert(camera.CFrame.Position.X==endedX and input.MouseBehavior=='Default','Releasing left click ends rotation and restores cursor')
+assert(actualCamera.CameraType=='Custom' and actualCamera.CFrame==originalFrame and actualCamera.Focus==originalFocus,'Releasing preview restores the real camera state')
 view.InputBegan:Fire({UserInputType='MouseButton1'});input.WindowFocusReleased:Fire()
 assert(input.MouseBehavior=='Default','Losing window focus releases cursor')
 
@@ -82,6 +88,6 @@ assert(field('PositionX').Text=='0.00','Reset restores current mode controls')
 local closingView;for _,o in ipairs(objects)do if o.ClassName=='ViewportFrame' and not o.destroyed then closingView=o end end
 closingView.InputBegan:Fire({UserInputType='MouseButton1'})
 api.destroy();flush()
-assert(input.MouseBehavior=='Default','Closing editor restores cursor during orbit')
+assert(input.MouseBehavior=='Default' and actualCamera.CameraType=='Custom','Closing editor restores cursor and actual camera during orbit')
 for _,s in ipairs({input.InputChanged,input.InputEnded})do for _,c in ipairs(s.listeners)do assert(not c.active,'Global input handlers disconnect')end end
 print('Avatar editor opening, camera, nine sliders, live reuse, mode isolation, Save, Cancel, Reset and cleanup passed.')

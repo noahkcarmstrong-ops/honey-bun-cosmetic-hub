@@ -8,6 +8,9 @@ return function(playerGui, catalog, onStatus)
     local controls, statusLabel, viewport, worldModel, camera
     local persist,sceneMode, cameraTarget, cameraYaw, cameraDistance, cameraPitch
     local orbitDragging,previousMouseBehavior
+    local frozenCamera
+    local workspaceService
+    pcall(function()workspaceService=game:GetService("Workspace")end)
     local guides,axisLabels={},{}
     local projectAxes
 
@@ -59,6 +62,13 @@ return function(playerGui, catalog, onStatus)
             orbitDragging=false
             if previousMouseBehavior then UserInputService.MouseBehavior=previousMouseBehavior end
             previousMouseBehavior=nil
+            if frozenCamera then
+                local saved=frozenCamera;frozenCamera=nil
+                pcall(function()
+                    saved.camera.CFrame=saved.cframe;saved.camera.Focus=saved.focus
+                    saved.camera.CameraType=saved.kind
+                end)
+            end
             if projectAxes then pcall(projectAxes) end
         end
     end
@@ -207,6 +217,11 @@ return function(playerGui, catalog, onStatus)
             if input.UserInputType==Enum.UserInputType.MouseButton1 and not dragging and not orbitDragging then
                 previousMouseBehavior=UserInputService.MouseBehavior
                 orbitDragging=true
+                local worldCamera=workspaceService and workspaceService.CurrentCamera
+                if worldCamera then
+                    frozenCamera={camera=worldCamera,kind=worldCamera.CameraType,cframe=worldCamera.CFrame,focus=worldCamera.Focus}
+                    worldCamera.CameraType=Enum.CameraType.Scriptable
+                end
                 UserInputService.MouseBehavior=Enum.MouseBehavior.LockCurrentPosition
                 pcall(projectAxes)
             end
