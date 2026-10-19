@@ -109,6 +109,19 @@ assert(count(replacement,'Script')==0,'Downloaded scripts are never attached')
 assert(legacyApi.report():find('selected definition=LegacyFire',1,true),'Report includes selected effect definition even beyond sample limit')
 legacyApi.destroy()
 require=requireBefore
+-- Blue Fire remains visible when its original asset is unavailable.
+module.Data.BlueFire={Name='Blue Flaming Knife',KnifeModule=473588389}
+Instance={new=function(class)return node(class)end}
+Color3={fromRGB=function(r,g,b)return{R=r,G=g,B=b}end}
+game.GetObjects=function()return{}end
+local fireApi=dofile('mm2_effects.lua')(game)
+assert(fireApi.equip('BlueFire','Effect'):find('local recreation',1,true),'Unavailable BlueFire asset uses an explicitly labeled native flame recreation')
+local fire=first(replacement,'Fire')
+assert(fire and fire.Enabled and fire.Color.B==255,'Blue flame is attached and enabled on the real display')
+assert(count(lateHandle,'Fire')==1,'Blue flame also reaches the held knife')
+assert(fireApi.report():find('built-in blue flame recreation',1,true),'Report identifies recreated effect source')
+fireApi.restore();assert(fire.destroyed and count(lateHandle,'Fire')==0,'Restoring removes recreated flames')
+fireApi.destroy()
 local report=api.report();assert(report:find('defs=')and report:find('targets=')and report:find('source='),'Report includes definition and target diagnostics')
 api.destroy();assert(#replacement:GetChildren()==0 and #lateHandle:GetChildren()==0,'Closing the hub cleans all previews')
 assert(not pcall(api.equip,'Spark','Effect'),'Closed effect service cannot equip')

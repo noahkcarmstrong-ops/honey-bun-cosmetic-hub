@@ -4,7 +4,7 @@ return function(game,onStatus)
     local selected=nil
     local catalogCache
     local connections,observed,applied={}, {}, {}
-    local sourceCache,sourceRoots={},{}
+    local sourceCache,sourceRoots,sourceNotes={},{},{}
     local sourceErrors,lastApplyError={},""
     local function read(o,k) if not o then return nil end;local ok,v=pcall(function()return o[k]end);return ok and v or nil end
     local function isA(o,c) local f=read(o,"IsA");if type(f)=="function"then local ok,v=pcall(f,o,c);return ok and v==true end;return read(o,"ClassName")==c end
@@ -54,6 +54,19 @@ return function(game,onStatus)
         local asset=field(def,"EffectID")or field(def,"EffectId")or field(def,"EffectAssetId")or field(def,"ModelId")or field(def,"KnifeModule")
         if not source and asset then
             local token=generation;local get=read(game,"GetObjects");if type(get)=="function"then local ok,roots=pcall(get,game,"rbxassetid://"..tostring(asset));if not alive or token~=generation then if ok and type(roots)=="table"then for _,r in ipairs(roots)do destroy(r)end end;return nil end;if ok and type(roots)=="table"then source=roots[1];for _,r in ipairs(roots)do sourceRoots[#sourceRoots+1]=r end end end
+        end
+        -- A named local recreation avoids depending on an inaccessible legacy asset.
+        if not source and e.id=="BlueFire" then
+            local ok,flame=pcall(function()
+                local fire=Instance.new("Fire")
+                fire.Name="HoneyBunBlueFlame";fire.Color=Color3.fromRGB(0,85,255)
+                fire.SecondaryColor=Color3.fromRGB(80,200,255);fire.Size=2;fire.Heat=2
+                return fire
+            end)
+            if ok and flame then
+                source=flame;sourceRoots[#sourceRoots+1]=flame
+                sourceNotes[e.id]="built-in blue flame recreation"
+            end
         end
         if not source then sourceErrors[e.id]=asset and ("asset "..tostring(asset).." returned no accessible visual source") or "no explicit local source or supported asset";return nil end
         local found=visual(source);for _,o in ipairs(descendants(source))do if visual(o)then found=true;break end end
@@ -121,7 +134,7 @@ return function(game,onStatus)
             if cloneVisuals(source,target)then count=count+1 end
         end
         if count==0 then return false,"No compatible knife target or continuous visual is available. Burst-only effects need game behavior." end
-        return true,"Equipped effect locally: "..e.name
+        return true,"Equipped effect locally: "..e.name..(sourceNotes[e.id] and " (local recreation)" or "")
     end
     local function refreshEffect()
         if not alive or not selected then return end
@@ -184,6 +197,6 @@ return function(game,onStatus)
         end
         return e.id.."{"..table.concat(fields,";").."} loaded effect containers="..table.concat(roots,"|")
     end
-    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=sourceErrors[selected]or"resolved" end;return"MM2 Effects build: local knife visuals V2\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails() end
+    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=sourceErrors[selected]or sourceNotes[selected]or"resolved" end;return"MM2 Effects build: local knife visuals V3\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails() end
     return api
 end
