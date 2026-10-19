@@ -302,7 +302,7 @@ assert(calls.capturePlayer=='PlayerOne' and calls.libraryReloaded and calls.save
 click('Refresh saved weapons in MM2 inventory')
 assert(calls.savedNativeEnabled and calls.savedInventoryRefreshed and not calls.nativeEnabled,'Saved models appear in native inventory without all-weapons overlay')
 assert(not find(gui(),'TextButton','Equip Gun from PlayerOne') and not find(gui(),'TextButton','Equip Knife from PlayerOne'),'Saved weapon equip buttons are removed from hub')
-click('Equip Effect from PlayerOne');assert(calls.savedEffect=='Effect1','Saved effects still equip directly')
+assert(not find(gui(),'TextButton','Equip Effect from PlayerOne') and not find(gui(),'TextButton','Remove knife effect'),'Duplicate saved effect controls are removed from the hub')
 calls.failGun=true;calls.capturePlayer=nil
 click('Save all three');calls.failGun=false
 assert(calls.captureKind=='Knife' and calls.capturePlayer=='PlayerOne','Missing gun does not prevent saving knife and effect')
@@ -317,7 +317,6 @@ click('Refresh saved effects in MM2 inventory');assert(calls.nativeEffectsEnable
 click('Collect server effects');assert(calls.capturePriority=='PlayerOne','Server capture prioritizes entered username')
 assert(not calls.effectsRestored and calls.nativeEffectsEnabled,'Saved effects stay visible and equipped')
 click('Remove saved weapon appearances');assert(calls.mm2Restored,'Explicit remove clears only equipped weapon appearances')
-click('Remove knife effect');assert(calls.effectsRestored,'Explicit effect remove reaches backend')
 click('Back');assert(find(gui(),'TextButton','Open MM2 menu'),'Back returns to the MM2 entry')
 click('ACCESSORIES');assert(find(gui(),'TextButton','Add accessories'),'Cosmetic tabs remain usable')
 click('Hat sounds: ON');assert(calls.hatSounds==false,'Hat sound toggle updates persisted preference')

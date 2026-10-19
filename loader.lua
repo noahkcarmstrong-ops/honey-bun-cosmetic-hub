@@ -527,15 +527,6 @@ render=function()
                     updateWeapons();return message
                 end) end)
             end
-            if mm2EffectsLibraryAPI then
-                caption("SAVED PLAYER EFFECTS",24)
-                local entries=mm2EffectsLibraryAPI.list()
-                if #entries==0 then caption("None saved yet.",24) end
-                for _,entry in ipairs(entries) do
-                    button("Equip "..entry.name,function() action(function()return effectsMM2().equip(entry.id,"Effect")end) end)
-                end
-                button("Remove knife effect",function() action(function()return effectsMM2().restore()end) end)
-            end
             caption("OPTIONAL MM2 INVENTORY DISPLAY",24)
             caption("Saved copies appear only in Saved Weapons. Show all weapons displays the separate game catalog.",48)
             button(mm2Enabled and "Show all weapons: ON" or "Show all weapons: OFF",function() action(function()
