@@ -909,11 +909,28 @@ return function(game, injectedRequire, gunLibrary)
             local held=mode=="Held"
             local hand=child(character,"RightHand") or child(character,"Right Arm")
             if held then
+                -- Cloning a live avatar also captures its current idle/sway pose.
+                -- Rebuild the neutral rig first so the unused arm stays at rest.
+                local rigJoints=descendants(character)
+                local rigVisited={}
+                local function restBranch(part)
+                    if not part or rigVisited[part] then return end
+                    rigVisited[part]=true
+                    for _,joint in ipairs(rigJoints) do
+                        if isA(joint,"Motor6D") and read(joint,"Part0")==part and read(joint,"Part1") then
+                            joint.Enabled=false
+                            joint.Transform=CFrame.new()
+                            joint.Part1.CFrame=part.CFrame*joint.C0*joint.C1:Inverse()
+                            restBranch(joint.Part1)
+                        end
+                    end
+                end
+                restBranch(child(character,"HumanoidRootPart") or torso)
                 -- Bake the stock ToolNone arm pose into the preview clone. The
                 -- avatar stays anchored, so an Animator cannot pull it out of pose.
                 local shoulder
                 for _,joint in ipairs(descendants(character)) do
-                    if isA(joint,"Motor6D") and (joint.Name=="RightShoulder" or joint.Name=="Right Shoulder") then shoulder=joint;break end
+                    if isA(joint,"Motor6D") and read(joint,"Part1")== (child(character,"RightUpperArm") or child(character,"Right Arm")) then shoulder=joint;break end
                 end
                 if shoulder and shoulder.Part0 and shoulder.Part1 then
                     -- Rotate forward around the torso's right axis, not the

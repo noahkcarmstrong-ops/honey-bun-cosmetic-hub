@@ -244,8 +244,14 @@ local wrist=node('Motor6D','RightWrist',arm);wrist.Part0=arm;wrist.Part1=hand;wr
 local originalFrame=CFrame.new
 local function withInverse(f)function f:Inverse()return self:ToObjectSpace(originalFrame())end;return f end
 shoulder.C1=withInverse(shoulder.C1);wrist.C1=withInverse(wrist.C1)
+local leftArm=node('Part','LeftUpperArm',localPlayer.Character);leftArm.CFrame=frame(99,0,-2)
+local leftShoulder=node('Motor6D','LeftShoulder',localTorso);leftShoulder.Part0=localTorso;leftShoulder.Part1=leftArm;leftShoulder.C0=frame(-1,0,0);leftShoulder.C1=withInverse(frame(0,1,0))
 local posed=editorBackend.getWeaponEditorScene(savedGunId,'Held')
 local posedHand=posed.character:FindFirstChild('RightHand')
+local restingLeft=posed.character:FindFirstChild('LeftUpperArm')
+assert(restingLeft.CFrame.Y==-1 and restingLeft.CFrame.Z==0,'Unused left arm resets to resting pose instead of preserving live idle sway')
+assert(leftArm.CFrame.Z==-2,'Preview never moves the live left arm')
+
 assert(posedHand.CFrame.Z < localTorso.CFrame.Z-2,'Holding preview raises the arm forward rather than leaving it by the hip')
 assert(posed.character:FindFirstChild('UpperTorso'):FindFirstChild('RightShoulder').Enabled==false,'WorldModel cannot reapply the resting shoulder joint over the baked holding pose')
 assert(posed.character:FindFirstChild('RightUpperArm'):FindFirstChild('RightWrist').Enabled==false,'WorldModel cannot move the posed hand away from the gun')
