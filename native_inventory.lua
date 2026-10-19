@@ -393,7 +393,8 @@ return function(playerGui,catalog,onStatus,mode)
         for key,value in pairs(b) do if a[key]~=value then return false end end
         return true
     end
-    local function renderSaved()
+    local renderSaved
+    renderSaved=function()
         if not enabled or dead then return end
         local inventory,_,detectedTemplate=detectWeapon()
         if not inventory then status("Waiting for MM2 Weapons inventory to load.");return end
@@ -467,6 +468,20 @@ return function(playerGui,catalog,onStatus,mode)
                             status(good and (result or "Local item selected.") or ("Could not equip locally: "..tostring(result)))
                             if good then local selection=catalog.getEquipped and catalog.getEquipped() or {};savedSelection(selection);updateSideSlots(selection) end
                         end)}
+                        if catalog.remove then
+                            local remove=Instance.new("TextButton")
+                            remove.Name="HoneyBunDeleteSaved";remove.Text="Delete"
+                            remove.Size=UDim2.fromScale(0.46,0.19);remove.Position=UDim2.fromScale(0.54,0.62)
+                            remove.ZIndex=click.ZIndex+1;remove.TextScaled=true
+                            remove.BackgroundColor3=Color3.fromRGB(110,30,30);remove.TextColor3=Color3.fromRGB(255,255,255)
+                            remove.Parent=card
+                            savedCardConnections[id][#savedCardConnections[id]+1]=remove.Activated:Connect(function()
+                                if remove.Text~="Confirm?" then remove.Text="Confirm?";return end
+                                local good,result=pcall(catalog.remove,entry.id)
+                                if good then renderSaved() else remove.Text="Delete" end
+                                status(good and (result or "Saved weapon deleted.") or ("Could not delete saved weapon: "..tostring(result)))
+                            end)
+                        end
                         card.Parent=target
                     end
                     local card=savedCards[id]

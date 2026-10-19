@@ -49,6 +49,16 @@ local special=object("SpecialMesh",{MeshId="rbxassetid://789",TextureId="rbxasse
 local part=object("Part",{Name="GunHandle",Size=Vector3.new(1,1,1),Color=Color3.new(1,1,1),Material=material},special)
 local specialEntry=library.capture(part,"BIearyEyed")
 assert(specialEntry.definition.MeshId=="rbxassetid://789"and specialEntry.definition.Scale.Y==2 and specialEntry.definition.Offset.Y==0.5,"SpecialMesh properties are captured")
+local knifeEntry=library.capture(part,"BIearyEyed",nil,"Knife")
+
+-- SurfaceAppearance maps must survive capture and portable persistence.
+local surface=object("SurfaceAppearance",{ColorMap="rbxassetid://color",MetalnessMap="rbxassetid://metal",
+    NormalMap="rbxassetid://normal",RoughnessMap="rbxassetid://rough"})
+local surfacePart=object("MeshPart",{Name="SurfaceGun",MeshId="rbxassetid://surface-mesh",TextureID="",
+    Size=Vector3.new(2,2,2),MeshSize=Vector3.new(1,1,1),Color=Color3.new(1,1,1),Material=material},surface)
+local surfaceEntry=library.capture(surfacePart,"BIearyEyed")
+assert(surfaceEntry.definition.SurfaceAppearance.ColorMap=="rbxassetid://color","SurfaceAppearance maps are captured")
+local latestSaved=screen:GetAttribute("HoneyBunCosmeticGuns")
 
 local restoredGui=gui(saved)
 local restored=create(game,restoredGui)
@@ -59,8 +69,26 @@ assert(typeof(definition.Scale)=="Vector3"and definition.Scale.X==2 and typeof(d
 assert(tostring(definition.Material)=="Enum.Material.Metal"and definition.Size.Y==4,"material and source size reconstruct")
 assert(restored.getSelected()==entry.id,"selected gun restores after rejoin")
 restored.select(nil)
-local afterClear=create(game,gui(restoredGui:GetAttribute("HoneyBunCosmeticGuns")))
+local afterClearGui=gui(latestSaved)
+local afterClear=create(game,afterClearGui)
+afterClear.select(nil)
 assert(afterClear.getSelected()==nil,"cleared selection persists")
+local removed=afterClear.remove(entry.id)
+assert(removed and removed.id==entry.id,"remove returns and deletes the saved gun")
+assert(afterClear.getSelected()==nil,"remove clears selected gun")
+afterClear.select(knifeEntry.id,"Knife")
+local removedKnife=afterClear.remove(knifeEntry.id)
+assert(removedKnife and removedKnife.id==knifeEntry.id and afterClear.getSelected("Knife")==nil,"remove clears selected knife")
+local afterRemove=create(game,gui(afterClearGui:GetAttribute("HoneyBunCosmeticGuns")))
+local removedStillPresent=false
+for _,savedEntry in ipairs(afterRemove.list("Gun")) do if savedEntry.id==entry.id then removedStillPresent=true end end
+assert(#afterRemove.list("Knife")==0 and not removedStillPresent,"removed weapons stay deleted after reload")
+local missingOk=pcall(function() afterRemove.remove("missing-saved-id") end)
+assert(not missingOk,"remove rejects an unknown saved weapon")
+local surfaceReload=create(game,gui(screen:GetAttribute("HoneyBunCosmeticGuns")))
+local surfaceDefinition
+for _,savedEntry in ipairs(surfaceReload.list("Gun")) do if savedEntry.id==surfaceEntry.id then surfaceDefinition=savedEntry.definition end end
+assert(surfaceDefinition and surfaceDefinition.SurfaceAppearance.NormalMap=="rbxassetid://normal","SurfaceAppearance maps persist after reload")
 
 -- Exercise the real MM2 capture, overlay, restore, and rejoin auto-equip path.
 local function signal()

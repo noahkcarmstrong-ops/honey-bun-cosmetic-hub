@@ -42,6 +42,7 @@ local owner=node("Player","KnifeOwner");owner.Character=node("Model","OwnerChara
 local torso=node("Part","UpperTorso",owner.Character);torso.CFrame=frame(10,0,0)
 local source=node("MeshPart","Knife",owner.Character);source.CFrame=frame(13,2,0);source.MeshId="rbxassetid://knife";source.TextureID="rbxassetid://texture"
 source.Size=Vector3.new(2,4,6);source.MeshSize=Vector3.new(1,2,3);source.Color=Color3.new(0.2,0.3,0.4);source.Material=Enum.Material.Metal
+local surface=node('SurfaceAppearance','SurfaceAppearance',source);surface.ColorMap='rbxassetid://original-color-map'
 local ref=node("ObjectValue","DisplayRefKnife",owner.Character);ref.Value=source
 local players={LocalPlayer=localPlayer,GetPlayers=function()return{localPlayer,owner}end}
 local replicated=node("Folder","ReplicatedStorage");local game={GetService=function(_,name)return({HttpService=http,Players=players,Workspace=workspace,ReplicatedStorage=replicated})[name]end}
@@ -56,6 +57,7 @@ assert(library.getSelected("Knife")==knifeId and library.getSelected()==nil,"kni
 local overlay
 for _,item in ipairs(workspace:GetChildren())do if item.Name=="HoneyBunSavedKnife"then overlay=item end end
 assert(overlay and overlay.CFrame.X==103 and overlay.CFrame.Y==2,"knife preview uses captured body-relative mount, weld anchor, and overlay")
+assert(overlay:FindFirstChildOfClass('SpecialMesh').TextureId=='rbxassetid://original-color-map','Copied weapon displays the source surface color map instead of an empty or stale texture')
 local weld=overlay:FindFirstChildOfClass("WeldConstraint")
 assert(weld and weld.Part0==localTorso and weld.Part1==overlay,"knife overlay welds to the matching local body part")
 local visualMarker=localKnife:FindFirstChild("HoneyBunCosmeticVisual")
@@ -67,6 +69,12 @@ assert(#restoredLibrary.list("Knife")==1 and restoredLibrary.list("Knife")[1].id
 mm2.restore()
 assert(localKnife.LocalTransparencyModifier==0 and overlay.destroyed and visualMarker.destroyed and library.getSelected("Knife")==nil,"explicit restore clears knife selection and removes its overlay marker")
 mm2.equip(knifeId,"Knife")
+assert(mm2.removeSavedWeapon(knifeId):find('Deleted saved knife',1,true),'Saved entry can be deleted through the backend')
+assert(#library.list('Knife')==0 and library.getSelected('Knife')==nil and mm2.getEquipped().Knife==nil,'Deletion clears the library and active selection')
+assert(localKnife.LocalTransparencyModifier==0 and not localKnife:FindFirstChild('HoneyBunCosmeticVisual'),'Deleting equipped copy restores the original knife')
+assert(#libraryFactory(game,gui(screen:GetAttribute('HoneyBunCosmeticGuns'))).list('Knife')==0,'Deletion survives reload')
+mm2.collectPlayerKnife('KnifeOwner')
+knifeId=mm2.savedWeapons('Knife')[1].id
 mm2.destroy()
 assert(library.getSelected("Knife")==knifeId,"destroying the preview preserves the selected knife for the next load")
 local afterDestroy=libraryFactory(game,gui(screen:GetAttribute("HoneyBunCosmeticGuns")))

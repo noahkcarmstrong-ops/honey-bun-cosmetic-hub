@@ -450,7 +450,8 @@ return function(game, injectedRequire, gunLibrary)
             overlay.LocalTransparencyModifier=read(handle,"LocalTransparencyModifier") or 0
             local mesh=Instance.new("SpecialMesh")
             mesh.MeshType=Enum.MeshType.FileMesh
-            mesh.MeshId=def.MeshId;mesh.TextureId=def.TextureId or ""
+            -- Portable Part meshes use the original surface color map as their diffuse texture.
+            mesh.MeshId=def.MeshId;mesh.TextureId=(def.SurfaceAppearance and def.SurfaceAppearance.ColorMap) or def.TextureId or ""
             mesh.Scale=def.Scale or Vector3.new(1,1,1)
             mesh.Offset=def.Offset or Vector3.new(0,0,0)
             if def.VertexColor then mesh.VertexColor=def.VertexColor end
@@ -688,6 +689,22 @@ return function(game, injectedRequire, gunLibrary)
     end
     function api.savedWeapons(kind) return gunLibrary and gunLibrary.list(kind) or {} end
     function api.savedGuns() return api.savedWeapons("Gun") end
+    function api.removeSavedWeapon(id)
+        assert(alive and gunLibrary,"The saved weapon library is unavailable.")
+        local entry=gunLibrary.remove(id)
+        local kind=entry.kind
+        if equipped[kind]==id or pending[kind]==id then
+            appearanceGeneration=appearanceGeneration+1
+            equipped[kind]=nil;pending[kind]=nil
+        end
+        for handle,old in pairs(snapshots) do
+            if old.overlayId==id then restoreHandle(old);snapshots[handle]=nil end
+        end
+        for tool,old in pairs(toolPresentations) do
+            if old.id==id then restoreToolPresentation(tool,old);toolPresentations[tool]=nil end
+        end
+        return "Deleted saved "..kind:lower()..": "..(entry.catalog and entry.catalog.Name or entry.name)
+    end
     local function captureGunMount(source,character,held)
         if not source then return nil end
         local anchor

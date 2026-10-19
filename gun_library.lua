@@ -51,6 +51,30 @@ return function(game,gui)
             and vector("Color3",d.Color)~=nil and vector("Vector3",d.Size)~=nil
             and d.Size.X>0 and d.Size.Y>0 and d.Size.Z>0
     end
+    local SURFACE_FIELDS={"ColorMap","MetalnessMap","NormalMap","RoughnessMap"}
+    local function packSurface(surface)
+        if surface==nil then return nil end
+        local packed={}
+        for _,key in ipairs(SURFACE_FIELDS) do
+            local value=read(surface,key)
+            if value~=nil then
+                if type(value)~="string" or #value>MAX_STRING then return nil end
+                if value~="" then packed[key]=value end
+            end
+        end
+        return next(packed) and packed or nil
+    end
+    local function unpackSurface(surface)
+        if surface==nil then return nil,true end
+        if type(surface)~="table" then return nil,false end
+        local result={}
+        for key,value in pairs(surface) do
+            local allowed=false;for _,name in ipairs(SURFACE_FIELDS) do if key==name then allowed=true;break end end
+            if not allowed or type(value)~="string" or #value>MAX_STRING then return nil,false end
+            if value~="" then result[key]=value end
+        end
+        return next(result) and result or nil,true
+    end
     local function packMounts(mounts)
         if mounts==nil then return nil end
         if type(mounts)~="table"then return nil end
@@ -146,14 +170,16 @@ return function(game,gui)
             VertexColor=encode(d.VertexColor),Color=encode(d.Color),Material=encode(d.Material,"Material"),Size=encode(d.Size)}
         if d.Mounts then out.Mounts=packMounts(d.Mounts)end
         if d.Presentation then out.Presentation=packPresentation(d.Presentation)end
+        if d.SurfaceAppearance then out.SurfaceAppearance=packSurface(d.SurfaceAppearance)end
         return out
     end
     local function unpackDefinition(d)
         if type(d)~="table"or d.PortableGun~=true then return nil end
         local mounts,mountsValid=unpackMounts(d.Mounts);if not mountsValid then return nil end
         local presentation,presentationValid=unpackPresentation(d.Presentation);if not presentationValid then return nil end
+        local surface,surfaceValid=unpackSurface(d.SurfaceAppearance);if not surfaceValid then return nil end
         local result={PortableGun=true,MeshId=decode(d.MeshId),TextureId=decode(d.TextureId),Scale=decode(d.Scale),Offset=decode(d.Offset),
-            VertexColor=decode(d.VertexColor),Color=decode(d.Color),Material=decode(d.Material,"Material"),Size=decode(d.Size),Mounts=mounts,Presentation=presentation}
+            VertexColor=decode(d.VertexColor),Color=decode(d.Color),Material=decode(d.Material,"Material"),Size=decode(d.Size),Mounts=mounts,Presentation=presentation,SurfaceAppearance=surface}
         return validDefinition(result)and result or nil
     end
     local function canonical(v,precise)
@@ -226,8 +252,10 @@ return function(game,gui)
             assert(typeof(meshSize)=="Vector3"and meshSize.X~=0 and meshSize.Y~=0 and meshSize.Z~=0,"Gun mesh has no valid mesh size.")
             scale=Vector3.new(size.X/meshSize.X,size.Y/meshSize.Y,size.Z/meshSize.Z);offset=Vector3.new(0,0,0);vertexColor=Vector3.new(1,1,1)
         else error("Gun source needs a SpecialMesh or MeshPart mesh.")end
+        local surface=sourceBasePart:FindFirstChildWhichIsA("SurfaceAppearance")
         local definition={PortableGun=true,MeshId=meshId,TextureId=textureId,Scale=scale,Offset=offset,VertexColor=vertexColor,
             Color=read(sourceBasePart,"Color"),Material=read(sourceBasePart,"Material"),Size=size}
+        definition.SurfaceAppearance=packSurface(surface)
         local encodedMounts=packMounts(mounts)
         definition.Mounts=unpackMounts(encodedMounts)
         local encodedPresentation=packPresentation(presentation)
@@ -259,6 +287,24 @@ return function(game,gui)
         if kind=="Knife"then selectedKnife=id else selected=id end
         local ok,err=pcall(save);if not ok then if kind=="Knife"then selectedKnife=previous else selected=previous end;error(err)end
         if kind=="Knife"then return selectedKnife end;return selected
+    end
+    function api.remove(id)
+        assert(type(id)=="string" and id~="","Choose a saved weapon.")
+        for index,entry in ipairs(entries) do
+            if entry.id==id then
+                table.remove(entries,index)
+                local oldSelected,oldKnife=selected,selectedKnife
+                if selected==id then selected=nil end
+                if selectedKnife==id then selectedKnife=nil end
+                local ok,err=pcall(save)
+                if not ok then
+                    table.insert(entries,index,entry);selected,selectedKnife=oldSelected,oldKnife
+                    error(err)
+                end
+                return entry
+            end
+        end
+        error("Saved weapon was not found.")
     end
     return api
 end

@@ -1,4 +1,5 @@
 local create=dofile('native_inventory.lua')
+Color3={fromRGB=function(r,g,b)return {R=r/255,G=g/255,B=b/255}end}
 local function signal()
     local s={listeners={}}
     function s:Connect(fn)
@@ -356,5 +357,17 @@ assert(nestedApi.enable(),'Saved mode can be enabled again');flush()
 inventory=nestedInventory;nestedInventory:Destroy();flush()
 inventory,host,seasonPane,classicPane,holidayPane,knife,gun,search,buttons,layout,equipped=nativeInventory();flush()
 assert(#savedCardsIn(holidayPane)==1 and #savedCardsIn(classicPane)==1,'Rebuilt native inventory receives one copy of each saved card')
+savedCatalog.remove=function(id)
+    for i,e in ipairs(savedDefs) do if e.id==id then table.remove(savedDefs,i);return 'Deleted saved weapon'end end
+    error('Saved weapon missing')
+end
+nestedApi.disable();nestedApi.enable();flush()
+local deleteCard=savedCardsIn(holidayPane)[1]
+local deleteButton=deleteCard:FindFirstChild('HoneyBunDeleteSaved')
+assert(deleteButton,'Saved inventory cards offer deletion')
+deleteButton.Activated:Fire();assert(#savedDefs==2 and deleteButton.Text=='Confirm?','First click requests confirmation without deleting')
+deleteButton.Activated:Fire();flush()
+assert(#savedDefs==1 and #savedCardsIn(holidayPane)==0,'Confirmed deletion removes the saved card immediately')
+assert(knife.Parent==seasonPane and gun.Parent==seasonPane,'Deleting a saved weapon preserves native items')
 nestedApi.disable()
 print('Nested native category grids, tabs and reversible manual layout passed.')
