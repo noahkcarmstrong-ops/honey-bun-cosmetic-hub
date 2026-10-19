@@ -174,6 +174,7 @@ local function uiSetting(key,default)
     return type(value)==type(default) and value or default
 end
 local copyPlayerInput=uiSetting("copyPlayer","")
+local knifeSide=uiSetting("mm2KnifeSide",false)
 local alive, busy, activePage = true, false, uiSetting("page","Accessories")
 local actionRunning=false
 if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" and activePage~="Characters" and not (isMM2 and activePage=="MM2") then activePage="Accessories" end
@@ -204,6 +205,7 @@ local function saveUI()
     values.bodyPartsOpen=bodyPartsOpen
     values.characterName=characterName
     values.copyPlayer=copyPlayerInput
+    values.mm2KnifeSide=knifeSide
     for _,region in ipairs(bodyPartRegions) do values["part_"..region]=bodyPartInputs[region] end
     for key,value in pairs(values) do playerGui:SetAttribute("HoneyBunCosmeticUI_"..key,value) end
 end
@@ -400,6 +402,7 @@ local function mm2()
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/mm2.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     mm2API=chunk()(game,nil,mm2GunLibraryAPI)
+    mm2API.setKnifeSide(knifeSide)
     return mm2API
 end
 local function nativeMM2()
@@ -467,6 +470,15 @@ render=function()
     if activePage=="MM2" and isMM2 then
         caption(mm2MenuOpen and "MM2 MENU" or "MURDER MYSTERY 2",24)
         if mm2MenuOpen then
+            caption("KNIFE POSITION",24)
+            caption("Off: knife on your back. On: knife at your side.",36)
+            button(knifeSide and "Boombox layout: ON" or "Boombox layout: OFF",function() action(function()
+                local nextValue=not knifeSide
+                local _,message=mm2().setKnifeSide(nextValue)
+                assert(message==nil,message)
+                knifeSide=nextValue;saveUI()
+                return knifeSide and "Saved knives are now at your side." or "Saved knives are now on your back."
+            end) end)
             caption("SAVE A PLAYER'S LOOK",24)
             caption("Enter a username from this server. Save while they hold the weapon to capture its hand position, toolbar icon, and loaded sounds. Saved copies are for you only.",80)
             local owner=input("Player's Roblox username",copyPlayerInput,function(value)copyPlayerInput=value end)

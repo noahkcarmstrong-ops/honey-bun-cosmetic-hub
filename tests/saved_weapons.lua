@@ -56,13 +56,21 @@ local knifeId=knives[1].id
 assert(library.getSelected("Knife")==knifeId and library.getSelected()==nil,"knife selection is independent from the legacy gun selection")
 local overlay
 for _,item in ipairs(workspace:GetChildren())do if item.Name=="HoneyBunSavedKnife"then overlay=item end end
-assert(overlay and overlay.CFrame.X==103 and overlay.CFrame.Y==2,"knife preview uses captured body-relative mount, weld anchor, and overlay")
+assert(overlay and overlay.CFrame.X==100 and overlay.CFrame.Y==0 and overlay.CFrame.Z==.75,"knife preview defaults to the local torso back fallback instead of the owner's holster position")
 assert(overlay:FindFirstChildOfClass('SpecialMesh').TextureId=='rbxassetid://original-color-map','Copied weapon displays the source surface color map instead of an empty or stale texture')
 local weld=overlay:FindFirstChildOfClass("WeldConstraint")
 assert(weld and weld.Part0==localTorso and weld.Part1==overlay,"knife overlay welds to the matching local body part")
 local visualMarker=localKnife:FindFirstChild("HoneyBunCosmeticVisual")
 assert(visualMarker and visualMarker.Value==overlay,"the original knife points effect previews at the copied knife visual")
 assert(localKnife.LocalTransparencyModifier==1,"knife preview hides only the local original knife")
+local sideResult=mm2.setKnifeSide(true)
+assert(sideResult==true and mm2.getKnifeSide()==true,"knife side layout can be enabled")
+local sideOverlay
+for _,item in ipairs(workspace:GetChildren())do if item.Name=="HoneyBunSavedKnife"then sideOverlay=item end end
+assert(sideOverlay and sideOverlay.CFrame.X==101 and sideOverlay.CFrame.Z==0,"side layout moves the existing saved knife promptly")
+assert(overlay.destroyed,"changing layout removes the previous knife overlay")
+mm2.setKnifeSide(false)
+assert(mm2.getKnifeSide()==false,"knife layout can return to the default back position")
 local persisted=screen:GetAttribute("HoneyBunCosmeticGuns")
 local restoredLibrary=libraryFactory(game,gui(persisted))
 assert(#restoredLibrary.list("Knife")==1 and restoredLibrary.list("Knife")[1].id==knifeId and restoredLibrary.getSelected("Knife")==knifeId,"knife definition and selection survive reload")

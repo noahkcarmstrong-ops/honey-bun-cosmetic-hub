@@ -140,7 +140,7 @@ loadstring=function(source)
     if source=='gun-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Weapon library uses persistent PlayerGui');return{}end end end
     if source=='effect-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Effect library uses persistent PlayerGui');return{list=function()return{{id='Effect1',name='Effect from PlayerOne'}}end,capturePlayer=function(name)calls.capturePlayer=name;return'Captured player',{'Effect1'}end,captureServer=function(name)calls.capturePriority=name;return'Captured server'end,report=function()return'Library fixture'end,destroy=function()calls.libraryDestroyed=true end}end end end
     if source=='mm2-effects-module'then return function()return function(_game,_status)calls.effectLoads=(calls.effectLoads or 0)+1;return{equip=function(id)calls.savedEffect=id;return'Equipped effect'end,getEquipped=function()return{}end,reloadLibrary=function()calls.libraryReloaded=true end,collectOriginals=function()calls.effectsCollecting=true end,restore=function()calls.effectsRestored=true end,destroy=function()calls.effectsDestroyed=true end,report=function()return'Effects fixture report'end}end end end
-    if source=='mm2-module'then return function()return function()calls.weaponLoads=(calls.weaponLoads or 0)+1;return{savedInventory=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,savedWeapons=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,equip=function(id,kind)calls.savedWeapon=id;calls.savedKind=kind;return'Equipped'end,collectPlayerWeapon=function(name,kind)calls.captureOwner=name;calls.captureKind=kind;if calls.failGun and kind=='Gun' then error('Gun not loaded')end;return'Copied '..kind end,report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
+    if source=='mm2-module'then return function()return function()calls.weaponLoads=(calls.weaponLoads or 0)+1;return{setKnifeSide=function(value)calls.knifeSide=value;return value end,savedInventory=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,savedWeapons=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,equip=function(id,kind)calls.savedWeapon=id;calls.savedKind=kind;return'Equipped'end,collectPlayerWeapon=function(name,kind)calls.captureOwner=name;calls.captureKind=kind;if calls.failGun and kind=='Gun' then error('Gun not loaded')end;return'Copied '..kind end,report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
     if source=='editor-module'then return function()return createEditor end end
     if source=='motion-module'then return function()return createMotion end end
     if source=='animations-module'then return function()return createAnimations end end
@@ -295,6 +295,10 @@ owner.Text='  PlayerOne  '
 click("Save and equip player's gun")
 assert(calls.captureOwner=='PlayerOne' and calls.captureKind=='Gun' and not calls.nativeEnabled,'Gun is copied without Show all weapons')
 assert(guiRoot:GetAttribute('HoneyBunCosmeticUI_copyPlayer')=='PlayerOne','Username is saved')
+assert(calls.knifeSide==false,'Saved knife layout defaults to the back')
+click('Boombox layout: OFF')
+assert(calls.knifeSide==true and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2KnifeSide')==true,'Boombox toggle moves knives to the side and saves the setting')
+click('Boombox layout: ON');assert(calls.knifeSide==false,'Boombox toggle returns knives to the back')
 click("Save and equip player's knife")
 assert(calls.captureKind=='Knife','Knife uses the same entered username')
 click("Save and equip player's effect")
@@ -323,11 +327,13 @@ click('Hat sounds: ON');assert(calls.hatSounds==false,'Hat sound toggle updates 
 click('Hat sounds: OFF');click('Play hat sounds now');assert(calls.hatSounds==true and calls.playHatSounds,'Hat sound controls enable and play local audio')
 gui():SetAttribute('HoneyBunCosmeticGuns','legacy-weapons')
 gui():SetAttribute('HoneyBunCosmeticEffects','legacy-effects')
+guiRoot:SetAttribute('HoneyBunCosmeticUI_mm2KnifeSide',true)
 local weaponLoads,effectLoads=calls.weaponLoads,calls.effectLoads
 game.GameId=0;game.PlaceId=142823291
 dofile('loader.lua');
 assert(guiRoot:GetAttribute('HoneyBunCosmeticGuns')=='legacy-weapons' and guiRoot:GetAttribute('HoneyBunCosmeticEffects')=='legacy-effects','Refresh migrates old temporary collections to persistent PlayerGui')
 assert(calls.weaponLoads==weaponLoads+1 and calls.effectLoads==effectLoads+1,'Saved collections load automatically when script runs in MM2')
+assert(calls.knifeSide==true,'Saved boombox layout reapplies when the hub reloads')
 assert(find(gui(),'TextButton','MM2'),'MM2 main place is recognized')
 assert(calls.effectsDestroyed and calls.nativeEffectsEnabled and calls.savedNativeEnabled,'Refresh cleans up old displays and automatically restores saved collections')
 assert(calls.hatSoundsDestroyed,'Refreshing the hub also cleans up accessory sound playback')

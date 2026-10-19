@@ -129,6 +129,9 @@ return function(game, injectedRequire, gunLibrary)
         return out
     end
     local snapshots,track = {},nil
+    -- Saved knives use the local avatar's back by default.  The loader may
+    -- switch this to the side layout through api.setKnifeSide.
+    local knifeSide=false
     local toolPresentations={}
     local appearanceGeneration=0
     local equipped,pending,connections = {},{},{}
@@ -428,6 +431,48 @@ return function(game, injectedRequire, gunLibrary)
         local p=read(service("Players"),"LocalPlayer")
         local character=read(p,"Character")
         local mount=def.Mounts and def.Mounts[held and "Held" or "Holster"]
+        -- A copied holster mount belongs to the other player's rig.  For
+        -- knives, resolve the default back position against this avatar so
+        -- R6/R15 and respawned characters do not inherit a side transform.
+        if kind=="Knife" and not held then
+            local preferred=knifeSide and {"RightWaistAttachment","RightHipAttachment"}
+                or {"BodyBackAttachment","WaistBackAttachment","WaistCenterAttachment"}
+            local native
+            for _,name in ipairs(preferred) do
+                local candidate=child(character,name) or child(child(character,"UpperTorso"),name) or child(child(character,"LowerTorso"),name) or child(child(character,"Torso"),name)
+                if candidate and read(candidate,"CFrame") then native=candidate;break end
+            end
+            if native then
+                local parent=read(native,"Parent")
+                if parent and isA(parent,"BasePart") then
+                    local offset=read(native,"CFrame")
+                    -- Keep the captured weapon's rotation when the avatar
+                    -- provides a different attachment position.  Position
+                    -- extraction is guarded for the light-weight test stubs.
+                    local captured=mount and mount.Offset
+                    if captured then
+                        local ok,rotation=pcall(function() return captured-captured.Position end)
+                        if ok and rotation then
+                            local composedOk,composed=pcall(function() return CFrame.new(offset.Position)*rotation end)
+                            if composedOk and composed then offset=composed end
+                        end
+                    end
+                    mount={Part=read(parent,"Name"),Offset=offset}
+                end
+            else
+                local torso=(knifeSide and child(character,"LowerTorso") or child(character,"UpperTorso")) or child(character,"Torso") or child(character,"LowerTorso") or child(character,"UpperTorso")
+                if torso then
+                    -- Conservative R6/R15 fallback: behind the torso, or to
+                    -- its side when the optional layout is enabled.
+                    local offset=CFrame.new(knifeSide and 1 or 0,0,knifeSide and 0 or 0.75)
+                    if mount and mount.Offset then
+                        local ok,rotated=pcall(function()return offset*(mount.Offset-mount.Offset.Position)end)
+                        if ok then offset=rotated end
+                    end
+                    mount={Part=read(torso,"Name"),Offset=offset}
+                end
+            end
+        end
         local anchor=mount and child(character,mount.Part)
         local offset=anchor and mount.Offset
         anchor=anchor or handle
@@ -457,7 +502,7 @@ return function(game, injectedRequire, gunLibrary)
             mesh.Parent=overlay
             local weld=Instance.new("WeldConstraint")
             weld.Part0=anchor;weld.Part1=overlay;weld.Parent=overlay
-            old={handle=handle,color=read(handle,"Color"),material=read(handle,"Material"),size=read(handle,"Size"),localTransparency=read(handle,"LocalTransparencyModifier") or 0,overlay=overlay,overlayId=e.id,overlayRevision=e.revision or 0,hidden={}}
+            old={handle=handle,kind=kind,color=read(handle,"Color"),material=read(handle,"Material"),size=read(handle,"Size"),localTransparency=read(handle,"LocalTransparencyModifier") or 0,overlay=overlay,overlayId=e.id,overlayRevision=e.revision or 0,hidden={}}
             snapshots[handle]=old
             -- A separate static visual preserves its dimensions without changing game joints or tools.
             overlay.Parent=service("Workspace")
@@ -685,6 +730,27 @@ return function(game, injectedRequire, gunLibrary)
     end
     function api.getEquipped()
         return {Knife=equipped.Knife,Gun=equipped.Gun}
+    end
+    function api.getKnifeSide()
+        return knifeSide
+    end
+    function api.setKnifeSide(value)
+        knifeSide=value==true
+        -- Rebuild only the saved knife overlay.  Held tools and saved guns
+        -- retain their existing presentation and grip.
+        local knifeId=equipped.Knife
+        for handle,old in pairs(snapshots) do
+            if old.kind=="Knife" then restoreHandle(old);snapshots[handle]=nil end
+        end
+        if knifeId then
+            pending.Knife=knifeId
+            local ok,result=pcall(api.preview,knifeId,"Knife")
+            if not ok then equipError=tostring(result);return false,equipError end
+            pending.Knife=nil
+            equipError=nil
+            lastEquipResult=result
+        end
+        return knifeSide
     end
     function api.savedWeapons(kind) return gunLibrary and gunLibrary.list(kind) or {} end
     function api.savedGuns() return api.savedWeapons("Gun") end
