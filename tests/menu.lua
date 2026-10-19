@@ -135,12 +135,12 @@ function game:HttpGet(url)
     error('Unexpected request '..url)
 end
 loadstring=function(source)
-    if source=='native-mm2-module'then return function()return function(_gui,_catalog,_status,mode)local key=mode=='effects' and 'nativeEffectsEnabled' or 'nativeEnabled';return{enable=function()if calls.nativeFail then return false,'Open MM2 inventory first' end;calls[key]=true;return'Enabled'end,disable=function()calls[key]=false end,destroy=function()calls[key]=false;calls.nativeDestroyed=true end,report=function()return'Native fixture report'end}end end end
+    if source=='native-mm2-module'then return function()return function(_gui,_catalog,_status,mode)local key=mode=='effects' and 'nativeEffectsEnabled' or mode=='saved' and 'savedNativeEnabled' or 'nativeEnabled';return{refreshSaved=function()calls.savedInventoryRefreshed=true end,enable=function()if calls.nativeFail and mode~='saved' then return false,'Open MM2 inventory first' end;calls[key]=true;return'Enabled'end,disable=function()calls[key]=false end,destroy=function()calls[key]=false;calls.nativeDestroyed=true end,report=function()return'Native fixture report'end}end end end
     if source=='accessory-sounds-module'then return function()return function(_player,_gui)local enabled=_gui:GetAttribute('HoneyBunCosmeticUI_HatSounds')~=false;return{isEnabled=function()return enabled end,setEnabled=function(v)enabled=v;_gui:SetAttribute('HoneyBunCosmeticUI_HatSounds',v);calls.hatSounds=v;return'Sound toggle'end,playNow=function()calls.playHatSounds=true;return'Played'end,destroy=function()calls.hatSoundsDestroyed=true end}end end end
     if source=='gun-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Weapon library uses persistent PlayerGui');return{}end end end
     if source=='effect-library-module'then return function()return function(_game,store)assert(store==guiRoot,'Effect library uses persistent PlayerGui');return{list=function()return{{id='Effect1',name='Effect from PlayerOne'}}end,capturePlayer=function(name)calls.capturePlayer=name;return'Captured player',{'Effect1'}end,captureServer=function(name)calls.capturePriority=name;return'Captured server'end,report=function()return'Library fixture'end,destroy=function()calls.libraryDestroyed=true end}end end end
     if source=='mm2-effects-module'then return function()return function(_game,_status)calls.effectLoads=(calls.effectLoads or 0)+1;return{equip=function(id)calls.savedEffect=id;return'Equipped effect'end,getEquipped=function()return{}end,reloadLibrary=function()calls.libraryReloaded=true end,collectOriginals=function()calls.effectsCollecting=true end,restore=function()calls.effectsRestored=true end,destroy=function()calls.effectsDestroyed=true end,report=function()return'Effects fixture report'end}end end end
-    if source=='mm2-module'then return function()return function()calls.weaponLoads=(calls.weaponLoads or 0)+1;return{savedWeapons=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,equip=function(id,kind)calls.savedWeapon=id;calls.savedKind=kind;return'Equipped'end,collectPlayerWeapon=function(name,kind)calls.captureOwner=name;calls.captureKind=kind;if calls.failGun and kind=='Gun' then error('Gun not loaded')end;return'Copied '..kind end,report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
+    if source=='mm2-module'then return function()return function()calls.weaponLoads=(calls.weaponLoads or 0)+1;return{savedInventory=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,savedWeapons=function(kind)return{{id=kind..'1',name=kind..' from PlayerOne',kind=kind}}end,equip=function(id,kind)calls.savedWeapon=id;calls.savedKind=kind;return'Equipped'end,collectPlayerWeapon=function(name,kind)calls.captureOwner=name;calls.captureKind=kind;if calls.failGun and kind=='Gun' then error('Gun not loaded')end;return'Copied '..kind end,report=function()return'MM2 fixture report'end,list=function(category,search)calls.mm2Category=category;calls.mm2Search=search;return{{id='ChromaFixture',name='Chroma fixture',kind=category}}end,preview=function(id,category)calls.mm2Preview=id;return'Previewed'end,restore=function()calls.mm2Restored=true;return'Restored'end,destroy=function()calls.mm2Destroyed=true end}end end end
     if source=='editor-module'then return function()return createEditor end end
     if source=='motion-module'then return function()return createMotion end end
     if source=='animations-module'then return function()return createAnimations end end
@@ -299,10 +299,10 @@ click("Save and equip player's knife")
 assert(calls.captureKind=='Knife','Knife uses the same entered username')
 click("Save and equip player's effect")
 assert(calls.capturePlayer=='PlayerOne' and calls.libraryReloaded and calls.savedEffect=='Effect1' and not calls.nativeEffectsEnabled,'Effects save and equip without native inventory')
-click('Open saved collection')
-click('Equip Gun from PlayerOne');assert(calls.savedWeapon=='Gun1' and calls.savedKind=='Gun','Saved gun equips directly')
-click('Equip Knife from PlayerOne');assert(calls.savedWeapon=='Knife1' and calls.savedKind=='Knife','Saved knife equips directly')
-click('Equip Effect from PlayerOne');assert(calls.savedEffect=='Effect1','Saved effect equips directly')
+click('Refresh saved weapons in MM2 inventory')
+assert(calls.savedNativeEnabled and calls.savedInventoryRefreshed and not calls.nativeEnabled,'Saved models appear in native inventory without all-weapons overlay')
+assert(not find(gui(),'TextButton','Equip Gun from PlayerOne') and not find(gui(),'TextButton','Equip Knife from PlayerOne'),'Saved weapon equip buttons are removed from hub')
+click('Equip Effect from PlayerOne');assert(calls.savedEffect=='Effect1','Saved effects still equip directly')
 calls.failGun=true;calls.capturePlayer=nil
 click('Save all three');calls.failGun=false
 assert(calls.captureKind=='Knife' and calls.capturePlayer=='PlayerOne','Missing gun does not prevent saving knife and effect')
@@ -310,7 +310,9 @@ calls.nativeFail=true;click('Show all weapons: OFF');calls.nativeFail=false
 assert(find(gui(),'TextButton','Show all weapons: OFF'),'Detection failure leaves toggle off')
 click('Show all weapons: OFF')
 assert(calls.nativeEnabled and find(gui(),'TextButton','Show all weapons: ON'),'Optional inventory overlay toggles on')
+assert(not calls.savedNativeEnabled,'Full overlay temporarily disables additive saved cards')
 click('Show all weapons: ON');assert(not calls.nativeEnabled and not calls.mm2Restored,'Hiding optional inventory does not clear saved weapon appearance')
+assert(calls.savedNativeEnabled,'Disabling full overlay restores saved native cards')
 click('Saved effects: OFF');assert(calls.nativeEffectsEnabled and calls.effectsCollecting,'Optional effects display enables')
 click('Collect server effects');assert(calls.capturePriority=='PlayerOne','Server capture prioritizes entered username')
 click('Saved effects: ON');assert(not calls.effectsRestored and not calls.nativeEffectsEnabled,'Hiding optional effects inventory does not clear saved effect')

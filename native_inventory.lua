@@ -1,6 +1,7 @@
 -- Local cards in the existing MM2 Weapons/Effects inventory; no ownership or remote changes.
 return function(playerGui,catalog,onStatus,mode)
     local effects=mode=="effects"
+    local savedOnly=mode=="saved"
     local initialCategory=effects and "effects" or "season1"
     local api={}
     local enabled,dead=false,false
@@ -135,6 +136,7 @@ return function(playerGui,catalog,onStatus,mode)
     local function own(o) return lower(o.Name):sub(1,14)=="honeybunlocal_" end
     local function category(value)
         local v=normalize(value)
+        if savedOnly and v=="current" then return "season1" end
         if v=="season1" or v=="1" then return "season1" end
         if v=="classic" or v=="0" then return "classic" end
         if v=="holiday" or v:find("halloween",1,true) or v:find("christmas",1,true) then return "holiday" end
@@ -298,6 +300,192 @@ return function(playerGui,catalog,onStatus,mode)
             end
         end
     end
+    local savedCards,savedEntries,savedConnections={}, {}, {}
+    local savedMetadata={}
+    local savedCardConnections,savedLayouts={},{ }
+    local savedGrids={}
+    local savedRoot
+    local function clearSaved()
+        disconnect(savedConnections);savedConnections={}
+        for _,connectionsForCard in pairs(savedCardConnections) do disconnect(connectionsForCard) end
+        savedCardConnections={}
+        for _,card in pairs(savedCards) do destroy(card) end
+        savedCards={};savedEntries={}
+        savedMetadata={}
+        for target,state in pairs(savedLayouts) do
+            if state.created then destroy(state.layout) end
+            for object,properties in pairs(state.properties) do for key,value in pairs(properties) do pcall(function() object[key]=value end) end end
+            if state.sortOrder~=nil then pcall(function() state.layout.SortOrder=state.sortOrder end) end
+        end
+        savedLayouts={}
+    end
+    local function findSavedGrids(inventory)
+        local found={}
+        local function addCategory(branch,key)
+            local gridTarget,scrollTarget
+            for _,o in ipairs(texts(branch)) do
+                local excluded=false;local ancestor=o
+                while ancestor and ancestor~=inventory do
+                    local n=normalize(ancestor.Name)
+                    if n:find("equipped",1,true) or n:find("loadout",1,true) or n=="tabs" or own(ancestor) then excluded=true;break end
+                    ancestor=ancestor.Parent
+                end
+                if not excluded and o~=branch and is(o,"GuiObject") and not is(o,"GuiButton") then
+                    if o:FindFirstChildOfClass("UIGridLayout") then gridTarget=o end
+                    if is(o,"ScrollingFrame") then scrollTarget=o end
+                end
+            end
+            if not gridTarget and branch:FindFirstChildOfClass("UIGridLayout") then gridTarget=branch end
+            if not scrollTarget and is(branch,"ScrollingFrame") then scrollTarget=branch end
+            local target=gridTarget or scrollTarget
+            if target then found[key]=target end
+        end
+        local area
+        for _,o in ipairs(descendants(inventory)) do
+            if normalize(o.Name)=="items" then
+                for _,nested in ipairs(descendants(o)) do if normalize(nested.Name)=="container" then area=nested;break end end
+                if area then break end
+            end
+        end
+        area=area or inventory
+        for _,o in ipairs(descendants(area)) do
+            if is(o,"GuiObject") and category(o.Name) then addCategory(o,category(o.Name)) end
+        end
+        return found
+    end
+    local function prepareSavedGrid(target)
+        if savedLayouts[target] then return end
+        local layout=target:FindFirstChildOfClass("UIGridLayout")
+        local state={layout=layout,created=false,properties={},sortOrder=layout and read(layout,"SortOrder")}
+        if not layout then
+            layout=Instance.new("UIGridLayout");layout.Name="HoneyBunSavedGridLayout";layout.CellSize=template.Size;layout.CellPadding=UDim2.fromOffset(4,4);layout.Parent=target
+            state.layout=layout;state.created=true
+        end
+        layout.SortOrder=Enum.SortOrder.LayoutOrder
+        savedLayouts[target]=state
+        local scrolling=target
+        while scrolling and scrolling~=root and not is(scrolling,"ScrollingFrame") do scrolling=scrolling.Parent end
+        if scrolling and scrolling~=root then
+            state.properties[scrolling]={AutomaticCanvasSize=read(scrolling,"AutomaticCanvasSize")}
+            scrolling.AutomaticCanvasSize=Enum.AutomaticSize.Y
+            if scrolling~=target then
+                state.properties[target]=state.properties[target] or {}
+                state.properties[target].AutomaticSize=read(target,"AutomaticSize")
+                target.AutomaticSize=Enum.AutomaticSize.Y
+            end
+        end
+    end
+    local function savedSelection(equipped)
+        for card,entry in pairs(savedEntries) do
+            if alive(card) then
+                for _,v in ipairs(texts(card)) do
+                    if is(v,"GuiObject") and (normalize(v.Name)=="equipped" or normalize(v.Name)=="selected") then v.Visible=equipped[entry.kind]==entry.id end
+                end
+            end
+        end
+    end
+    local function savedMetadataFor(entry)
+        return {id=entry.id,kind=entry.kind,category=entryCategory(entry),name=entry.name,image=entry.image,rarity=entry.rarity,
+            rarityColor=entry.rarityColor,sortOrder=entry.sortOrder,rarityOrder=entry.rarityOrder,chroma=entry.chroma}
+    end
+    local function sameSavedMetadata(a,b)
+        if not a or not b then return false end
+        for key,value in pairs(b) do if a[key]~=value then return false end end
+        return true
+    end
+    local function renderSaved()
+        if not enabled or dead then return end
+        local inventory,_,detectedTemplate=detectWeapon()
+        if not inventory then status("Waiting for MM2 Weapons inventory to load.");return end
+        if savedRoot and savedRoot~=inventory then
+            for _,connectionsForCard in pairs(savedCardConnections) do disconnect(connectionsForCard) end
+            savedCardConnections={};savedCards={};savedEntries={};savedMetadata={};savedLayouts={}
+        end
+        savedRoot=inventory
+        root=inventory
+        if not template then template=detectedTemplate and detectedTemplate:Clone() end
+        if not template then status("Waiting for native weapon cards to load.");return end
+        local grids=findSavedGrids(inventory);savedGrids=grids
+        for _,target in pairs(grids) do prepareSavedGrid(target) end
+        bindSideSlots()
+        local wanted={}
+        local pending={}
+        for _,kind in ipairs({"Knife","Gun"}) do
+            for _,entry in ipairs(catalog.list(kind) or {}) do
+                local key=entryCategory(entry);local target=grids[key]
+                if target then
+                    local id=kind..":"..tostring(entry.id)
+                    wanted[id]=true
+                    pending[#pending+1]={id=id,entry=entry,target=target}
+                end
+            end
+        end
+        table.sort(pending,function(a,b)return compare(a.entry,b.entry) end)
+        local orders={}
+        for _,item in ipairs(pending) do
+            if not orders[item.target] then
+                local maxOrder=0;for _,child in ipairs(children(item.target)) do if is(child,"GuiObject") and not own(child) and type(read(child,"LayoutOrder"))=="number" then maxOrder=math.max(maxOrder,child.LayoutOrder) end end
+                orders[item.target]=maxOrder
+            end
+            orders[item.target]=orders[item.target]+1
+            local id,entry,target=item.id,item.entry,item.target
+                    local existing=savedCards[id]
+                    local metadata=savedMetadataFor(entry)
+                    if existing and (not alive(existing) or not sameSavedMetadata(savedMetadata[id],metadata)) then
+                        destroy(existing);savedCards[id]=nil;savedEntries[existing]=nil
+                        savedMetadata[id]=nil
+                        if savedCardConnections[id] then disconnect(savedCardConnections[id]);savedCardConnections[id]=nil end
+                    end
+                    if not savedCards[id] or not alive(savedCards[id]) then
+                        local card=template:Clone();savedCards[id]=card;savedEntries[card]=entry
+                        card.Name="HoneyBunLocal_Saved_"..entry.kind.."_"..tostring(entry.id);card.Visible=true
+                        for _,v in ipairs(texts(card)) do
+                            if (is(v,"TextLabel") or is(v,"TextButton")) and (v.Text=="Default Knife" or v.Text=="Default Gun" or normalize(v.Name)=="itemname") then
+                                v.Text=entry.name
+                                if entry.rarityColor then
+                                    pcall(function()v.BackgroundColor3=entry.rarityColor end)
+                                    pcall(function()v.TextColor3=Color3.fromRGB(255,255,255)end)
+                                end
+                            end
+                            if (is(v,"TextLabel") or is(v,"TextButton")) and normalize(v.Name)=="rarity" then v.Text=tostring(entry.rarity or "");if entry.rarityColor then v.TextColor3=entry.rarityColor end end
+                            if is(v,"LuaSourceContainer") then destroy(v) end
+                        end
+                        local hasRarity=false
+                        for _,v in ipairs(texts(card)) do if (is(v,"TextLabel") or is(v,"TextButton")) and normalize(v.Name)=="rarity" then hasRarity=true end end
+                        if not hasRarity and entry.rarity then
+                            local rarity=Instance.new("TextLabel");rarity.Name="Rarity";rarity.BackgroundTransparency=1;rarity.Text=tostring(entry.rarity)
+                            if entry.rarityColor then rarity.TextColor3=entry.rarityColor end
+                            rarity.Size=UDim2.fromScale(0.42,0.16);rarity.Position=UDim2.fromScale(0.58,0.02);rarity.TextScaled=true;rarity.TextStrokeTransparency=0.5
+                            if entry.rarityColor then pcall(function()rarity.BackgroundColor3=entry.rarityColor end) end
+                            rarity.Parent=card
+                        end
+                        local image=entry.image;if type(image)=="number" or (type(image)=="string" and image:match("^%d+$")) then image="rbxassetid://"..tostring(image) end
+                        local targetIcon=icon(card);if targetIcon then targetIcon.Image=type(image)=="string" and image or "" end
+                        local click=overlay(card)
+                        savedCardConnections[id]={click.Activated:Connect(function()
+                            local good,result=pcall(catalog.equip or catalog.preview,entry.id,entry.kind)
+                            status(good and (result or "Local item selected.") or ("Could not equip locally: "..tostring(result)))
+                            if good then local selection=catalog.getEquipped and catalog.getEquipped() or {};savedSelection(selection);updateSideSlots(selection) end
+                        end)}
+                        card.Parent=target
+                    end
+                    local card=savedCards[id]
+                    if card.Parent~=target then card.Parent=target end
+                    savedEntries[card]=entry;savedMetadata[id]=metadata;card.LayoutOrder=orders[target]
+            end
+        for id,card in pairs(savedCards) do
+            if not wanted[id] or not alive(card) then
+                destroy(card);savedCards[id]=nil;savedEntries[card]=nil;savedMetadata[id]=nil
+                if savedCardConnections[id] then disconnect(savedCardConnections[id]);savedCardConnections[id]=nil end
+            end
+        end
+        for card in pairs(savedEntries) do if not alive(card) then savedEntries[card]=nil end end
+        local equipped=catalog.getEquipped and catalog.getEquipped() or {}
+        savedSelection(equipped)
+        updateSideSlots(equipped)
+        local count=0;for _ in pairs(savedCards) do count=count+1 end
+        status("MM2 native collection: "..count.." saved weapon cards.")
+    end
     local render
     render=function()
         assert(grid and alive(grid),"MM2 inventory is being rebuilt.")
@@ -364,7 +552,8 @@ return function(playerGui,catalog,onStatus,mode)
         task.defer(function()
             queued=false
             if enabled and not dead then
-                local ok,message=pcall(refresh)
+                local ok,message
+                if savedOnly then ok,message=pcall(renderSaved) else ok,message=pcall(refresh) end
                 if not ok then status("Waiting for MM2 inventory: "..tostring(message)) end
             end
         end)
@@ -505,15 +694,35 @@ return function(playerGui,catalog,onStatus,mode)
         return lastReport
     end
     local watchers={}
+    local function watchSaved()
+        local function changed(o)
+            if not localObject(o) and (inventoryAncestor(o) or lower(o.Name):find("inventory",1,true)) then schedule() end
+        end
+        watchers[#watchers+1]=playerGui.DescendantAdded:Connect(changed)
+        watchers[#watchers+1]=playerGui.DescendantRemoving:Connect(changed)
+    end
+    function api.refreshSaved()
+        assert(savedOnly,"refreshSaved is available only in saved mode")
+        catalogItems=nil
+        if enabled then renderSaved() end
+        return #savedConnections
+    end
     function api.disable()
         enabled=false;queued=false;rerenderRequested=false;catalogItems=nil
         disconnect(watchers);watchers={};releaseMount()
+        clearSaved();restoreSideSlots()
+        savedRoot=nil;savedGrids={}
         if template then destroy(template);template=nil end
         panePath,gridPath=nil,nil
         return "Original MM2 inventory display restored."
     end
     function api.enable()
         assert(not dead,"MM2 inventory preview was closed.")
+        if savedOnly then
+            if enabled then renderSaved();return true,lastReport end
+            enabled=true;watchSaved();renderSaved()
+            return true,lastReport
+        end
         if enabled then local ok,message=pcall(refresh);return ok,message end
         enabled=true;query="";season=initialCategory
         local ok,message=pcall(refresh)
@@ -535,6 +744,11 @@ return function(playerGui,catalog,onStatus,mode)
         return true,message
     end
     function api.report()
+        if savedOnly then
+            local count=0;for _,card in pairs(savedCards) do if alive(card) then count=count+1 end end
+            local paths={};for _,key in ipairs({"season1","classic","holiday"}) do paths[#paths+1]=key.."="..(savedGrids[key] and savedGrids[key]:GetFullName() or "none") end
+            return "Native inventory build: saved weapons\n"..lastReport.."\nGenerated="..count.."\nCategory grids: "..table.concat(paths,"; ")
+        end
         return "Native inventory build: weapons and effects V9\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nRender passes="..renderPasses.."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.." Effects="..tostring(categoryCounts.effects or 0).."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").." Effect="..(sideSlots.Effect and sideSlots.Effect:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")..(diagnosticDetails~="" and ("\nInventory diagnostics:\n"..diagnosticDetails) or "")
     end
     function api.destroy() if not dead then api.disable();dead=true end end

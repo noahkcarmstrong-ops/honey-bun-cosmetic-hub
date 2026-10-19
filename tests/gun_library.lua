@@ -100,7 +100,8 @@ sourceMesh.Size=Vector3.new(2,4,6);sourceMesh.MeshSize=Vector3.new(1,2,3);source
 local sourceRef=node("ObjectValue","DisplayRefGun",sourcePlayer.Character);sourceRef.Value=sourceMesh
 local players={LocalPlayer=localPlayer,GetPlayers=function()return{localPlayer,sourcePlayer}end}
 local workspace=node("Folder","Workspace")
-local mm2Game={GetService=function(_,name)return({HttpService=http,Players=players,Workspace=workspace,ReplicatedStorage=node("Folder","ReplicatedStorage")})[name]end}
+local replicated=node("Folder","ReplicatedStorage")
+local mm2Game={GetService=function(_,name)return({HttpService=http,Players=players,Workspace=workspace,ReplicatedStorage=replicated})[name]end}
 Instance={new=function(class)return node(class)end}
 Enum.MeshType={FileMesh=typed("EnumItem",{label="Enum.MeshType.FileMesh"})}
 local renderGui=gui();local renderLibrary=create(mm2Game,renderGui)
@@ -192,6 +193,22 @@ presentationApi.restore()
 assert(realGun.TextureId=='rbxassetid://pistol-icon' and realShot.SoundId=='rbxassetid://pistol-shot' and realShot.Volume==0.4,'Restore returns toolbar icon and original weapon audio')
 assert(sourceShot.SoundId=='rbxassetid://scope-shot','Source player sound is untouched')
 presentationApi.destroy()
+
+-- Saved models use real catalog labels without changing their equip IDs.
+local itemModule=node('ModuleScript','Item',node('Folder','Sync',node('Folder','Database',replicated)))
+itemModule.Data={Gingerscope={ItemName='Gingerscope',ItemType='Gun',Image='rbxassetid://999',Rarity='Ancient',Event='Christmas',Year=2023,MeshId='rbxassetid://321',TextureId='rbxassetid://654'},
+    UnownedGun={ItemName='Not Captured',ItemType='Gun',Image='rbxassetid://777',Rarity='Common',Season=1}}
+local beforeId=presentationLibrary.list('Gun')[1].id
+local catalogApi=dofile('mm2.lua')(mm2Game,function(module)return module.Data or {}end,presentationLibrary)
+local savedCards=catalogApi.savedInventory('Gun')
+assert(#savedCards==#presentationLibrary.list('Gun') and savedCards[1].id==beforeId,'Saved inventory contains only captured models with stable equip IDs')
+assert(savedCards[1].name=='Gingerscope' and savedCards[1].image=='rbxassetid://999' and savedCards[1].rarity=='Ancient' and savedCards[1].category=='holiday','Saved card uses the real Gingerscope name, icon, rarity and Holiday tab')
+local metadataGui=gui();local metadataLibrary=create(mm2Game,metadataGui)
+local metadataEntry=metadataLibrary.capture(sourceMesh,'Test')
+metadataLibrary.setCatalog(metadataEntry.id,presentationLibrary.list('Gun')[1].catalog)
+local persistedMetadata=create(mm2Game,gui(metadataGui:GetAttribute('HoneyBunCosmeticGuns')))
+assert(persistedMetadata.list()[1].catalog.Name=='Gingerscope','Saved catalog labels persist without the original player')
+catalogApi.destroy()
 
 local bad=gui(http:JSONEncode({version=1,entries={{id="bad",name="bad",definition={PortableGun=true}}}}))
 assert(#create(game,bad).list()==0,"malformed saved definitions are rejected")

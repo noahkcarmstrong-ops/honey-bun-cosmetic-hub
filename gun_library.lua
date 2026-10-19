@@ -167,6 +167,19 @@ return function(game,gui)
         for i=1,#s do a=(a*31+s:byte(i))%2147483647;b=(b*37+s:byte(i))%2147483629 end
         return (kind=="Knife" and "SavedKnife_" or "SavedGun_")..string.format("%.0f_%.0f",a,b)
     end
+    local function catalogInfo(value)
+        if type(value)~="table" then return nil end
+        local out={}
+        for _,key in ipairs({"Id","Name","Image","Rarity","Category","Season","Event","Year","Chroma","SortOrder"}) do
+            local v=value[key]
+            if type(v)=="string" and #v<=MAX_STRING then out[key]=v
+            elseif type(v)=="number" and finite(v) then out[key]=v
+            elseif type(v)=="boolean" then out[key]=v end
+        end
+        if type(out.Id)~="string" or out.Id=="" or type(out.Name)~="string" or out.Name=="" then return nil end
+        if out.Category~="season1" and out.Category~="classic" and out.Category~="holiday" then return nil end
+        return out
+    end
     local entries,selected,selectedKnife={},nil,nil
     local raw=gui:GetAttribute(KEY)
     if type(raw)=="string"and #raw<=MAX_BYTES then
@@ -177,7 +190,7 @@ return function(game,gui)
                     local kind=record.kind=="Knife" and "Knife" or "Gun"
                     local definition=unpackDefinition(record.definition)
                     if definition and record.id==identity(definition,kind)then
-                        entries[#entries+1]={id=record.id,name=record.name,kind=kind,definition=definition}
+                        entries[#entries+1]={id=record.id,name=record.name,kind=kind,definition=definition,catalog=catalogInfo(record.catalog)}
                     end
                 end
             end
@@ -191,7 +204,7 @@ return function(game,gui)
     end
     if selectedKnife then local found=false;for _,entry in ipairs(entries)do if entry.id==selectedKnife and entry.kind=="Knife"then found=true;break end end;if not found then selectedKnife=nil end end
     local function save()
-        local records={};for _,entry in ipairs(entries)do local record={id=entry.id,name=entry.name,definition=pack(entry.definition)};if entry.kind=="Knife"then record.kind="Knife"end;records[#records+1]=record end
+        local records={};for _,entry in ipairs(entries)do local record={id=entry.id,name=entry.name,definition=pack(entry.definition),catalog=entry.catalog};if entry.kind=="Knife"then record.kind="Knife"end;records[#records+1]=record end
         local encoded=Http:JSONEncode({version=1,entries=records,selected=selected,selectedKnife=selectedKnife})
         assert(#encoded<=MAX_BYTES,"Saved gun library is full.");gui:SetAttribute(KEY,encoded)
     end
@@ -229,6 +242,15 @@ return function(game,gui)
         return entry
     end
     function api.list(kind)local out={};for _,e in ipairs(entries)do if kind==nil or e.kind==kind then out[#out+1]=e end end;return out end
+    function api.setCatalog(id,value)
+        local info=catalogInfo(value);assert(info,"Weapon catalog details are incomplete.")
+        for _,entry in ipairs(entries) do if entry.id==id then
+            local previous=entry.catalog;entry.catalog=info
+            local ok,err=pcall(save);if not ok then entry.catalog=previous;error(err) end
+            return info
+        end end
+        error("Choose a saved weapon.")
+    end
     function api.getSelected(kind)if kind=="Knife"then return selectedKnife end;return selected end
     function api.select(id,kind)
         kind=kind=="Knife" and "Knife" or "Gun"

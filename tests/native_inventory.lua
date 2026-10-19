@@ -279,3 +279,82 @@ assert(not message:find('\n',1,true) and not message:match(':%d+:'),'Panel error
 assert(notOpened.report():find('Inventory diagnostics:',1,true),'Full panel diagnostics remain available in Copy MM2 report')
 notOpened.destroy()
 print('Unopened inventory guidance and separate diagnostic report passed.')
+
+-- Saved-only mode adds cards directly to native category grids and preserves the game collection.
+local savedDefs={{id='holiday-saved',kind='Gun',name='Saved Holiday Gun',image=987,category='holiday',rarity='Godly'}}
+local savedChoice
+local savedCatalog={list=function(kind)local out={};for _,e in ipairs(savedDefs)do if e.kind==kind then out[#out+1]=e end end;return out end,
+    equip=function(id,kind)savedChoice=id..':'..kind;return 'Saved item selected'end,getEquipped=function()return savedChoice and {Gun='holiday-saved'} or {}end}
+local savedApi=create(playerGui,savedCatalog,nil,'saved')
+assert(savedApi.enable(),'Saved mode waits safely for the native inventory')
+flush()
+local function savedCardsIn(grid)local out={};for _,o in ipairs(grid:GetChildren())do if o.Name:find('HoneyBunLocal_Saved_',1,true)then out[#out+1]=o end end;return out end
+local holidaySaved=savedCardsIn(holidayPane)
+assert(#holidaySaved==1,'Saved holiday weapon is inserted into the native Holiday grid')
+assert(holidaySaved[1]:FindFirstChild('ItemName').Text=='Saved Holiday Gun','Saved card shows the catalog name')
+assert(holidaySaved[1]:FindFirstChild('Icon').Image=='rbxassetid://987','Saved card shows the catalog image')
+assert(holidaySaved[1]:FindFirstChild('Rarity').Text=='Godly','Saved card shows the catalog rarity')
+assert(knife.Parent==seasonPane and gun.Parent==seasonPane and knife.Visible and not gun.Visible,'Saved mode keeps native cards and their visibility intact')
+assert(seasonPane.Visible and classicPane.Visible==false and holidayPane.Visible==false,'Saved mode never hides or opens native category panels')
+overlay(holidaySaved[1]).Activated:Fire();assert(savedChoice=='holiday-saved:Gun','Saved card equips through the saved backend ID')
+assert(holidaySaved[1]:FindFirstChild('Equipped').Visible,'Saved selection marker updates immediately on click')
+local existingSaved=holidaySaved[1]
+savedDefs[#savedDefs+1]={id='new-capture',kind='Knife',name='New Capture',image=654,category='classic',rarity='Rare'}
+savedApi.refreshSaved();flush()
+assert(savedCardsIn(holidayPane)[1]==existingSaved,'Refreshing preserves unchanged saved cards')
+assert(#savedCardsIn(classicPane)==1,'Refresh adds newly captured saved items')
+local stableOrder=existingSaved.LayoutOrder
+savedApi.refreshSaved();flush();assert(#savedCardsIn(classicPane)==1,'Refresh does not duplicate saved cards')
+assert(existingSaved.LayoutOrder==stableOrder,'Refresh keeps saved card layout order stable')
+savedDefs[1].name='Renamed Holiday Gun';savedDefs[1].image=988;savedDefs[1].rarity='Ancient'
+savedApi.refreshSaved();flush()
+local refreshedHoliday=savedCardsIn(holidayPane)[1]
+assert(refreshedHoliday~=existingSaved and refreshedHoliday:FindFirstChild('ItemName').Text=='Renamed Holiday Gun','Metadata changes recreate the card with current name')
+assert(refreshedHoliday:FindFirstChild('Icon').Image=='rbxassetid://988' and refreshedHoliday:FindFirstChild('Rarity').Text=='Ancient','Metadata changes refresh image and rarity')
+assert(#savedCardsIn(holidayPane)==1,'Metadata refresh leaves no duplicate cards')
+inventory.Visible=false;inventory.Visible=true;flush();assert(savedCardsIn(holidayPane)[1]==refreshedHoliday,'Reopen preserves refreshed saved cards')
+savedApi.disable();flush()
+assert(#savedCardsIn(holidayPane)==0 and #savedCardsIn(classicPane)==0,'Disable removes only injected saved cards')
+assert(knife.Parent==seasonPane and gun.Parent==seasonPane,'Disable leaves native collection cards in place')
+print('Saved-only native cards, refresh, equip, reopen and cleanup passed.')
+
+-- Actual nested Weapons.Items.Container grids prefer inner grids; manual grids gain reversible layout.
+inventory:Destroy()
+local nestedInventory=node('Frame','Inventory',playerGui)
+local weapons=node('Frame','Weapons',nestedInventory);local items=node('Frame','Items',weapons);local container=node('Frame','Container',items)
+local function nestedCategory(name,withLayout)
+    local branch=node('Frame',name,container);local inner=node('Frame','Inner',branch);local scroll=node('ScrollingFrame','Scrolling',inner)
+    if withLayout then node('UIGridLayout','NativeGrid',scroll)end
+    return branch,scroll
+end
+local currentBranch,currentGrid=nestedCategory('Current',true)
+local classicBranch,classicGrid=nestedCategory('Classic',true)
+local holidayBranch,holidayGrid=nestedCategory('Holiday',false)
+holidayGrid.AutomaticCanvasSize='None'
+local tabsRoot=node('Frame','Tabs',nestedInventory);local tabCurrent=node('ScrollingFrame','Current',tabsRoot);node('UIGridLayout','TabGrid',tabCurrent)
+local function nestedCard(name,title)
+    local c=node('Frame',name,currentGrid);node('TextLabel','ItemName',c).Text=title
+    node('ImageLabel','Icon',c).Image='native';local rarity=node('TextLabel','Rarity',c);rarity.Text='Native'
+    node('TextLabel','Equipped',c).Visible=false
+end
+nestedCard('NativeKnife','Default Knife');nestedCard('NativeGun','Default Gun')
+local tabCount=0
+local gameTab=node('TextButton','HolidayTab',nestedInventory);gameTab.Activated:Connect(function()tabCount=tabCount+1 end)
+local nestedApi=create(playerGui,savedCatalog,nil,'saved')
+assert(nestedApi.enable(),'Nested native weapons structure is detected');flush()
+assert(#savedCardsIn(holidayGrid)==1,'Holiday item goes to the deepest inner category grid')
+assert(#savedCardsIn(classicGrid)==1,'Classic item goes to nested inner grid')
+assert(#savedCardsIn(tabCurrent)==0,'A Tabs.Current button container is never mistaken for a category grid')
+assert(#savedCardsIn(currentGrid)==0,'Current category recognition maps to Season1')
+assert(nestedApi.report():find('Generated=2',1,true) and nestedApi.report():find('holiday='..holidayGrid:GetFullName(),1,true),'Saved report includes the count and exact Holiday grid path')
+assert(holidayGrid:FindFirstChildOfClass('UIGridLayout'),'Manual category gets a local grid for non-overlapping cards')
+assert(holidayGrid.AutomaticCanvasSize=='AutoY','Manual category scroll expands for saved cards')
+gameTab.Activated:Fire();assert(tabCount==1,'Existing game tab remains usable')
+nestedApi.disable()
+assert(not holidayGrid:FindFirstChildOfClass('UIGridLayout') and holidayGrid.AutomaticCanvasSize=='None','Disable removes its temporary grid and restores scrolling settings')
+assert(nestedApi.enable(),'Saved mode can be enabled again');flush()
+inventory=nestedInventory;nestedInventory:Destroy();flush()
+inventory,host,seasonPane,classicPane,holidayPane,knife,gun,search,buttons,layout,equipped=nativeInventory();flush()
+assert(#savedCardsIn(holidayPane)==1 and #savedCardsIn(classicPane)==1,'Rebuilt native inventory receives one copy of each saved card')
+nestedApi.disable()
+print('Nested native category grids, tabs and reversible manual layout passed.')

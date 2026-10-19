@@ -96,15 +96,38 @@ return function(game, injectedRequire, gunLibrary)
         end
         return color,type(order)=="number" and order or nil
     end
+    local enrichSaved
+    local function inventoryEntry(e)
+        if enrichSaved and field(e.definition,"PortableGun") then enrichSaved(e) end
+        local def=e.catalog or e.definition
+        local categoryName,year,event,rarity,sortOrder=metadata(def)
+        categoryName=field(def,"Category") or categoryName
+        local rarityColor,rarityOrder=rarityStyle(def)
+        local chroma=field(def,"Chroma")
+        local presentation=field(e.definition,"Presentation")
+        return {id=e.id,name=e.catalog and e.catalog.Name or e.name,kind=e.kind,rarity=rarity,
+            image=field(def,"Image") or field(def,"ImageId") or field(def,"ImageID") or (presentation and presentation.ToolIcon),
+            category=categoryName,year=year,event=event,rarityColor=rarityColor,rarityOrder=rarityOrder,
+            season=field(def,"Season"),sortOrder=sortOrder,chroma=chroma==true or (type(chroma)=="string" and lower(chroma)~="" and lower(chroma)~="false")}
+    end
     function api.list(category,search)
         local kind=category and tostring(category):sub(1,1):upper()..tostring(category):sub(2):lower() or nil; if kind~="Knife" and kind~="Gun" and kind~="Emote" then kind=nil end
         local source={}; if kind then for _,e in ipairs(catalog(kind)) do source[#source+1]=e end else for _,k in ipairs({"Knife","Gun","Emote"}) do for _,e in ipairs(catalog(k)) do source[#source+1]=e end end end
         if gunLibrary and (not kind or kind=="Gun" or kind=="Knife") then for _,e in ipairs(gunLibrary.list(kind)) do source[#source+1]=e end end
-        local query,out=lower(search),{}; for _,e in ipairs(source) do if query=="" or lower(e.name):find(query,1,true) or lower(e.id):find(query,1,true) then
-            local categoryName,year,event,rarity,sortOrder=metadata(e.definition)
-            local rarityColor,rarityOrder=rarityStyle(e.definition)
-            local chroma=field(e.definition,"Chroma"); out[#out+1]={id=e.id,name=e.name,kind=e.kind,rarity=rarity,image=field(e.definition,"Image") or field(e.definition,"ImageId") or field(e.definition,"ImageID"),category=categoryName,year=year,event=event,rarityColor=rarityColor,rarityOrder=rarityOrder,season=field(e.definition,"Season"),sortOrder=sortOrder,chroma=chroma==true or (type(chroma)=="string" and lower(chroma)~="" and lower(chroma)~="false")}
-        end end; return out
+        local query,out=lower(search),{}
+        for _,e in ipairs(source) do
+            local item=inventoryEntry(e)
+            if query=="" or lower(item.name):find(query,1,true) or lower(item.id):find(query,1,true) then out[#out+1]=item end
+        end
+        return out
+    end
+    function api.savedInventory(kind,search)
+        local out={};local query=lower(search)
+        for _,entry in ipairs(gunLibrary and gunLibrary.list(kind) or {}) do
+            local item=inventoryEntry(entry)
+            if query=="" or lower(item.name):find(query,1,true) then out[#out+1]=item end
+        end
+        return out
     end
     local snapshots,track = {},nil
     local toolPresentations={}
@@ -712,6 +735,53 @@ return function(game, injectedRequire, gunLibrary)
         end
         return result
     end
+    local function assetKey(value)
+        if type(value)=="number" then return tostring(value) end
+        if type(value)~="string" or value=="" then return nil end
+        return value:match("[?&]assetId=(%d+)") or value:match("[?&]id=(%d+)") or value:match("rbxassetid://(%d+)") or value:match("^(%d+)$")
+    end
+    enrichSaved=function(entry,objects)
+        if entry.catalog or not gunLibrary or not gunLibrary.setCatalog then return end
+        local candidates=catalog(entry.kind)
+        local identities,itemIds={},{ }
+        for _,object in pairs(objects or {}) do
+            local name=read(object,"Name");if name then identities[tostring(name)]=true end
+            for _,value in ipairs(identityValue(object)) do identities[tostring(value)]=true end
+        end
+        for _,candidate in ipairs(candidates) do local id=field(candidate.definition,"ItemID");if id then local key=tostring(id);itemIds[key]=(itemIds[key] or 0)+1 end end
+        local presentation=entry.definition.Presentation
+        local image=presentation and assetKey(presentation.ToolIcon)
+        local mesh=assetKey(entry.definition.MeshId)
+        local texture=assetKey(entry.definition.TextureId)
+        local function unique(predicate)
+            local match
+            for _,candidate in ipairs(candidates) do if predicate(candidate) then if match then return nil end;match=candidate end end
+            return match
+        end
+        local match=unique(function(candidate)
+            local id=field(candidate.definition,"ItemID")
+            return identities[candidate.id] or (id and itemIds[tostring(id)]==1 and identities[tostring(id)])
+        end)
+        if not match and image then match=unique(function(candidate)
+            local def=candidate.definition
+            return assetKey(field(def,"Image") or field(def,"ImageId") or field(def,"ImageID"))==image
+        end) end
+        if not match and mesh then match=unique(function(candidate)
+            local def=candidate.definition
+            local otherTexture=assetKey(field(def,"TextureId") or field(def,"TextureID"))
+            return assetKey(field(def,"MeshId") or field(def,"MeshID"))==mesh and (not otherTexture or texture==otherTexture)
+        end) end
+        -- The user identified this legacy, unlabeled capture as regular Gingerscope.
+        if not match and entry.kind=="Gun" and lower(entry.name)=="gun from biearyeyed" then
+            for _,candidate in ipairs(candidates) do if candidate.id=="Gingerscope" then match=candidate;break end end
+            match=match or unique(function(candidate)return candidate.name=="Gingerscope"end)
+        end
+        if not match then return end
+        local def=match.definition
+        local category=metadata(def)
+        gunLibrary.setCatalog(entry.id,{Id=match.id,Name=match.name,Image=field(def,"Image") or field(def,"ImageId") or field(def,"ImageID") or (presentation and presentation.ToolIcon),
+            Rarity=field(def,"Rarity"),Category=category,Season=field(def,"Season"),Year=field(def,"Year"),Event=field(def,"Event"),Chroma=field(def,"Chroma"),SortOrder=field(def,"SortOrder")})
+    end
     function api.collectPlayerWeapon(username,kind)
         kind=kind=="Knife" and "Knife" or "Gun"
         local kindLower=kind:lower()
@@ -740,6 +810,7 @@ return function(game, injectedRequire, gunLibrary)
         local mounts={Holster=captureGunMount(holsteredSource,character,false),Held=captureGunMount(heldSource,character,true)}
         local presentation=capturePresentation(heldTool,source)
         local entry=gunLibrary.capture(source,tostring(read(target,"Name")),mounts,kind,presentation)
+        enrichSaved(entry,{heldTool,source,reference})
         loadedLookupLog[#loadedLookupLog+1]="Saved "..kindLower.." from "..tostring(read(target,"Name")).."; mesh="..tostring(entry.definition.MeshId)
         local message=api.equip(entry.id,kind)..". Saved to your "..kindLower.." library."
         message=message.." Grip: "..(presentation.Grip and "captured" or "not loaded").."; icon: "..(presentation.ToolIcon and "captured" or "not loaded").."; sounds: "..#presentation.Sounds.."."

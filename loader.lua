@@ -3,7 +3,7 @@ local Players = game:GetService("Players")
 local Input = game:GetService("UserInputService")
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
-local mm2API,mm2NativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
+local mm2API,mm2NativeAPI,mm2SavedNativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
 local mm2GunLibraryAPI
 local accessorySoundsAPI
 local mm2Enabled,mm2EffectsEnabled=false,false
@@ -414,6 +414,17 @@ local function nativeMM2()
     end)
     return mm2NativeAPI
 end
+local function savedNativeMM2()
+    if mm2SavedNativeAPI then return mm2SavedNativeAPI end
+    local backend=mm2()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/native_inventory.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    local savedCatalog={list=backend.savedInventory,equip=backend.equip,getEquipped=backend.getEquipped}
+    mm2SavedNativeAPI=chunk()(playerGui,savedCatalog,function(message)
+        if alive and statusLabel then statusLabel.Text=message end
+    end,"saved")
+    return mm2SavedNativeAPI
+end
 local function effectsMM2()
     assert(isMM2,"This menu is only available in MM2.")
     if mm2EffectsAPI then return mm2EffectsAPI end
@@ -469,7 +480,9 @@ render=function()
                 if mm2Enabled then
                     nativeMM2().disable()
                     local ok=nativeMM2().enable()
-                    if ok==false then mm2Enabled=false end
+                    if ok==false then mm2Enabled=false;savedNativeMM2().enable() end
+                else
+                    savedNativeMM2().enable();savedNativeMM2().refreshSaved()
                 end
             end
             local function copyWeapon(kind)
@@ -501,20 +514,13 @@ render=function()
                 end
                 return table.concat(messages,"\n")
             end) end)
-            caption("YOUR SAVED COLLECTION",24)
-            caption("Equip saved items here without Show all weapons. Auto-save keeps the collection after rejoining. Shooting and attacking use your real MM2 weapons.",64)
-            button("Open saved collection",function() action(function() mm2();effectsMM2();return "Your saved guns, knives, and effects are listed below." end) end)
-            if mm2API then
-                for _,kind in ipairs({"Gun","Knife"}) do
-                    caption(kind=="Gun" and "SAVED GUNS" or "SAVED KNIVES",24)
-                    local entries=mm2API.savedWeapons(kind)
-                    if #entries==0 then caption("None saved yet.",24) end
-                    for _,entry in ipairs(entries) do
-                        button("Equip "..entry.name,function() action(function()return mm2().equip(entry.id,entry.kind)end) end)
-                    end
-                end
-                button("Remove saved weapon appearances",function() action(function()return mm2().restore()end) end)
-            end
+            caption("YOUR SAVED WEAPONS",24)
+            caption("Saved guns and knives appear in MM2's Weapons inventory, under Season 1, Classic, or Holiday. Click their cards there to equip the saved models.",64)
+            button("Refresh saved weapons in MM2 inventory",function() action(function()
+                updateWeapons()
+                return "Open MM2's Weapons inventory. Your saved weapons appear alongside your existing items."
+            end) end)
+            button("Remove saved weapon appearances",function() action(function()return mm2().restore()end) end)
             if mm2EffectsLibraryAPI then
                 caption("SAVED PLAYER EFFECTS",24)
                 local entries=mm2EffectsLibraryAPI.list()
@@ -525,13 +531,15 @@ render=function()
                 button("Remove knife effect",function() action(function()return effectsMM2().restore()end) end)
             end
             caption("OPTIONAL MM2 INVENTORY DISPLAY",24)
-            caption("These options show collections in MM2's own inventory. They are not needed for the saved collection above.",48)
+            caption("Show all weapons is optional. Your saved weapons already appear in the normal inventory.",48)
             button(mm2Enabled and "Show all weapons: ON" or "Show all weapons: OFF",function() action(function()
                 if mm2Enabled then
-                    nativeMM2().disable();mm2Enabled=false
+                    nativeMM2().disable();mm2Enabled=false;savedNativeMM2().enable()
                     return "Original inventory display restored. Your saved weapon appearance stays equipped."
                 end
+                savedNativeMM2().disable()
                 local ok,message=nativeMM2().enable()
+                if ok==false then savedNativeMM2().enable() end
                 assert(ok~=false,message or "MM2 inventory could not be detected.")
                 mm2Enabled=true;return type(ok)=="string" and ok or message
             end) end)
@@ -555,6 +563,7 @@ render=function()
 
             button("Copy MM2 report",function() action(function()
                 local report=mm2().report().."\n"..nativeMM2().report()
+                if mm2SavedNativeAPI then report=report.."\n"..mm2SavedNativeAPI.report() end
                 if mm2EffectsAPI then report=report.."\n"..mm2EffectsAPI.report() end
                 if mm2EffectsLibraryAPI then report=report.."\n"..mm2EffectsLibraryAPI.report() end
                 if mm2EffectsNativeAPI then report=report.."\n"..mm2EffectsNativeAPI.report() end
@@ -963,6 +972,7 @@ gui.Destroying:Connect(function()
     if mm2EffectsNativeAPI then mm2EffectsNativeAPI.destroy() end
     if mm2EffectsAPI then mm2EffectsAPI.destroy() end
     if mm2EffectsLibraryAPI then mm2EffectsLibraryAPI.destroy() end
+    if mm2SavedNativeAPI then mm2SavedNativeAPI.destroy() end
     if mm2NativeAPI then mm2NativeAPI.destroy() end
     if mm2API then mm2API.destroy() end
     if accessorySoundsAPI then accessorySoundsAPI.destroy() end
@@ -979,7 +989,7 @@ action(function(editor)
     local message=reapplyAll(editor)
     if not soundsLoaded then message=message.." Hat sounds could not load; try their control in Accessories." end
     if activePage=="Characters" then characterModules() end
-    if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticGuns") then mm2() end
+    if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticGuns") then mm2();savedNativeMM2().enable() end
     if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticEffects") then effectsMM2() end
     return message
 end)
