@@ -352,8 +352,12 @@ return function(playerGui,catalog,onStatus,mode)
                 if viewport then sideModelIcons[slot]={id=entry.id,viewport=viewport} end
             end
             local name=sideText(slot,kind,false)
-            if name then snapshot(name,"Text");name.Text=entry and entry.name or read(name,"Text") end
-            if name and entry then
+            if name then
+                snapshot(name,"Text");snapshot(name,"Visible")
+                if entry and (kind=="Knife" or kind=="Gun") then name.Text="";name.Visible=false
+                else name.Text=entry and entry.name or read(name,"Text") end
+            end
+            if name and entry and kind~="Knife" and kind~="Gun" then
                 local color=entryColor(entry)
                 if color then
                     for _,key in ipairs({"BackgroundColor3","BackgroundTransparency","TextColor3"}) do snapshot(name,key) end
@@ -449,10 +453,19 @@ return function(playerGui,catalog,onStatus,mode)
         end
         if not effects then
             local size=read(layout,"CellSize") or template.Size
-            if size and size.X and size.Y then
-                state.properties[layout]={CellSize=layout.CellSize,CellPadding=layout.CellPadding}
-                layout.CellSize=UDim2.new(size.X.Scale,size.X.Offset,size.Y.Scale*0.8,size.Y.Offset*0.8)
+            if size then
+                state.properties[layout]={CellSize=layout.CellSize,CellPadding=layout.CellPadding,FillDirectionMaxCells=layout.FillDirectionMaxCells}
+                layout.FillDirectionMaxCells=5
                 layout.CellPadding=UDim2.fromOffset(4,4)
+                local function resizeCells()
+                    local bounds=read(target,"AbsoluteSize")
+                    local width=bounds and bounds.X
+                    local height=type(width)=="number" and width>0 and math.max(1,math.floor(width/5-6)) or nil
+                    local cell=UDim2.new(0.2,-6,height and 0 or (size.Y and size.Y.Scale or size.y or 0)*0.8,height or (size.Y and size.Y.Offset or 80)*0.8)
+                    if layout.CellSize~=cell then layout.CellSize=cell end
+                end
+                resizeCells()
+                savedConnections[#savedConnections+1]=target:GetPropertyChangedSignal("AbsoluteSize"):Connect(resizeCells)
             end
         end
         layout.SortOrder=Enum.SortOrder.LayoutOrder
