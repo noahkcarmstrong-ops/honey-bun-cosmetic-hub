@@ -34,6 +34,14 @@ function methods:Clone()
     local copy=node(self.ClassName,self.Name)
     for k,v in pairs(self.props)do if k~='Parent'and k~='ChildAdded'and k~='CharacterAdded'then copy[k]=v end end
     for _,v in ipairs(self.children)do v:Clone().Parent=copy end
+    -- Roblox Clone remaps references between descendants of the cloned root.
+    local mapping={}
+    local function map(a,b)mapping[a]=b;for i,child in ipairs(a.children)do map(child,b.children[i])end end
+    map(self,copy)
+    for original,cloned in pairs(mapping)do
+        if original.Attachment0 then cloned.Attachment0=mapping[original.Attachment0]or original.Attachment0 end
+        if original.Attachment1 then cloned.Attachment1=mapping[original.Attachment1]or original.Attachment1 end
+    end
     return copy
 end
 local function count(root,class)local n=0;for _,v in ipairs(root:GetDescendants())do if v:IsA(class)then n=n+1 end end;return n end
@@ -122,6 +130,63 @@ assert(count(lateHandle,'Fire')==1,'Blue flame also reaches the held knife')
 assert(fireApi.report():find('built-in blue flame recreation',1,true),'Report identifies recreated effect source')
 fireApi.restore();assert(fire.destroyed and count(lateHandle,'Fire')==0,'Restoring removes recreated flames')
 fireApi.destroy()
+api.restore()
+-- Original templates can be streamed into Workspace instead of replicated storage.
+local world=node('Folder','Workspace')
+local oldGetService=game.GetService
+game.GetService=function(self,name)if name=='Workspace'then return world end;return oldGetService(self,name)end
+module.Data.WorldEffect={Name='World Effect'}
+local originalWorld=node('Folder','WorldEffect',world)
+local originalParticle=node('ParticleEmitter','Original',originalWorld);originalParticle.Rate=9
+local worldApi=dofile('mm2_effects.lua')(game)
+assert(worldApi.equip('WorldEffect','Effect'):find('Equipped effect'),'Original exact-id world template is usable')
+assert(count(replacement,'ParticleEmitter')==1 and originalParticle.Parent==originalWorld,'Loaded original is copied without moving another player effect')
+assert(worldApi.report():find('original loaded template',1,true),'Loaded sources are identified as original')
+worldApi.restore()
+-- Effect metadata can identify a live original even when its container is named generically.
+originalWorld.Name='OtherPlayerKnife'
+originalWorld.GetAttribute=function(_,key)if key=='KnifeEffect'then return 'WorldEffect' end end
+local taggedApi=dofile('mm2_effects.lua')(game)
+assert(taggedApi.equip('WorldEffect','Effect'):find('original visuals',1,true),'Exact effect metadata identifies another loaded original')
+taggedApi.destroy()
+
+module.Data.CachedWorld={Name='Cached World'}
+local transient=node('Folder','CachedWorld',world);node('Sparkles','Original',transient)
+local cachedApi=dofile('mm2_effects.lua')(game)
+assert(cachedApi.equip('CachedWorld','Effect'):find('original visuals',1,true))
+transient:Destroy()
+local cachedDisplay=node('Part','CachedDisplay');lateRef.Value=cachedDisplay
+assert(count(cachedDisplay,'Sparkles')==1,'Original template survives the source player leaving or unloading')
+cachedApi.destroy();lateRef.Value=replacement
+module.Data.MultiAsset={EffectID=88,KnifeModule=99}
+local emptyAsset=node('Folder','NoVisuals')
+local moduleOnly=node('ModuleScript','LogicOnly')
+local actualAsset=node('Folder','Visuals');node('Sparkles','OriginalSparkles',actualAsset)
+local requests={}
+game.GetObjects=function(_,uri)
+    requests[#requests+1]=uri
+    if uri=='rbxassetid://88' then return{emptyAsset} end
+    return{moduleOnly,actualAsset}
+end
+local multiApi=dofile('mm2_effects.lua')(game)
+assert(multiApi.equip('MultiAsset','Effect'):find('Equipped effect'),'All explicit original asset fields and roots are checked')
+assert(#requests==2 and count(replacement,'Sparkles')==1,'Supported visual in later asset root reaches knife')
+assert(emptyAsset.destroyed and moduleOnly.destroyed,'Unused downloaded roots are released')
+multiApi.destroy();worldApi.destroy()
+-- A catalog check covers every effect without equipping or substituting recreations.
+local allDefinitions=module.Data
+module.Data={WorldEffect={Name='World Effect'},Missing={Name='Missing'},BlueFire={KnifeModule=473588389}}
+game.GetObjects=function()return{}end
+local scanApi=dofile('mm2_effects.lua')(game)
+local summary=scanApi.checkOriginals()
+assert(summary:find('1/3',1,true),'Catalog scan counts originals only, not the BlueFire recreation')
+assert(not scanApi.getEquipped().Effect and #replacement:GetChildren()==0,'Checking every source never equips effects')
+assert(scanApi.report():find('Missing: BlueFire,Missing',1,true),'Report lists all inaccessible originals')
+scanApi.destroy()
+local cancelledScan
+cancelledScan=dofile('mm2_effects.lua')(game,function()cancelledScan.restore()end)
+assert(cancelledScan.checkOriginals():find('cancelled',1,true),'Turning effects off cancels an active source scan')
+cancelledScan.destroy();module.Data=allDefinitions
 local report=api.report();assert(report:find('defs=')and report:find('targets=')and report:find('source='),'Report includes definition and target diagnostics')
 api.destroy();assert(#replacement:GetChildren()==0 and #lateHandle:GetChildren()==0,'Closing the hub cleans all previews')
 assert(not pcall(api.equip,'Spark','Effect'),'Closed effect service cannot equip')
