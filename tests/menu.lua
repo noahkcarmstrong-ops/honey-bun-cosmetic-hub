@@ -48,11 +48,17 @@ local function createMotion()
         clearEmote=function(slot)slots[slot]=nil;return'Reset'end,
         playEmote=function(slot)calls.preview=slot;return'Playing'end,
         openWheel=function()calls.wheel=true;return'Opened'end,
-        playAnimation=function(value,looped,speed)calls.animation=value;calls.looped=looped;calls.speed=speed;return'Playing'end,
-        stopAnimation=function()calls.stopped=true;return'Stopped'end,
         reapplySaved=function()return'Restored'end,
         restore=function()calls.motionRestore=true;return'Restored'end,
         destroy=function()calls.motionDestroy=true end,
+    }
+end
+local function createAnimations()
+    return {
+        equipBundle=function(value)calls.animationBundle=value;return'Equipped'end,
+        restore=function()calls.animationRestore=true;return'Restored'end,
+        reapplySaved=function()return'Restored'end,
+        destroy=function()calls.animationDestroy=true end,
     }
 end
 local function createEditor()
@@ -83,12 +89,14 @@ function game:HttpGet(url)
     assert(url:find('/'..string.rep('a',40)..'/',1,true),'Modules and Refresh use immutable commits')
     if url:find('/avatar.lua',1,true)then return'editor-module'end
     if url:find('/motion.lua',1,true)then return'motion-module'end
+    if url:find('/animations.lua',1,true)then return'animations-module'end
     if url:find('/loader.lua',1,true)then return'loader'end
     error('Unexpected request '..url)
 end
 loadstring=function(source)
     if source=='editor-module'then return function()return createEditor end end
     if source=='motion-module'then return function()return createMotion end end
+    if source=='animations-module'then return function()return createAnimations end end
     if source=='loader'then return function()dofile('loader.lua')end end
     error('Unexpected source')
 end
@@ -134,13 +142,15 @@ assert(calls.emoteSlot==3 and slots[3].id=='12345','Emote assigned to selected w
 click('Preview slot 3');assert(calls.preview==3,'Selected emote preview')
 click('Open Roblox emote wheel');assert(calls.wheel,'Native wheel action')
 click('Reset slot 3');assert(not slots[3],'Slot reset')
-click('ANIMATIONS');field('Roblox animation link or ID').Text='rbxassetid://123'
-field('Speed (0.1 to 3)').Text='1.5';click('Play animation')
-assert(calls.animation=='rbxassetid://123' and calls.looped and calls.speed==1.5,'Animation playback controls')
-click('Stop animation');assert(calls.stopped,'Animation stop action')
+click('ANIMATIONS');field('roblox.com/bundles/123/... (animation bundle)').Text='https://www.roblox.com/bundles/82/Robot'
+click('Equip animation bundle')
+assert(calls.animationBundle=='https://www.roblox.com/bundles/82/Robot','Animation bundle Equip action')
+assert(not find(gui(),'TextButton','Play animation') and not find(gui(),'TextButton','Loop: ON'),'Standalone playback UI removed')
+click('Restore original animations');assert(calls.animationRestore,'Animation restore action')
 click('Restore original appearance');assert(calls.restore==1 and calls.motionRestore,'Restore both editors')
 local old=gui();click('Refresh');assert(old.destroyed and calls.destroy==1 and gui()~=old,'Refresh cleans the old avatar editor')
 assert(calls.motionDestroy,'Refresh cleans motion editor')
+assert(calls.animationDestroy,'Refresh cleans animation bundle editor')
 gui():Destroy()
 for _,c in ipairs(input.InputBegan.listeners)do assert(not c.Connected,'Input listeners disconnected')end
 print('Cosmetic tabs, accessory/body actions, color validation, separate repo, Refresh and cleanup passed.')

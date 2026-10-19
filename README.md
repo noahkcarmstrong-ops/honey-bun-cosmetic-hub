@@ -47,15 +47,15 @@ Wheel assignments save for the session and reapply after respawning or Refresh. 
 
 ## Animations
 
-1. Open **ANIMATIONS** and paste an animation asset link or ID.
-2. Choose looping and a speed from 0.1 to 3, then click **Play animation**.
-3. Click **Stop animation** to end playback.
+1. Open **ANIMATIONS** and paste a Roblox movement animation bundle link, such as `https://www.roblox.com/bundles/82/Robot`.
+2. Click **Equip animation bundle**, then walk or run to try it.
+3. Click **Restore original animations** to return to your original movement set.
 
-Playback uses your current avatar. Animations must match its R6/R15 rig and be permitted by Roblox. This is a player for individual animations, rather than a replacement walk/idle animation set. Playback stops on reset or Refresh; it does not automatically restart. Tabs scroll sideways on narrow screens.
+The bundle changes its included walk, run, idle, jump, fall, climb, and swimming animations while keeping your current appearance. Idle variants and swimming idle are preserved when included. The equipped bundle saves for the session and returns after resets or Refresh. This requires an R15 avatar with Roblox's standard Animate controls; games with custom movement systems may not support it. A bundle that fails to load leaves your equipped movement set in place. Tabs scroll sideways on narrow screens.
 
 ## Controls and limits
 
-- **Restore original appearance** removes added accessories, brings back hidden original accessories, restores the captured body and colors, and clears saved cosmetic selections.
+- **Restore original appearance** removes added accessories, brings back hidden original accessories, restores the captured body, colors, emote wheel and movement animations, and clears saved cosmetic selections.
 - **Right Shift** shows/hides the menu. Hiding keeps your changes.
 - **Refresh** closes the old editor and loads the latest version from this repository, then reapplies your saved cosmetics.
 - Respawning or resetting automatically reapplies your body package, hidden original accessories, added accessories, and per-region colors after your new character finishes loading.
@@ -71,6 +71,7 @@ Accessory, body, skin, and wheel assignment changes are local. They do not updat
 npx --offline --package=fengari-node-cli fengari tests/avatar.lua
 npx --offline --package=fengari-node-cli fengari tests/menu.lua
 npx --offline --package=fengari-node-cli fengari tests/motion.lua
+npx --offline --package=fengari-node-cli fengari tests/animations.lua
 ```
 
 These use Roblox stand-ins to check the editor logic; they do not prove that a game permits a particular asset.

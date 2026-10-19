@@ -87,7 +87,7 @@ content.Parent = panel
 local layout = Instance.new("UIListLayout", content)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
-local avatarAPI,motionAPI,moduleRevision
+local avatarAPI,motionAPI,animationAPI,moduleRevision
 local refresh = Instance.new("TextButton")
 refresh.Position = UDim2.new(1, -126, 0, 62)
 refresh.Size = UDim2.fromOffset(98, 26)
@@ -150,10 +150,9 @@ if activePage~="Accessories" and activePage~="Skin" and activePage~="Body" and a
 local statusText = "Local preview. Your selections save for this Roblox session."
 local statusLabel, render
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
-local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animation","")
+local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animationBundle","")
 local emoteSlot=uiSetting("emoteSlot",1)
 if emoteSlot<1 or emoteSlot>8 or emoteSlot%1~=0 then emoteSlot=1 end
-local animationLoop,animationSpeed=uiSetting("animationLoop",true),uiSetting("animationSpeed","1")
 local rgb = {uiSetting("red","255"),uiSetting("green","204"),uiSetting("blue","153")}
 local hexInput = uiSetting("hex","#FFCC99")
 local regions = {"All", "Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg"}
@@ -162,7 +161,7 @@ local regionIndex = uiSetting("region",1)
 if regionIndex<1 or regionIndex>#regions or regionIndex%1~=0 then regionIndex=1 end
 local paletteOpen=uiSetting("palette",false)
 local function saveUI()
-    local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animation=animationInput,emoteSlot=emoteSlot,animationLoop=animationLoop,animationSpeed=animationSpeed}
+    local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animationBundle=animationInput,emoteSlot=emoteSlot}
     for key,value in pairs(values) do playerGui:SetAttribute("HoneyBunCosmeticUI_"..key,value) end
 end
 -- Exact RGB samples from the user's 5-column, 6-row Roblox palette reference.
@@ -251,6 +250,18 @@ local function motion()
         if statusLabel then statusLabel.Text=message end
     end)
     return motionAPI
+end
+local function animations()
+    if animationAPI then return animationAPI end
+    api()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/animations.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    animationAPI=chunk()(Players.LocalPlayer,function(message)
+        if not alive then return end
+        statusText=message
+        if statusLabel then statusLabel.Text=message end
+    end)
+    return animationAPI
 end
 local function action(callback)
     if busy or not alive then return end
@@ -422,21 +433,17 @@ render=function()
         caption("Playback can be visible to other players through Roblox's normal animation system. Wheel assignments are saved locally.",52)
         caption("The standard wheel needs an R15 avatar and Roblox's emote menu enabled by the game. Some emotes may be restricted.",52)
     elseif activePage=="Animations" then
-        caption("ANIMATION PLAYER",24)
-        caption("Paste an animation asset link or ID to play on your avatar. This plays an animation; it does not replace your walk or idle set.",56)
-        local field=input("Roblox animation link or ID",animationInput,function(value) animationInput=value end)
-        button(animationLoop and "Loop: ON" or "Loop: OFF",function()
-            if busy then return end
-            animationLoop=not animationLoop;saveUI();render()
+        caption("ANIMATION BUNDLES",24)
+        caption("Paste a Roblox animation bundle link to change your walk, run, idle, and the other movement animations included in that bundle.",56)
+        local field=input("roblox.com/bundles/123/... (animation bundle)",animationInput,function(value) animationInput=value end)
+        button("Equip animation bundle",function()
+            animationInput=field.Text;saveUI()
+            action(function() return animations().equipBundle(animationInput) end)
         end)
-        local speed=input("Speed (0.1 to 3)",animationSpeed,function(value) animationSpeed=value end)
-        button("Play animation",function()
-            animationInput=field.Text;animationSpeed=speed.Text;saveUI()
-            action(function() return motion().playAnimation(animationInput,animationLoop,tonumber(animationSpeed)) end)
-        end)
-        button("Stop animation",function() action(function() return motion().stopAnimation() end) end)
+        button("Restore original animations",function() action(function() return animations().restore() end) end)
+        caption("Your equipped bundle saves through resets and Refresh. Walk or run after equipping to see the change.",48)
         caption("Uses your character's existing animation player, which normally shares playback with other players.",44)
-        caption("Animations must match your R6/R15 avatar and be allowed by Roblox. Private or restricted assets may not play.",52)
+        caption("Requires an R15 avatar with Roblox's standard movement controls. Games with custom animation systems may not support bundles.",52)
     else
         caption("BODY PACKAGES",24)
         caption("Choose a classic body or paste a Roblox bundle link. Packages keep your current avatar rig.",44)
@@ -455,10 +462,12 @@ render=function()
     button("Reapply saved cosmetics",function() action(function(editor)
         local message=editor.reapplySaved()
         if motionAPI then motionAPI.reapplySaved() end
+        if animationAPI then animationAPI.reapplySaved() end
         return message
     end) end)
     button("Restore original appearance",function() action(function(editor)
         if motionAPI then motionAPI.restore() end
+        if animationAPI then animationAPI.restore() end
         return editor.restore()
     end) end)
 end
@@ -487,10 +496,12 @@ gui.Destroying:Connect(function()
     respawn:Disconnect()
     if avatarAPI then avatarAPI.destroy() end
     if motionAPI then motionAPI.destroy() end
+    if animationAPI then animationAPI.destroy() end
 end)
 render()
 action(function(editor)
     local message=editor.reapplySaved()
     motion().reapplySaved()
+    animations().reapplySaved()
     return message
 end)
