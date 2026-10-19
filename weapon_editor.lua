@@ -85,13 +85,13 @@ return function(playerGui, catalog, onStatus)
     projectAxes=function()
         if not camera or not viewport then return end
         for _,guide in ipairs(guides) do
-            guide.Transparency=orbitDragging and 0 or 1
+            guide.Transparency=0
             local label=axisLabels[guide.Name]
             if label then
                 local point=camera.CFrame:PointToObjectSpace(guide:GetAttribute("AxisEnd"))
                 local size=viewport.AbsoluteSize
                 local focal=size.Y/(2*math.tan(math.rad(camera.FieldOfView)/2))
-                label.Visible=orbitDragging==true and point.Z<-.1
+                label.Visible=point.Z<-.1
                 if label.Visible then label.Position=UDim2.fromOffset(size.X/2+point.X*focal/-point.Z,size.Y/2-point.Y*focal/-point.Z) end
             end
         end
@@ -106,7 +106,7 @@ return function(playerGui, catalog, onStatus)
         for _,axis in ipairs({"X","Y","Z"})do
             local delta=axis=="X" and Vector3.new(1.5,0,0) or axis=="Y" and Vector3.new(0,1.5,0) or Vector3.new(0,0,1.5)
             local endpoint=frame:PointToWorldSpace(delta)
-            local rod=make("Part",worldModel,{Name=axis,Transparency=orbitDragging and 0 or 1,Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,Material=Enum.Material.Neon,Color=colors[axis],Size=Vector3.new(.045,.045,1.5),CFrame=CFrame.lookAt(center,endpoint)*CFrame.new(0,0,-.75)})
+            local rod=make("Part",worldModel,{Name=axis,Transparency=0,Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,Material=Enum.Material.Neon,Color=colors[axis],Size=Vector3.new(.045,.045,1.5),CFrame=CFrame.lookAt(center,endpoint)*CFrame.new(0,0,-.75)})
             rod:SetAttribute("AxisEnd",endpoint);guides[#guides+1]=rod
             if not axisLabels[axis] then
                 local tag=label(viewport,axis,UDim2.fromOffset(24,24),colors[axis],18);tag.Name="AxisLabel"..axis;tag.AnchorPoint=Vector2.new(.5,.5);tag.ZIndex=7
