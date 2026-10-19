@@ -666,6 +666,24 @@ return function(game, injectedRequire, gunLibrary)
         end
         return overlay
     end
+    local emoteConnections={}
+    function api.stopEmote()
+        for _,connection in ipairs(emoteConnections) do connection:Disconnect() end
+        emoteConnections={}
+        if track then pcall(function()track:Stop(0.15);track:Destroy()end);track=nil end
+        return "Emote stopped."
+    end
+    local function watchEmoteMovement(humanoid,player)
+        for _,connection in ipairs(emoteConnections) do connection:Disconnect() end
+        emoteConnections={}
+        local function watch(signal,callback)
+            if signal and type(read(signal,"Connect"))=="function" then emoteConnections[#emoteConnections+1]=signal:Connect(callback) end
+        end
+        watch(read(humanoid,"Running"),function(speed)if speed>0.1 then api.stopEmote() end end)
+        watch(read(humanoid,"Jumping"),function(active)if active then api.stopEmote() end end)
+        watch(read(humanoid,"Died"),api.stopEmote)
+        watch(read(player,"CharacterRemoving"),api.stopEmote)
+    end
     function api.preview(id,category,selectedTool)
         assert(alive,"The MM2 cosmetic preview is closed."); local kind=category and tostring(category):sub(1,1):upper()..tostring(category):sub(2):lower(); if kind~="Emote" then kind=kind=="Gun" and "Gun" or "Knife" end
         local e=findEntry(id,kind); assert(e,"Cosmetic is not in the local "..kind.." catalog: "..tostring(id))
@@ -698,6 +716,7 @@ return function(game, injectedRequire, gunLibrary)
                         if ok and played and type(read(nextTrack,"Stop"))=="function" then
                             if track and track~=nextTrack then pcall(function()track:Stop(0);track:Destroy()end) end
                             track=nextTrack
+                            watchEmoteMovement(h,p)
                             return "Playing character emote: "..e.name
                         end
                     end
@@ -723,6 +742,7 @@ return function(game, injectedRequire, gunLibrary)
             end
             if track then pcall(function() track:Stop(0);track:Destroy() end) end
             track=nextTrack
+            watchEmoteMovement(h,p)
             return "Previewing emote: "..e.name
         end
         local handle
@@ -1228,17 +1248,13 @@ return function(game, injectedRequire, gunLibrary)
     end
     function api.collectPlayerGun(username)return api.collectPlayerWeapon(username,"Gun")end
     function api.collectPlayerKnife(username)return api.collectPlayerWeapon(username,"Knife")end
-    function api.stopEmote()
-        if track then pcall(function()track:Stop(0.15);track:Destroy()end);track=nil end
-        return "Emote stopped."
-    end
     function api.restore()
         appearanceGeneration=appearanceGeneration+1
         if alive and gunLibrary then
             if equipped.Gun and gunLibrary.getSelected("Gun")==equipped.Gun then gunLibrary.select(nil,"Gun") end
             if equipped.Knife and gunLibrary.getSelected("Knife")==equipped.Knife then gunLibrary.select(nil,"Knife") end
         end
-        if track then pcall(function() track:Stop(0);track:Destroy() end); track=nil end
+        api.stopEmote()
         for tool,old in pairs(toolPresentations) do restoreToolPresentation(tool,old) end
         toolPresentations={}
         for _,old in pairs(snapshots) do restoreHandle(old) end
@@ -1394,6 +1410,17 @@ return function(game, injectedRequire, gunLibrary)
             catalog(kind)
             local status=cacheStatus[kind]
             lines[#lines+1]=label.." requireType="..status.dataType.." error="..tostring(status.error or "none").." samples="..samples(rawData[kind])
+        end
+        local emoteGui=read(p,"PlayerGui")
+        local emoteUiCount=0
+        for _,object in ipairs(descendants(emoteGui)) do
+            local path=fullName(object)
+            if lower(path):find("emote",1,true) and not lower(path):find("inventory",1,true) and not lower(path):find("honeybunlocal",1,true) then
+                if emoteUiCount<100 then
+                    lines[#lines+1]="Emote bar UI="..path.." ["..tostring(read(object,"ClassName")).."] text="..tostring(read(object,"Text") or "").." image="..tostring(read(object,"Image") or "").." visible="..tostring(read(object,"Visible"))
+                    emoteUiCount=emoteUiCount+1
+                end
+            end
         end
         local gui=p and read(p,"PlayerGui"); local paths={}; for _,o in ipairs(descendants(rs)) do local path=fullName(o); local x=lower(path); if (x:find("database",1,true) or x:find("item",1,true) or x:find("emote",1,true) or x:find("inventory",1,true)) and (isA(o,"ModuleScript") or isA(o,"Folder") or isA(o,"Model") or isA(o,"LocalScript")) then paths[#paths+1]="RS match: "..path end end; for _,o in ipairs(descendants(gui)) do local path=fullName(o); local x=lower(path); if (x:find("inventory",1,true) or x:find("item",1,true) or x:find("emote",1,true)) and (isA(o,"ModuleScript") or isA(o,"LocalScript") or isA(o,"ScreenGui") or isA(o,"Frame")) then paths[#paths+1]="PlayerGui match: "..path end end; local c=p and read(p,"Character"); for _,o in ipairs(children(c)) do if isA(o,"Tool") or isA(o,"Accessory") then paths[#paths+1]="Equipped "..tostring(read(o,"ClassName") or "Instance")..": "..fullName(o) end end; for _,path in ipairs(paths) do if #lines<80 then lines[#lines+1]=path end end; return table.concat(lines,"\n")
     end

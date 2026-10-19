@@ -68,6 +68,12 @@ emoteModule.Data.Special={Name='Special prop emote',Command='unavailable'}
 local commandAnimation=node('Animation1','Animation');commandAnimation.AnimationId='rbxassetid://24680'
 local animate=node('Animate','LocalScript',{node('dance2','Folder',{commandAnimation})})
 livePlayer.Character=node('Character','Model',{humanoid,animate})
+local function emoteSignal()
+    local listeners={}
+    return {Connect=function(_,fn)local c={active=true};function c:Disconnect()self.active=false end;listeners[#listeners+1]={c,fn};return c end,
+    Fire=function(_,value)for _,pair in ipairs(listeners)do if pair[1].active then pair[2](value)end end end}
+end
+humanoid.Running=emoteSignal();humanoid.Jumping=emoteSignal();humanoid.Died=emoteSignal()
 local commandTrack
 function animator:LoadAnimation(animation)
     assert(animation.AnimationId=='rbxassetid://24680','Command resolves actual avatar animation')
@@ -80,6 +86,13 @@ allEmotes.preview('Dance2','Emote')
 assert(commandTrack.Looped==true,'Looping MM2 emotes keep their catalog behavior')
 allEmotes.stopEmote()
 assert(commandTrack.stopped and commandTrack.destroyed,'Stop emote cleans its track without restoring weapons')
+allEmotes.preview('Dance2','Emote')
+humanoid.Running:Fire(0);assert(not commandTrack.stopped,'Standing still keeps the emote playing')
+humanoid.Running:Fire(8);assert(commandTrack.stopped and commandTrack.destroyed,'Starting to walk stops the current emote')
+allEmotes.preview('Dance2','Emote');humanoid.Jumping:Fire(true)
+assert(commandTrack.stopped,'Jumping also cancels the current emote')
+allEmotes.preview('Dance2','Emote');allEmotes.restore();commandTrack.stopped=false;humanoid.Running:Fire(8)
+assert(not commandTrack.stopped,'Restore disconnects old emote movement listeners')
 local specialOk,specialMessage=pcall(allEmotes.preview,'Special','Emote')
 assert(not specialOk and tostring(specialMessage):find('MM2-specific game behavior',1,true),'Unavailable emotes explain the missing game behavior')
 local characterEmote=node('PlayEmote','BindableFunction')
