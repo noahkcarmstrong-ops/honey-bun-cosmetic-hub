@@ -83,12 +83,20 @@ return function(player,gui)
             end
         end
     end
+    local function equippedAccessory(object)
+        local node=object
+        while node and node~=character do
+            if is(node,"Accessory")or is(node,"Hat")then return node.Parent==character end
+            node=read(node,"Parent")
+        end
+        return false
+    end
     local function bind(nextCharacter)
         for accessory in pairs(entries)do remove(accessory)end
         disconnect(connections);connections={};character=nextCharacter
         if not character then return end
         connect(read(character,"DescendantAdded"),function(object)
-            if is(object,"Sound")or is(object,"Accessory")or is(object,"Hat")or read(object,"Name")=="Handle"then scan()end
+            if (is(object,"Sound")or is(object,"Accessory")or is(object,"Hat")or read(object,"Name")=="Handle") and equippedAccessory(object) then scan()end
         end,connections)
         connect(read(character,"DescendantRemoving"),function(object)
             if entries[object]then remove(object)end

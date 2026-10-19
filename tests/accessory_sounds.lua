@@ -39,7 +39,7 @@ end
 function methods:IsA(class)return class==self.ClassName or (class=="BasePart"and(self.ClassName=="Part"or self.ClassName=="MeshPart"))end
 function methods:GetChildren()local out={};for _,v in ipairs(self.children)do out[#out+1]=v end;return out end
 function methods:FindFirstChild(name)for _,v in ipairs(self.children)do if v.Name==name then return v end end end
-function methods:GetDescendants()local out={};local function walk(p)for _,v in ipairs(p.children)do out[#out+1]=v;walk(v)end end;walk(self);return out end
+function methods:GetDescendants()self.DescendantScanCount=(self.DescendantScanCount or 0)+1;local out={};local function walk(p)for _,v in ipairs(p.children)do out[#out+1]=v;walk(v)end end;walk(self);return out end
 function methods:GetPropertyChangedSignal(key)self.propertySignals[key]=self.propertySignals[key]or signal();return self.propertySignals[key]end
 function methods:Play()self.PlayCount=(self.PlayCount or 0)+1;self.IsPlaying=true end
 function methods:Stop()self.StopCount=(self.StopCount or 0)+1;self.IsPlaying=false end
@@ -91,6 +91,14 @@ nextTimer()
 local playingLaughs=(laugh1.IsPlaying and 1 or 0)+(laugh2.IsPlaying and 1 or 0)+(laugh3.IsPlaying and 1 or 0)
 assert(playingLaughs<=1,"Witches Brew laughs do not overlap")
 assert(laugh1.PlayCount+laugh2.PlayCount+laugh3.PlayCount==1,"a laugh that is still playing is neither overlapped nor restarted")
+generic.DescendantScanCount=0
+local pickupRoot=node("Part","HumanoidRootPart",player.Character)
+for i=1,30 do sound(pickupRoot,tostring(70000+i),false) end
+assert(generic.DescendantScanCount==0,"unrelated pickup sounds do not rescan equipped accessories")
+local tool=node("Tool","PickupTool",player.Character);local scansBeforeHandle=generic.DescendantScanCount
+node("Part","Handle",tool)
+assert(generic.DescendantScanCount==scansBeforeHandle,"an unrelated tool handle does not rescan equipped accessories")
+pickupRoot:Destroy();tool:Destroy()
 witches.Parent=nil;nextTimer()
 assert(laugh1.PlayCount+laugh2.PlayCount+laugh3.PlayCount==1,"removing the witch hat cancels its pending laugh")
 
