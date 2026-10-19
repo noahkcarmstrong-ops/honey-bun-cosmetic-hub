@@ -80,17 +80,80 @@ return function(game,gui)
         if not next(decoded)then return nil,false end
         return decoded,true
     end
+    local SOUND_PROPERTIES={SoundId="string",Volume="volume",PlaybackSpeed="speed",RollOffMinDistance="distance",RollOffMaxDistance="distance",EmitterSize="distance",Looped="boolean"}
+    local function packPresentation(presentation)
+        if presentation==nil then return nil end
+        if type(presentation)~="table"then return nil end
+        for key in pairs(presentation)do if key~="Grip"and key~="ToolIcon"and key~="Sounds"then return nil end end
+        local packed={}
+        if presentation.Grip~=nil then
+            local grip=encode(presentation.Grip);if not grip or grip.t~="CFrame"then return nil end
+            packed.Grip=grip
+        end
+        if presentation.ToolIcon~=nil then
+            if type(presentation.ToolIcon)~="string"or #presentation.ToolIcon>MAX_STRING then return nil end
+            if #presentation.ToolIcon>0 then packed.ToolIcon=presentation.ToolIcon end
+        end
+        if presentation.Sounds~=nil then
+            if type(presentation.Sounds)~="table"then return nil end
+            local count=0;for key in pairs(presentation.Sounds)do if type(key)~="number"or key<1 or key>32 or key%1~=0 then return nil end;count=count+1 end
+            if count>32 then return nil end
+            for i=1,count do if presentation.Sounds[i]==nil then return nil end end
+            if count>0 then packed.Sounds={} end
+            for i,sound in ipairs(presentation.Sounds)do
+                if type(sound)~="table"then return nil end
+                for key in pairs(sound)do if key~="Name"and key~="Path"and key~="Properties"then return nil end end
+                if type(sound.Name)~="string"or #sound.Name==0 or #sound.Name>100 or type(sound.Path)~="table"then return nil end
+                local pathCount=0;for key in pairs(sound.Path)do if type(key)~="number"or key<1 or key>8 or key%1~=0 then return nil end;pathCount=pathCount+1 end
+                if pathCount==0 or pathCount>8 then return nil end
+                for n=1,pathCount do if sound.Path[n]==nil then return nil end end
+                local item={Name=sound.Name,Path={}}
+                for n,part in ipairs(sound.Path)do if type(part)~="string"or #part==0 or #part>100 then return nil end;item.Path[n]=part end
+                if type(sound.Properties)~="table"then return nil end
+                item.Properties={}
+                for key,value in pairs(sound.Properties)do
+                    local rule=SOUND_PROPERTIES[key];if not rule then return nil end
+                    if rule=="string"then if type(value)~="string"or #value>MAX_STRING then return nil end
+                    elseif rule=="boolean"then if type(value)~="boolean"then return nil end
+                    elseif not finite(value)then return nil
+                    elseif rule=="volume"then if value<0 or value>10 then return nil end
+                    elseif rule=="speed"then if value<=0 or value>10 then return nil end
+                    elseif value<0 then return nil end
+                    item.Properties[key]=value
+                end
+                packed.Sounds[i]=item
+            end
+        end
+        return next(packed)and packed or nil
+    end
+    local function unpackPresentation(presentation)
+        if presentation==nil then return nil,true end
+        if type(presentation)~="table"then return nil,false end
+        for key in pairs(presentation)do if key~="Grip"and key~="ToolIcon"and key~="Sounds"then return nil,false end end
+        local result={}
+        if presentation.Grip~=nil then local grip=decode(presentation.Grip);if typeof(grip)~="CFrame"then return nil,false end;result.Grip=grip end
+        if presentation.ToolIcon~=nil then if type(presentation.ToolIcon)~="string"or #presentation.ToolIcon>MAX_STRING then return nil,false end;if #presentation.ToolIcon>0 then result.ToolIcon=presentation.ToolIcon end end
+        if presentation.Sounds~=nil then
+            local packed=packPresentation({Sounds=presentation.Sounds});if packed then
+                result.Sounds={}
+                for i,sound in ipairs(packed.Sounds)do result.Sounds[i]={Name=sound.Name,Path=sound.Path,Properties=sound.Properties}end
+            elseif type(presentation.Sounds)~="table"or next(presentation.Sounds)~=nil then return nil,false end
+        end
+        return next(result)and result or nil,true
+    end
     local function pack(d)
         local out={PortableGun=true,MeshId=d.MeshId,TextureId=d.TextureId,Scale=encode(d.Scale),Offset=encode(d.Offset),
             VertexColor=encode(d.VertexColor),Color=encode(d.Color),Material=encode(d.Material,"Material"),Size=encode(d.Size)}
         if d.Mounts then out.Mounts=packMounts(d.Mounts)end
+        if d.Presentation then out.Presentation=packPresentation(d.Presentation)end
         return out
     end
     local function unpackDefinition(d)
         if type(d)~="table"or d.PortableGun~=true then return nil end
         local mounts,mountsValid=unpackMounts(d.Mounts);if not mountsValid then return nil end
+        local presentation,presentationValid=unpackPresentation(d.Presentation);if not presentationValid then return nil end
         local result={PortableGun=true,MeshId=decode(d.MeshId),TextureId=decode(d.TextureId),Scale=decode(d.Scale),Offset=decode(d.Offset),
-            VertexColor=decode(d.VertexColor),Color=decode(d.Color),Material=decode(d.Material,"Material"),Size=decode(d.Size),Mounts=mounts}
+            VertexColor=decode(d.VertexColor),Color=decode(d.Color),Material=decode(d.Material,"Material"),Size=decode(d.Size),Mounts=mounts,Presentation=presentation}
         return validDefinition(result)and result or nil
     end
     local function canonical(v,precise)
@@ -133,7 +196,7 @@ return function(game,gui)
         assert(#encoded<=MAX_BYTES,"Saved gun library is full.");gui:SetAttribute(KEY,encoded)
     end
     local api={}
-    function api.capture(sourceBasePart,playerName,mounts,kind)
+    function api.capture(sourceBasePart,playerName,mounts,kind,presentation)
         kind=kind=="Knife" and "Knife" or "Gun"
         local noun=kind:lower()
         assert(sourceBasePart and read(sourceBasePart,"IsA") and sourceBasePart:IsA("BasePart"),"Choose a "..noun.." mesh part.")
@@ -154,6 +217,8 @@ return function(game,gui)
             Color=read(sourceBasePart,"Color"),Material=read(sourceBasePart,"Material"),Size=size}
         local encodedMounts=packMounts(mounts)
         definition.Mounts=unpackMounts(encodedMounts)
+        local encodedPresentation=packPresentation(presentation)
+        if encodedPresentation then definition.Presentation=unpackPresentation(encodedPresentation)end
         assert(validDefinition(definition),"Gun mesh has unsupported or oversized visual properties.")
         local id=identity(definition,kind)
         for _,entry in ipairs(entries)do if entry.id==id and entry.kind==kind then return entry end end

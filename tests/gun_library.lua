@@ -136,6 +136,7 @@ local function frame(x,y,z)
     local f={X=x or 0,Y=y or 0,Z=z or 0,_kind='CFrame'}
     function f:ToObjectSpace(other)return frame(other.X-self.X,other.Y-self.Y,other.Z-self.Z)end
     function f:GetComponents()return self.X,self.Y,self.Z,1,0,0,0,1,0,0,0,1 end
+    function f:Inverse()return frame(-self.X,-self.Y,-self.Z)end
     return setmetatable(f,{__mul=function(a,b)return frame(a.X+b.X,a.Y+b.Y,a.Z+b.Z)end})
 end
 CFrame={new=frame}
@@ -165,6 +166,32 @@ assert(heldOverlay.destroyed and realHandle.LocalTransparencyModifier==0,'Puttin
 mountApi.restore()
 assert(originalChild.LocalTransparencyModifier==0 and native.LocalTransparencyModifier==0.25,'Removing the skin restores native root and detail visibility')
 mountApi.destroy()
+
+-- A rifle's own Tool grip, icon and sounds differ from the native pistol.
+local sourceTool=node('Tool','Gun',sourcePlayer.Character)
+sourceTool.Grip=frame(4,0,0);sourceTool.TextureId='rbxassetid://scope-icon'
+sourceMesh.Name='Handle';sourceMesh.Parent=sourceTool
+local sourceShot=node('Sound','Shoot',sourceMesh);sourceShot.SoundId='rbxassetid://scope-shot';sourceShot.Volume=0.7;sourceShot.PlaybackSpeed=1.2
+realGun.Grip=frame(1,0,0);realGun.TextureId='rbxassetid://pistol-icon'
+local realShot=node('Sound','Shoot',realHandle);realShot.SoundId='rbxassetid://pistol-shot';realShot.Volume=0.4;realShot.PlaybackSpeed=1
+local presentationLibrary=create(mm2Game,gui())
+local presentationApi=dofile('mm2.lua')(mm2Game,function()return{}end,presentationLibrary)
+presentationApi.collectPlayerGun('BIearyEyed')
+assert(realGun.TextureId=='rbxassetid://scope-icon','Toolbar icon follows captured Tool even while in Backpack')
+assert(realShot.SoundId=='rbxassetid://scope-shot' and realShot.Volume==0.7,'Real weapon triggers use captured original shot sound')
+realGun.Parent=localPlayer.Character
+local gripOverlay=realHandle:FindFirstChild('HoneyBunCosmeticVisual').Value
+assert(gripOverlay.CFrame.X==107,'Rifle grip corrects the native pistol handle without changing real Tool grip')
+assert(realGun.Grip.X==1 and sourceTool.Grip.X==4,'Source and gameplay Tool grips remain unchanged')
+local sourceHand=node('MeshPart','RightHand',sourcePlayer.Character);sourceHand.CFrame=frame(20,0,0)
+local localHand=node('MeshPart','RightHand',localPlayer.Character);localHand.CFrame=frame(200,0,0)
+presentationApi.collectPlayerGun('BIearyEyed')
+gripOverlay=realHandle:FindFirstChild('HoneyBunCosmeticVisual').Value
+assert(gripOverlay.CFrame.X==193,'Exact captured hand position takes priority over generic Tool grip correction')
+presentationApi.restore()
+assert(realGun.TextureId=='rbxassetid://pistol-icon' and realShot.SoundId=='rbxassetid://pistol-shot' and realShot.Volume==0.4,'Restore returns toolbar icon and original weapon audio')
+assert(sourceShot.SoundId=='rbxassetid://scope-shot','Source player sound is untouched')
+presentationApi.destroy()
 
 local bad=gui(http:JSONEncode({version=1,entries={{id="bad",name="bad",definition={PortableGun=true}}}}))
 assert(#create(game,bad).list()==0,"malformed saved definitions are rejected")

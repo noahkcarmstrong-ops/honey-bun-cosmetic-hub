@@ -107,6 +107,7 @@ return function(game, injectedRequire, gunLibrary)
         end end; return out
     end
     local snapshots,track = {},nil
+    local toolPresentations={}
     local appearanceGeneration=0
     local equipped,pending,connections = {},{},{}
     local allowPending=false
@@ -344,7 +345,58 @@ return function(game, injectedRequire, gunLibrary)
         set(old.handle,"Color",old.color);set(old.handle,"Material",old.material)
         set(old.handle,"Size",old.size)
     end
-    local function applySavedGun(handle,e,held)
+    local function restoreToolPresentation(tool,old)
+        old.restoring=true
+        if old.icon~=nil then set(tool,"TextureId",old.icon) end
+        for sound,values in pairs(old.sounds) do for key,value in pairs(values) do set(sound,key,value) end end
+    end
+    local function applyToolPresentation(tool,e)
+        if not isA(tool,"Tool") then return end
+        local old=toolPresentations[tool]
+        if old and old.id~=e.id then restoreToolPresentation(tool,old);toolPresentations[tool]=nil;old=nil end
+        local presentation=e.definition.Presentation
+        if not presentation then return end
+        if not old then
+            old={id=e.id,icon=read(tool,"TextureId"),sounds={}}
+            toolPresentations[tool]=old
+            local changed=read(tool,"GetPropertyChangedSignal")
+            if presentation.ToolIcon and type(changed)=="function" then
+                connect(changed(tool,"TextureId"),function()
+                    if not old.restoring and toolPresentations[tool]==old and read(tool,"TextureId")~=presentation.ToolIcon then
+                        old.icon=read(tool,"TextureId");set(tool,"TextureId",presentation.ToolIcon)
+                    end
+                end)
+            end
+        end
+        if presentation.ToolIcon then set(tool,"TextureId",presentation.ToolIcon) end
+        for _,record in ipairs(presentation.Sounds or {}) do
+            local sound=tool
+            for _,name in ipairs(record.Path) do sound=child(sound,name);if not sound then break end end
+            if not isA(sound,"Sound") then
+                sound=nil
+                for _,candidate in ipairs(descendants(tool)) do
+                    if isA(candidate,"Sound") and read(candidate,"Name")==record.Name then
+                        if sound then sound=nil;break end
+                        sound=candidate
+                    end
+                end
+            end
+            if sound and not old.sounds[sound] then
+                local values={};old.sounds[sound]=values
+                for key,value in pairs(record.Properties or {}) do
+                    values[key]=read(sound,key)
+                    set(sound,key,value)
+                    local changed=read(sound,"GetPropertyChangedSignal")
+                    if type(changed)=="function" then connect(changed(sound,key),function()
+                        if not old.restoring and toolPresentations[tool]==old and read(sound,key)~=value then
+                            values[key]=read(sound,key);set(sound,key,value)
+                        end
+                    end) end
+                end
+            end
+        end
+    end
+    local function applySavedGun(handle,e,held,tool)
         local kind=e.kind or "Gun"
         assert(handle,"Your "..kind:lower().." display has not loaded yet.")
         local old=snapshots[handle]
@@ -354,9 +406,14 @@ return function(game, injectedRequire, gunLibrary)
         local p=read(service("Players"),"LocalPlayer")
         local character=read(p,"Character")
         local mount=def.Mounts and def.Mounts[held and "Held" or "Holster"]
-        local anchor=mount and child(character,mount.Part) or handle
-        local offset=mount and mount.Offset
-        if not anchor then anchor=handle;offset=nil end
+        local anchor=mount and child(character,mount.Part)
+        local offset=anchor and mount.Offset
+        anchor=anchor or handle
+        local grip=held and def.Presentation and def.Presentation.Grip
+        if not offset and grip and read(tool,"Grip") then
+            local ok,relative=pcall(function()return tool.Grip*grip:Inverse()end)
+            if ok then anchor=handle;offset=relative end
+        end
         local overlay=Instance.new("Part")
         local ok,message=pcall(function()
             overlay.Name=kind=="Gun" and "HoneyBunSavedGun" or "HoneyBunSavedKnife"
@@ -456,13 +513,18 @@ return function(game, injectedRequire, gunLibrary)
             local tool=selectedTool
             if not tool then local target=targetTool(kind);tool=target end
             local held=isA(tool,"Tool")
+            applyToolPresentation(tool,e)
             if held and read(tool,"Parent")~=read(read(service("Players"),"LocalPlayer"),"Character") then
                 if snapshots[handle] then restoreHandle(snapshots[handle]);snapshots[handle]=nil end
                 return "Saved "..kind:lower().." selected; draw your real "..kind:lower().." to use this appearance."
             end
-            applySavedGun(handle,e,held)
+            applySavedGun(handle,e,held,tool)
             equipped[kind]=e.id;pending[kind]=nil
-            return "Previewing saved "..kind:lower().." locally: "..e.name
+            local message="Previewing saved "..kind:lower().." locally: "..e.name
+            if held and not (e.definition.Mounts and e.definition.Mounts.Held) and not (e.definition.Presentation and e.definition.Presentation.Grip) then
+                message=message..". Held grip was not saved; copy again while the owner holds it."
+            end
+            return message
         end
         if snapshots[handle] and snapshots[handle].overlay then restoreHandle(snapshots[handle]);snapshots[handle]=nil end
         local meshId,textureId,color,material,scale,meshType,source=handleVisual(e.definition,e)
@@ -580,6 +642,9 @@ return function(game, injectedRequire, gunLibrary)
         assert(alive,"The MM2 cosmetic preview is closed.")
         local kind=category and tostring(category):sub(1,1):upper()..tostring(category):sub(2):lower(); assert(kind=="Gun" or kind=="Knife","Equip category must be Knife or Gun.")
         local e=findEntry(id,kind); assert(e,"Unsupported "..kind:lower().." cosmetic: "..tostring(id))
+        for tool,old in pairs(toolPresentations) do
+            if toolKind(tool)==kind and old.id~=e.id then restoreToolPresentation(tool,old);toolPresentations[tool]=nil end
+        end
         if gunLibrary then gunLibrary.select(field(e.definition,"PortableGun") and e.id or nil,kind) end
         lastAttempt={id=e.id,kind=kind,definition=e.definition}
         local generation=appearanceGeneration
@@ -625,6 +690,28 @@ return function(game, injectedRequire, gunLibrary)
         local ok,offset=pcall(function() return anchor.CFrame:ToObjectSpace(source.CFrame) end)
         if ok then return {Part=anchor.Name,Offset=offset} end
     end
+    local function capturePresentation(tool,source)
+        local result={Sounds={}}
+        if tool then
+            result.Grip=read(tool,"Grip")
+            local icon=read(tool,"TextureId")
+            if type(icon)=="string" and icon~="" then result.ToolIcon=icon end
+        end
+        local root=tool or source
+        for _,sound in ipairs(descendants(root)) do
+            if isA(sound,"Sound") and #result.Sounds<32 then
+                local path,object={},sound
+                while object and object~=root do table.insert(path,1,read(object,"Name"));object=read(object,"Parent") end
+                if not tool then table.insert(path,1,"Handle") end
+                local properties={}
+                for _,key in ipairs({"SoundId","Volume","PlaybackSpeed","RollOffMinDistance","RollOffMaxDistance","EmitterSize","Looped"}) do properties[key]=read(sound,key) end
+                if type(properties.SoundId)=="string" and properties.SoundId~="" and #path<=8 then
+                    result.Sounds[#result.Sounds+1]={Name=read(sound,"Name"),Path=path,Properties=properties}
+                end
+            end
+        end
+        return result
+    end
     function api.collectPlayerWeapon(username,kind)
         kind=kind=="Knife" and "Knife" or "Gun"
         local kindLower=kind:lower()
@@ -640,10 +727,10 @@ return function(game, injectedRequire, gunLibrary)
         assert(target,"Player not found in this server: "..username)
         assert(target~=read(players,"LocalPlayer"),"Choose another player's loaded "..kindLower..".")
         local character=read(target,"Character")
-        local source,heldSource,holsteredSource
+        local source,heldSource,holsteredSource,heldTool
         -- Prefer the held weapon: its display can be hidden while it is equipped.
         for _,object in ipairs(children(character)) do
-            if isA(object,"Tool") and toolKind(object)==kind then heldSource=weaponHandle(object);break end
+            if isA(object,"Tool") and toolKind(object)==kind then heldTool=object;heldSource=weaponHandle(object);break end
         end
         local reference=child(character,"DisplayRef"..kind)
         if referenceKind(reference)==kind then holsteredSource=weaponHandle(read(reference,"Value")) end
@@ -651,9 +738,13 @@ return function(game, injectedRequire, gunLibrary)
         assert(source and isA(source,"BasePart"),"Their "..kindLower.." model is not loaded. Ask them to equip it nearby, then collect again.")
         assert(isA(source,"MeshPart") or childClass(source,"SpecialMesh"),"Their loaded "..kindLower.." has no supported mesh to copy.")
         local mounts={Holster=captureGunMount(holsteredSource,character,false),Held=captureGunMount(heldSource,character,true)}
-        local entry=gunLibrary.capture(source,tostring(read(target,"Name")),mounts,kind)
+        local presentation=capturePresentation(heldTool,source)
+        local entry=gunLibrary.capture(source,tostring(read(target,"Name")),mounts,kind,presentation)
         loadedLookupLog[#loadedLookupLog+1]="Saved "..kindLower.." from "..tostring(read(target,"Name")).."; mesh="..tostring(entry.definition.MeshId)
-        return api.equip(entry.id,kind)..". Saved to your "..kindLower.." library."
+        local message=api.equip(entry.id,kind)..". Saved to your "..kindLower.." library."
+        message=message.." Grip: "..(presentation.Grip and "captured" or "not loaded").."; icon: "..(presentation.ToolIcon and "captured" or "not loaded").."; sounds: "..#presentation.Sounds.."."
+        if not heldTool then message=message.." Save again while they hold it to capture its held grip, toolbar icon, and loaded sounds." end
+        return message
     end
     function api.collectPlayerGun(username)return api.collectPlayerWeapon(username,"Gun")end
     function api.collectPlayerKnife(username)return api.collectPlayerWeapon(username,"Knife")end
@@ -664,6 +755,8 @@ return function(game, injectedRequire, gunLibrary)
             if equipped.Knife and gunLibrary.getSelected("Knife")==equipped.Knife then gunLibrary.select(nil,"Knife") end
         end
         if track then pcall(function() track:Stop(0);track:Destroy() end); track=nil end
+        for tool,old in pairs(toolPresentations) do restoreToolPresentation(tool,old) end
+        toolPresentations={}
         for _,old in pairs(snapshots) do restoreHandle(old) end
         snapshots={}; pending={}; equipped={};equipError=nil;lastEquipResult=nil; disconnectAll(); return "Restored local MM2 preview."
     end
@@ -721,6 +814,13 @@ return function(game, injectedRequire, gunLibrary)
         for _,kind in ipairs({"Knife","Gun"}) do
             local reference,target,handle=displayReference(kind)
             lines[#lines+1]="DisplayRef"..kind.."="..(reference and fullName(reference) or "missing").." Value="..(target and fullName(target) or "missing").." class="..(target and tostring(read(target,"ClassName")) or "missing").." Handle="..(handle and fullName(handle) or "missing")
+            local entry=equipped[kind] and findEntry(equipped[kind],kind)
+            local presentation=entry and entry.definition.Presentation
+            if presentation then
+                local matched=0
+                for tool,old in pairs(toolPresentations) do if toolKind(tool)==kind then for _ in pairs(old.sounds) do matched=matched+1 end end end
+                lines[#lines+1]=kind.." saved presentation: grip="..tostring(presentation.Grip~=nil).." icon="..tostring(presentation.ToolIcon~=nil).." sounds="..#(presentation.Sounds or {}).." matched="..matched
+            end
         end
         for _,entry in ipairs(loadedLookupLog) do lines[#lines+1]="Loaded source: "..entry end
         local visualCount=0

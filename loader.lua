@@ -457,7 +457,7 @@ render=function()
         caption(mm2MenuOpen and "MM2 MENU" or "MURDER MYSTERY 2",24)
         if mm2MenuOpen then
             caption("SAVE A PLAYER'S LOOK",24)
-            caption("Enter a username from this server. Their gun, knife, or effect must be loaded nearby. Saved copies are for you only.",64)
+            caption("Enter a username from this server. Save while they hold the weapon to capture its hand position, toolbar icon, and loaded sounds. Saved copies are for you only.",80)
             local owner=input("Player's Roblox username",copyPlayerInput,function(value)copyPlayerInput=value end)
             local function username()
                 copyPlayerInput=owner.Text:gsub("^%s+",""):gsub("%s+$","")
