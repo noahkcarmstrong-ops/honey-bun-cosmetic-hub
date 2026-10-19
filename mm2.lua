@@ -675,8 +675,36 @@ return function(game, injectedRequire, gunLibrary)
             local h=childClass(read(p,"Character"),"Humanoid")
             local animator=childClass(h,"Animator")
             local aid=field(e.definition,"AnimationId") or field(e.definition,"AnimationID") or field(e.definition,"Animation")
+            local loop=field(e.definition,"Loop")
+            if not aid then
+                local command=lower(field(e.definition,"Command"))
+                local animate=child(read(p,"Character"),"Animate")
+                -- Standard dances can refer to the character's own animation set.
+                for _,group in ipairs(children(animate)) do
+                    if command~="" and lower(read(group,"Name"))==command then
+                        local candidates={group}
+                        for _,object in ipairs(descendants(group)) do candidates[#candidates+1]=object end
+                        for _,object in ipairs(candidates) do
+                            if isA(object,"Animation") and read(object,"AnimationId")~="" then aid=read(object,"AnimationId");break end
+                        end
+                    end
+                    if aid then break end
+                end
+                if not aid and command~="" then
+                    local play=child(animate,"PlayEmote")
+                    if isA(play,"BindableFunction") then
+                        local ok,played,playedTrack=pcall(function()return play:Invoke(command)end)
+                        local nextTrack=type(read(played,"Stop"))=="function" and played or playedTrack
+                        if ok and played and type(read(nextTrack,"Stop"))=="function" then
+                            if track and track~=nextTrack then pcall(function()track:Stop(0);track:Destroy()end) end
+                            track=nextTrack
+                            return "Playing character emote: "..e.name
+                        end
+                    end
+                end
+            end
             if type(aid)=="number" then aid=tostring(aid) end
-            assert(type(aid)=="string" and aid~="","Emote has no explicit AnimationId.")
+            assert(type(aid)=="string" and aid~="","This emote has no accessible animation on your character; it may need MM2-specific game behavior.")
             if aid:match("^%s*%d+%s*$") then aid="rbxassetid://"..aid:match("%d+") end
             assert(animator and type(read(animator,"LoadAnimation"))=="function","Character Animator is unavailable for local emote preview.")
             local anim=Instance.new("Animation")
@@ -685,6 +713,7 @@ return function(game, injectedRequire, gunLibrary)
                 anim.AnimationId=aid
                 nextTrack=animator:LoadAnimation(anim)
                 assert(nextTrack,"Animator did not return an animation track.")
+                if type(loop)=="boolean" then nextTrack.Looped=loop end
                 nextTrack:Play()
             end)
             anim:Destroy()
@@ -1199,6 +1228,10 @@ return function(game, injectedRequire, gunLibrary)
     end
     function api.collectPlayerGun(username)return api.collectPlayerWeapon(username,"Gun")end
     function api.collectPlayerKnife(username)return api.collectPlayerWeapon(username,"Knife")end
+    function api.stopEmote()
+        if track then pcall(function()track:Stop(0.15);track:Destroy()end);track=nil end
+        return "Emote stopped."
+    end
     function api.restore()
         appearanceGeneration=appearanceGeneration+1
         if alive and gunLibrary then

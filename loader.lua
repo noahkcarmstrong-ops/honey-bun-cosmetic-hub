@@ -48,6 +48,7 @@ local mm2WeaponEditorAPI
 local mm2GunLibraryAPI
 local accessorySoundsAPI
 local mm2Enabled=false
+local mm2EmotesShown=false
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 for _, name in ipairs({"HoneyBunCosmeticHub"}) do
     local old = playerGui:FindFirstChild(name)
@@ -660,6 +661,25 @@ render=function()
                     local message=mm2().identifySavedWeapon(weaponName.Text,kind)
                     updateWeapons();return message
                 end) end)
+            end
+            caption("MM2 EMOTES",24)
+            button(mm2EmotesShown and "Show all MM2 emotes: ON" or "Show all MM2 emotes: OFF",function() action(function()
+                mm2EmotesShown=not mm2EmotesShown
+                if not mm2EmotesShown then mm2().stopEmote() end
+                return mm2EmotesShown and "MM2 emote catalog opened below." or "MM2 emote catalog hidden."
+            end) end)
+            if mm2EmotesShown then
+                caption("Uses MM2's animation IDs or your avatar's matching animations. Special props and visibility to others depend on the game.",64)
+                button("Stop emote",function()action(function()return mm2().stopEmote()end)end)
+                local good,emotes=pcall(function()return mm2().list("Emote")end)
+                if good then
+                    caption(tostring(#emotes).." MM2 emotes",24)
+                    for _,emote in ipairs(emotes) do
+                        local id=emote.id
+                        button(emote.name,function()action(function()return mm2().preview(id,"Emote")end)end)
+                    end
+                    if #emotes==0 then caption("MM2's emote database is not available yet. Close and reopen this toggle after the game loads.",56) end
+                else caption("Unable to read MM2 emotes: "..tostring(emotes),56) end
             end
             caption("OPTIONAL MM2 INVENTORY DISPLAY",24)
             caption("Saved copies appear only in Saved Weapons. Show all weapons displays the separate game catalog.",48)

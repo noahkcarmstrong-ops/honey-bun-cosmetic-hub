@@ -62,6 +62,35 @@ local animationDestroyed=false
 Instance={new=function(class)return {Destroy=function()animationDestroyed=true end}end}
 mm2.preview('Dance','Emote');assert(played and animationDestroyed,'Plays emote and cleans up the temporary animation')
 mm2.restore();assert(stopped and removed,'Restore stops and destroys the emote track')
+-- MM2 command entries resolve the avatar's actual animations instead of guessed IDs.
+emoteModule.Data.Dance2={Name='Dance Two',Command='dance2',Loop=true}
+emoteModule.Data.Special={Name='Special prop emote',Command='unavailable'}
+local commandAnimation=node('Animation1','Animation');commandAnimation.AnimationId='rbxassetid://24680'
+local animate=node('Animate','LocalScript',{node('dance2','Folder',{commandAnimation})})
+livePlayer.Character=node('Character','Model',{humanoid,animate})
+local commandTrack
+function animator:LoadAnimation(animation)
+    assert(animation.AnimationId=='rbxassetid://24680','Command resolves actual avatar animation')
+    commandTrack={Play=function()end,Stop=function(self)self.stopped=true end,Destroy=function(self)self.destroyed=true end}
+    return commandTrack
+end
+local allEmotes=create(previewGame,injected)
+assert(#allEmotes.list('Emote')==4,'Full catalog includes command and unavailable special emotes')
+allEmotes.preview('Dance2','Emote')
+assert(commandTrack.Looped==true,'Looping MM2 emotes keep their catalog behavior')
+allEmotes.stopEmote()
+assert(commandTrack.stopped and commandTrack.destroyed,'Stop emote cleans its track without restoring weapons')
+local specialOk,specialMessage=pcall(allEmotes.preview,'Special','Emote')
+assert(not specialOk and tostring(specialMessage):find('MM2-specific game behavior',1,true),'Unavailable emotes explain the missing game behavior')
+local characterEmote=node('PlayEmote','BindableFunction')
+function characterEmote:Invoke(command)
+    assert(command=='unavailable','Character Animate receives the exact catalog command')
+    return true,commandTrack
+end
+animate.GetChildren=function()return {characterEmote}end
+allEmotes.preview('Special','Emote')
+commandTrack.stopped=false;allEmotes.stopEmote()
+assert(commandTrack.stopped,'Native Animate result retains its track so Stop works')
 local errorReport=create(badGame,function()error('Fixture cannot load module')end).report()
 assert(errorReport:find('Fixture cannot load module',1,true),'Reports database errors for live diagnosis')
 print('MM2 multi-weapon restoration and emote lifecycle checks passed.')
