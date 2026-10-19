@@ -81,13 +81,23 @@ assert(weld and weld.Part0==localTorso and weld.Part1==overlay,"knife overlay we
 local visualMarker=localKnife:FindFirstChild("HoneyBunCosmeticVisual")
 assert(visualMarker and visualMarker.Value==overlay,"the original knife points effect previews at the copied knife visual")
 assert(localKnife.LocalTransparencyModifier==1,"knife preview hides only the local original knife")
+-- Captured from MM2's native LowerTorso.KnifeBelt joint report.
+local localLowerTorso=node("Part","LowerTorso",localPlayer.Character)
+localLowerTorso.CFrame=frame(100,-2,0);localLowerTorso.Size=Vector3.new(2,1,1)
+local knifeBelt=node("Attachment","KnifeBelt",localLowerTorso)
+knifeBelt.CFrame=frame(-0.73373872,-0.576318264,0.212840006,
+    -0.998995066,0.0298198294,0.033461079,
+    0.0136284996,-0.509110212,0.860593498,
+    0.0426981226,0.860184669,0.508192182)
 local sideResult=mm2.setKnifeSide(true)
 assert(sideResult==true and mm2.getKnifeSide()==true,"knife side layout can be enabled")
 local sideOverlay
 for _,item in ipairs(workspace:GetChildren())do if item.Name=="HoneyBunSavedKnife"then sideOverlay=item end end
-assert(sideOverlay and math.abs(sideOverlay.CFrame.X-97.87)<0.0001 and sideOverlay.CFrame.Y<0 and sideOverlay.CFrame.Z==0,"side layout moves the existing saved knife promptly")
-assert(math.abs(sideOverlay.CFrame.r[1])>0.99,"side knife thickness faces outward rather than its blade width")
-assert(math.abs(sideOverlay.CFrame.r[8])>0.6 and sideOverlay.CFrame.r[5]>0.6 and sideOverlay.CFrame.r[5]<0.8,"side knife lies diagonally along the hip rather than standing upright")
+local expectedSide=localLowerTorso.CFrame*knifeBelt.CFrame
+for i,value in ipairs({sideOverlay.CFrame:GetComponents()}) do
+    assert(math.abs(value-({expectedSide:GetComponents()})[i])<0.000001,"side knife follows every component of the native belt attachment")
+end
+assert(sideOverlay:FindFirstChildOfClass("WeldConstraint").Part0==localLowerTorso,"side knife welds to the native lower torso")
 assert(overlay.destroyed,"changing layout removes the previous knife overlay")
 mm2.setKnifeSide(false)
 assert(mm2.getKnifeSide()==false,"knife layout can return to the default back position")

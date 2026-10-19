@@ -432,7 +432,23 @@ return function(game, injectedRequire, gunLibrary)
         local p=read(service("Players"),"LocalPlayer")
         local character=read(p,"Character")
         local mount=def.Mounts and def.Mounts[held and "Held" or "Holster"]
-        if kind=="Knife" and not held then
+        if kind=="Knife" and not held and knifeSide then
+            local lowerTorso=child(character,"LowerTorso") or child(character,"Torso")
+            local belt=child(lowerTorso,"KnifeBelt")
+            if lowerTorso and isA(belt,"Attachment") then
+                mount={Part=read(lowerTorso,"Name"),Offset=read(belt,"CFrame")}
+            elseif lowerTorso and mount and mount.Part==read(lowerTorso,"Name") and mount.Offset and mount.Offset.X<0 and mount.Offset.Y<0 and math.abs(mount.Offset.X)>math.abs(mount.Offset.Z) then
+                -- Retain an actual belt mount already captured with this saved knife.
+            elseif lowerTorso then
+                -- Native MM2 KnifeBelt transform measured from live R15 joints (V13 report).
+                -- This is the game's belt orientation, not an estimated Euler angle.
+                mount={Part=read(lowerTorso,"Name"),Offset=CFrame.new(-0.735001147,-0.540000021,0.212500006,
+                    -0.998995066,0.0298198294,0.033461079,
+                    0.0136284996,-0.509110212,0.860593498,
+                    0.0426981226,0.860184669,0.508192182)}
+            end
+        end
+        if kind=="Knife" and not held and not knifeSide then
             -- A donor's display rotation can point the blade out of our torso.
             -- Put the thin axis against the body and the long axis upright.
             local torso=child(character,"UpperTorso") or child(character,"Torso") or child(character,"LowerTorso")
@@ -448,10 +464,9 @@ return function(game, injectedRequire, gunLibrary)
                 if long==thin then long=thin==2 and 3 or 2 end
                 local remaining=6-thin-long
                 local columns={}
-                columns[thin]=knifeSide and {-1,0,0} or {0,0,1}
-                local angle=math.rad(knifeSide and 45 or 30)
-                -- Tilt within the hip plane, keeping the thin edge against the body.
-                columns[long]=knifeSide and {0,math.cos(angle),math.sin(angle)} or {math.sin(angle),math.cos(angle),0}
+                columns[thin]={0,0,1}
+                local angle=math.rad(30)
+                columns[long]={math.sin(angle),math.cos(angle),0}
                 local a,b=columns[remaining%3+1],columns[(remaining+1)%3+1]
                 columns[remaining]={a[2]*b[3]-a[3]*b[2],a[3]*b[1]-a[1]*b[3],a[1]*b[2]-a[2]*b[1]}
                 local rotation=CFrame.new(0,0,0,
@@ -459,9 +474,9 @@ return function(game, injectedRequire, gunLibrary)
                     columns[1][2],columns[2][2],columns[3][2],
                     columns[1][3],columns[2][3],columns[3][3])
                 local half=dimensions[thin]/2
-                local x=knifeSide and -(bodySize.X/2+half+0.03) or 0
-                local y=knifeSide and -bodySize.Y/2 or 0
-                local z=knifeSide and 0 or bodySize.Z/2+half+0.03
+                local x=0
+                local y=0
+                local z=bodySize.Z/2+half+0.03
                 local offset=CFrame.new(x,y,z)*rotation
                 -- SpecialMesh.Offset translates its visible center away from its Part.
                 local meshOffset=def.Offset
