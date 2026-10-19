@@ -235,10 +235,6 @@ return function(playerGui, catalog, onStatus)
         if ContextActionService then
             ContextActionService:BindActionAtPriority(wheelAction,function(_,state,input)
                 if not gui or not (previewHover or orbitDragging) then return Enum.ContextActionResult.Pass end
-                if state==Enum.UserInputState.Change then
-                    cameraDistance=math.clamp(cameraDistance-input.Position.Z*.7,4,14)
-                    updateCamera()
-                end
                 return Enum.ContextActionResult.Sink
             end,false,3000,Enum.UserInputType.MouseWheel)
         end
@@ -253,6 +249,12 @@ return function(playerGui, catalog, onStatus)
         end)
         connect(UserInputService.WindowFocusReleased,function()previewHover=false;stopOrbit()end)
         connect(UserInputService.InputChanged,function(input)
+            -- GUI-consumed wheel input still belongs to the hovered preview.
+            -- The context action only blocks game zoom, so each tick is applied once.
+            if input.UserInputType==Enum.UserInputType.MouseWheel and (previewHover or orbitDragging) then
+                cameraDistance=math.clamp(cameraDistance-input.Position.Z*.7,4,14)
+                updateCamera()
+            end
             if orbitDragging and input.UserInputType==Enum.UserInputType.MouseMovement then
                 cameraYaw=cameraYaw-input.Delta.X*0.008
                 cameraPitch=math.clamp(cameraPitch+input.Delta.Y*0.008,-math.rad(75),math.rad(75))
