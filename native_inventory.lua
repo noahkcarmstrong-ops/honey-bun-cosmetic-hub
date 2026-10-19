@@ -48,18 +48,38 @@ return function(playerGui,catalog,onStatus,mode)
         end
     end
     local function detectWeapon()
+        local function collectionLabel(label,inventory)
+            local o=label
+            while o and o~=inventory do
+                local name=normalize(o.Name)
+                if name:find("equipped",1,true) or name:find("loadout",1,true) or lower(o.Name):sub(1,14)=="honeybunlocal_" then return false end
+                o=o.Parent
+            end
+            return true
+        end
+        local function singleCard(card)
+            local count=0
+            for _,o in ipairs(texts(card)) do
+                if is(o,"TextLabel") or is(o,"TextButton") then
+                    if o.Text=="Default Knife" or o.Text=="Default Gun" then count=count+1 end
+                end
+                local name=normalize(o.Name)
+                if name:find("crafting",1,true) or name:find("redeem",1,true) then return false end
+            end
+            return count==1
+        end
         for _,label in ipairs(descendants(playerGui)) do
             if (is(label,"TextLabel") or is(label,"TextButton")) and (label.Text=="Default Knife" or label.Text=="Default Gun") then
                 local inventory=inventoryAncestor(label)
-                if inventory then
+                if inventory and collectionLabel(label,inventory) then
                     local card=label
                     while card.Parent and card.Parent~=inventory.Parent do
                         local container=card.Parent
-                        if is(card,"GuiObject") then
+                        if is(card,"GuiObject") and singleCard(card) then
                             if container:FindFirstChildOfClass("UIGridLayout") then return inventory,container,card end
                             local knife,gun
                             for _,sibling in ipairs(children(container)) do
-                                if is(sibling,"GuiObject") then
+                                if is(sibling,"GuiObject") and singleCard(sibling) then
                                     local kind=defaultKind(sibling)
                                     if kind=="Knife" then knife=sibling elseif kind=="Gun" then gun=sibling end
                                 end

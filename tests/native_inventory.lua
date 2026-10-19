@@ -102,6 +102,15 @@ local function nativeInventory()
     end
     return inventory,host,seasonPane,classicPane,holidayPane,knife,gun,search,buttons,layout,equipped
 end
+-- Equipped defaults can appear before the actual collection in the live GUI.
+local decoy=node('Frame','InventoryLoadout',playerGui)
+local decoySlots=node('Frame','Equipped',decoy)
+for _,kind in ipairs({'Knife','Gun'})do
+    local column=node('Frame',kind,decoySlots)
+    node('TextLabel','ItemName',column).Text='Default '..kind
+    node('ImageLabel','Icon',column)
+    node('Frame','CraftingStation',column)
+end
 local inventory,host,seasonPane,classicPane,holidayPane,knife,gun,search,buttons,layout,equipped=nativeInventory()
 local chosen={}
 local lastEquip
