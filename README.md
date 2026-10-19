@@ -117,6 +117,12 @@ This changes the local inventory display; it does not add ownership or trading r
 
 Weapon appearances are visible only to the person running the hub. The hub tries the selected model asset and exact, identifiable copies MM2 has already loaded. If neither source is available, the inventory selection remains saved but its avatar appearance cannot be shown. Loaded scripts are stripped; supported meshes are applied to the existing native weapon/display without replacing its connections. The tab matcher supports image buttons with separate caption labels. Copy MM2 report includes category totals, matched tab controls, pending selections, item asset IDs, and equip failures.
 
+### Saved local guns
+
+In the MM2 hub menu, enter a player's Roblox username and click **Copy and equip player's gun** while their gun is loaded nearby. The hub saves the original mesh, texture, and proportions; it shows a separate local visual attached to your existing gun without replacing the game's tool or joints. Custom animations, particles, and additional model parts are not included.
+
+Use **Open saved guns** to list saved captures and their Equip buttons. Captures and the last selected saved gun survive rejoining when the hub reports **Auto-save: on**. The source player does not need to stay in your server. Earlier session-only captures must be collected once more with this version. Rendering still depends on Roblox making the saved mesh and texture available.
+
 ### Local knife effects
 
 Open MM2's **Effects** inventory and enable **MM2 → Show all effects**. This separately lists the entries in the loaded `Database.Sync.Effects` catalog using native item cards. Clicking a card selects a local knife effect; supported, available visual templates are copied onto your knife display and knife tool. The selected preview reapplies when those targets arrive after a reset. The effects toggle does not change the weapons toggle.

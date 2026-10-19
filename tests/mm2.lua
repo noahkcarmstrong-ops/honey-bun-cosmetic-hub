@@ -113,14 +113,18 @@ local assetServices={Players={LocalPlayer=assetPlayer},ReplicatedStorage=node('R
 local assetLoads=0
 local assetGame={GetService=function(_,name)return assetServices[name]end,GetObjects=function(_,uri)assert(uri=='rbxassetid://12965349193');assetLoads=assetLoads+1;return{assetSource}end}
 local assetApi=create(assetGame,function(module)return module.Data end)
+assetSource.Size={X=2,Y=4,Z=2};weaponHandle.Size={X=1,Y=1,Z=1}
+local originalWeaponSize=weaponHandle.Size
 local categoryById={};for _,entry in ipairs(assetApi.list())do categoryById[entry.id]=entry.category end
 assert(categoryById.Fragile_G_2023=='season1' and categoryById.Gingerscythe=='holiday' and categoryById.ClassicItem=='classic','Live database fields classify separately without excluding items')
 local equippedResult=assetApi.equip('Fragile_G_2023','Gun')
 assert(weaponHandle.MeshId=='asset-mesh'and weaponHandle.TextureID=='asset-texture','ItemID asset visibly changes the actual native weapon mesh and texture')
+assert(weaponHandle.Size==assetSource.Size,'A copied MeshPart keeps the source gun proportions rather than stretching into the native size')
 assert(assetScript.destroyed,'Asset scripts are removed before use')
 assert(assetApi.getEquipped().Gun=='Fragile_G_2023','Database key remains the item identity; ItemID is its asset source')
 assetApi.equip('Fragile_G_2023','Gun');assert(assetLoads==1,'Selected asset is cached rather than downloaded on every reapply')
 assetApi.restore();assert(weaponHandle.MeshId=='original-mesh'and weaponHandle.TextureID=='original-texture','ItemID skin restores actual original weapon appearance')
+assert(weaponHandle.Size==originalWeaponSize,'Restoring the original gun also restores its size')
 -- MM2 may use a Part/SpecialMesh holster even when the downloaded item is a MeshPart.
 assetSource.Size={X=2,Y=4,Z=2};assetSource.MeshSize={X=4,Y=4,Z=4}
 Vector3={new=function(x,y,z)return{X=x,Y=y,Z=z}end};Enum={MeshType={FileMesh='FileMesh'}}
@@ -283,20 +287,3 @@ local cancelledResult=cancelledAssetApi.equip('Fragile_G_2023','Gun')
 assert(cancelledResult:find('cancelled',1,true) and cancelledRoot.destroyed,'An asset that finishes loading after destroy is discarded')
 assert(not cancelledAssetApi.getEquipped().Gun and displayMesh.MeshId=='old-display','Cancelled loads do not restore selections or mutate the avatar')
 print('Asynchronous model loading cancellation passed.')
-
--- An explicit player capture needs no item identity or private asset download.
-loadedMesh.MeshId='gingerscope-loaded';loadedMesh.TextureId='gingerscope-texture'
-local foreignRef=node('DisplayRefGun','ObjectValue');foreignRef.Value=loadedHandle
-local foreign={Name='BIearyEyed',Character=node('Foreign','Model',{foreignRef})}
-local capturePlayers={LocalPlayer=assetServices.Players.LocalPlayer,GetPlayers=function()return{foreign}end}
-local captureGame={GetService=function(_,name)return name=='Players' and capturePlayers or assetServices[name]end,GetObjects=function()error('Must not download assets for player captures')end}
-local captureApi=create(captureGame,function(module)return module.Data end)
-local captured=captureApi.collectPlayerGun(' biearyeyed ')
-assert(captured:find('locally',1,true) and displayMesh.MeshId=='gingerscope-loaded','Case-insensitive explicit player gun capture applies to local back display')
-assert(loadedCloneScript.destroyed and not loadedScript.destroyed and loadedMesh.MeshId=='gingerscope-loaded','Capture strips cloned scripts and preserves foreign source')
-foreign.Character=node('Foreign','Model')
-assert(not pcall(captureApi.collectPlayerGun,'BIearyEyed'),'Unloaded gun gives an error instead of guessing an asset')
-assert(not pcall(captureApi.collectPlayerGun,'MissingPlayer'),'Unknown player gives an error')
-captureApi.destroy()
-assert(displayMesh.MeshId=='old-display' and loadedClone.destroyed,'Captured gun restore and private template cleanup')
-print('Explicit loaded player gun capture, source preservation, errors and cleanup passed.')

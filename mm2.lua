@@ -1,5 +1,5 @@
 -- MM2 local discovery and cosmetic previews. It never calls remotes or unlocks items.
-return function(game, injectedRequire)
+return function(game, injectedRequire, gunLibrary)
     local api, alive = {}, true
     local function read(object, key) if not object then return nil end; local ok, value = pcall(function() return object[key] end); return ok and value or nil end
     local function service(name) if not game or type(game.GetService) ~= "function" then return nil end; local ok, v = pcall(game.GetService, game, name); return ok and v or nil end
@@ -58,7 +58,10 @@ return function(game, injectedRequire)
         local seen,final={},{ }; for _,e in ipairs(out) do if not seen[e.id] then seen[e.id]=true; final[#final+1]=e end end
         table.sort(final,function(a,b) return lower(a.name)==lower(b.name) and a.id<b.id or lower(a.name)<lower(b.name) end); cache[kind]=final; return final
     end
-    local function findEntry(id,kind) for _,e in ipairs(catalog(kind)) do if e.id==tostring(id) then return e end end end
+    local function findEntry(id,kind)
+        if kind=="Gun" and gunLibrary then for _,e in ipairs(gunLibrary.list()) do if e.id==tostring(id) then return e end end end
+        for _,e in ipairs(catalog(kind)) do if e.id==tostring(id) then return e end end
+    end
     local function metadata(def)
         local season=field(def,"Season"); local event=field(def,"Event"); local holiday=field(def,"Holiday")
         local function text(v) return type(v)=="string" and lower(v) or "" end
@@ -96,6 +99,7 @@ return function(game, injectedRequire)
     function api.list(category,search)
         local kind=category and tostring(category):sub(1,1):upper()..tostring(category):sub(2):lower() or nil; if kind~="Knife" and kind~="Gun" and kind~="Emote" then kind=nil end
         local source={}; if kind then for _,e in ipairs(catalog(kind)) do source[#source+1]=e end else for _,k in ipairs({"Knife","Gun","Emote"}) do for _,e in ipairs(catalog(k)) do source[#source+1]=e end end end
+        if gunLibrary and (not kind or kind=="Gun") then for _,e in ipairs(gunLibrary.list()) do source[#source+1]=e end end
         local query,out=lower(search),{}; for _,e in ipairs(source) do if query=="" or lower(e.name):find(query,1,true) or lower(e.id):find(query,1,true) then
             local categoryName,year,event,rarity,sortOrder=metadata(e.definition)
             local rarityColor,rarityOrder=rarityStyle(e.definition)
@@ -324,6 +328,8 @@ return function(game, injectedRequire)
         return mesh,texture,color,material,scale,meshType,h
     end
     local function restoreHandle(old)
+        if old.overlay then pcall(function() old.overlay:Destroy() end);old.overlay=nil end
+        if old.localTransparency~=nil then set(old.handle,"LocalTransparencyModifier",old.localTransparency) end
         if old.sourceClone then
             pcall(function() old.handle:ApplyMesh(old.sourceClone) end)
             pcall(function() old.sourceClone:Destroy() end)
@@ -332,6 +338,51 @@ return function(game, injectedRequire)
         set(old.mesh,"MeshId",old.meshId);set(old.mesh,"TextureId",old.textureId)
         set(old.mesh,"Scale",old.scale);set(old.mesh,"MeshType",old.meshType)
         set(old.handle,"Color",old.color);set(old.handle,"Material",old.material)
+        set(old.handle,"Size",old.size)
+    end
+    local function applySavedGun(handle,e)
+        assert(handle,"Your gun display has not loaded yet.")
+        local old=snapshots[handle]
+        if old and old.overlay and old.overlayId==e.id and read(old.overlay,"Parent") then return end
+        if old then restoreHandle(old);snapshots[handle]=nil end
+        local def=e.definition
+        local overlay=Instance.new("Part")
+        local ok,message=pcall(function()
+            overlay.Name="HoneyBunSavedGun"
+            overlay.Size=def.Size or Vector3.new(1,1,1)
+            overlay.CFrame=handle.CFrame
+            overlay.Anchored=false;overlay.Massless=true
+            overlay.CanCollide=false;overlay.CanTouch=false;overlay.CanQuery=false
+            overlay.Color=def.Color or handle.Color
+            overlay.Material=def.Material or handle.Material
+            overlay.Transparency=read(handle,"Transparency") or 0
+            overlay.LocalTransparencyModifier=read(handle,"LocalTransparencyModifier") or 0
+            local mesh=Instance.new("SpecialMesh")
+            mesh.MeshType=Enum.MeshType.FileMesh
+            mesh.MeshId=def.MeshId;mesh.TextureId=def.TextureId or ""
+            mesh.Scale=def.Scale or Vector3.new(1,1,1)
+            mesh.Offset=def.Offset or Vector3.new(0,0,0)
+            if def.VertexColor then mesh.VertexColor=def.VertexColor end
+            mesh.Parent=overlay
+            local weld=Instance.new("WeldConstraint")
+            weld.Part0=handle;weld.Part1=overlay;weld.Parent=overlay
+            old={handle=handle,color=read(handle,"Color"),material=read(handle,"Material"),size=read(handle,"Size"),localTransparency=read(handle,"LocalTransparencyModifier") or 0,overlay=overlay,overlayId=e.id}
+            snapshots[handle]=old
+            -- A separate static visual preserves its dimensions without changing game joints or tools.
+            overlay.Parent=service("Workspace")
+            handle.LocalTransparencyModifier=1
+            local changed=read(handle,"GetPropertyChangedSignal")
+            if type(changed)=="function" then connect(changed(handle,"Transparency"),function()
+                if snapshots[handle]==old and old.overlay then old.overlay.Transparency=handle.Transparency end
+            end) end
+            connect(read(handle,"Destroying"),function()
+                if snapshots[handle]==old then restoreHandle(old);snapshots[handle]=nil end
+            end)
+        end)
+        if not ok then
+            if old and snapshots[handle]==old then restoreHandle(old);snapshots[handle]=nil else overlay:Destroy() end
+            error("Could not show saved gun: "..tostring(message))
+        end
     end
     function api.preview(id,category,selectedTool)
         assert(alive,"The MM2 cosmetic preview is closed."); local kind=category and tostring(category):sub(1,1):upper()..tostring(category):sub(2):lower(); if kind~="Emote" then kind=kind=="Gun" and "Gun" or "Knife" end
@@ -373,6 +424,12 @@ return function(game, injectedRequire)
             pending[kind]=e.id;equipped[kind]=e.id
             return "Queued "..kind:lower().." locally: "..e.name.." (waiting for your matching weapon)"
         end
+        if field(e.definition,"PortableGun") then
+            applySavedGun(handle,e)
+            equipped[kind]=e.id;pending[kind]=nil
+            return "Previewing saved gun locally: "..e.name
+        end
+        if snapshots[handle] and snapshots[handle].overlay then restoreHandle(snapshots[handle]);snapshots[handle]=nil end
         local meshId,textureId,color,material,scale,meshType,source=handleVisual(e.definition,e)
         if field(e.definition,"Model")~=nil then assert(source,"Cosmetic model reference could not be resolved from ReplicatedStorage.Resources.") end
         assert(meshId or textureId or color or material or scale or meshType or source,"Cosmetic has no supported local visual fields (explicit MeshId/TextureId, model, Handle mesh, Color, or Material).")
@@ -392,7 +449,7 @@ return function(game, injectedRequire)
         end
         assert(applyMesh or mesh or not(meshId or textureId or scale or meshType),"Equipped Handle has no SpecialMesh for this mesh preview.")
         local old=snapshots[handle]; if not old then
-            old={handle=handle,mesh=mesh,meshId=read(mesh,"MeshId"),textureId=read(mesh,"TextureId"),scale=read(mesh,"Scale"),meshType=read(mesh,"MeshType"),color=read(handle,"Color"),material=read(handle,"Material"),sourceClone=nil}
+            old={handle=handle,mesh=mesh,meshId=read(mesh,"MeshId"),textureId=read(mesh,"TextureId"),scale=read(mesh,"Scale"),meshType=read(mesh,"MeshType"),color=read(handle,"Color"),material=read(handle,"Material"),size=read(handle,"Size"),sourceClone=nil}
             if applyMesh and type(read(handle,"Clone"))=="function" then local ok,clone=pcall(read(handle,"Clone"),handle); if ok then old.sourceClone=clone end;assert(old.sourceClone,"Could not snapshot the original weapon mesh safely.") end
             snapshots[handle]=old
         end
@@ -404,6 +461,7 @@ return function(game, injectedRequire)
         if applyMesh then
             local ok,message=pcall(read(handle,"ApplyMesh"),handle,source)
             if not ok then restoreHandle(old);snapshots[handle]=nil;error("Could not apply the cosmetic mesh: "..tostring(message)) end
+            if read(source,"Size") then set(handle,"Size",read(source,"Size")) end
         end
         if applyMesh and meshId~=nil and tostring(meshId)~=tostring(read(source,"MeshId")) then restoreHandle(old);snapshots[handle]=nil;error("This cosmetic has a separate MeshId that cannot be applied to this MeshPart safely.") end
         local changes={{mesh,"MeshId",not applyMesh and meshId or nil},{applyMesh and handle or mesh,applyMesh and "TextureID" or "TextureId",textureId},{mesh,"Scale",scale},{mesh,"MeshType",meshType},{handle,"Color",color},{handle,"Material",material}}
@@ -486,6 +544,7 @@ return function(game, injectedRequire)
         assert(alive,"The MM2 cosmetic preview is closed.")
         local kind=category and tostring(category):sub(1,1):upper()..tostring(category):sub(2):lower(); assert(kind=="Gun" or kind=="Knife","Equip category must be Knife or Gun.")
         local e=findEntry(id,kind); assert(e,"Unsupported "..kind:lower().." cosmetic: "..tostring(id))
+        if kind=="Gun" and gunLibrary then gunLibrary.select(field(e.definition,"PortableGun") and e.id or nil) end
         lastAttempt={id=e.id,kind=kind,definition=e.definition}
         local generation=appearanceGeneration
         equipped[kind]=e.id;pending[kind]=e.id
@@ -503,8 +562,10 @@ return function(game, injectedRequire)
     function api.getEquipped()
         return {Knife=equipped.Knife,Gun=equipped.Gun}
     end
+    function api.savedGuns() return gunLibrary and gunLibrary.list() or {} end
     function api.collectPlayerGun(username)
         assert(alive,"The MM2 cosmetic preview is closed.")
+        assert(gunLibrary,"Refresh the hub to load the saved gun library.")
         username=tostring(username or ""):match("^%s*(.-)%s*$")
         assert(username~="","Enter a Roblox username first.")
         local players=service("Players")
@@ -526,21 +587,9 @@ return function(game, injectedRequire)
         end
         assert(source and isA(source,"BasePart"),"Their gun model is not loaded. Ask them to equip it nearby, then collect again.")
         assert(isA(source,"MeshPart") or childClass(source,"SpecialMesh"),"Their loaded gun has no supported mesh to copy.")
-        local ok,clone=pcall(function() return source:Clone() end)
-        assert(ok and clone,"Their gun model could not be copied on this client.")
-        -- Keep only the static gun mesh; never retain scripts or links to their character.
-        local copied=descendants(clone)
-        for i=#copied,1,-1 do
-            if not isA(copied[i],"SpecialMesh") then copied[i]:Destroy() end
-        end
-        clone.Parent=nil
-        assetRoots[#assetRoots+1]=clone
-        local id="CollectedGun_"..tostring(#assetRoots)
-        local name="Gun from "..tostring(read(target,"Name"))
-        local entries=catalog("Gun")
-        entries[#entries+1]={id=id,name=name,kind="Gun",definition={Model=clone}}
-        loadedLookupLog[#loadedLookupLog+1]="Collected gun from "..tostring(read(target,"Name")).."; session copy; mesh="..tostring(read(source,"MeshId") or read(childClass(source,"SpecialMesh"),"MeshId"))
-        return api.equip(id,"Gun")..". Kept for this hub session; collect again after rejoining."
+        local entry=gunLibrary.capture(source,tostring(read(target,"Name")))
+        loadedLookupLog[#loadedLookupLog+1]="Saved gun from "..tostring(read(target,"Name")).."; mesh="..tostring(entry.definition.MeshId)
+        return api.equip(entry.id,"Gun")..". Saved to your gun library."
     end
     function api.restore()
         appearanceGeneration=appearanceGeneration+1
@@ -576,7 +625,11 @@ return function(game, injectedRequire)
     end
     function api.report()
         local rs=service("ReplicatedStorage"); local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local lines={"MM2 discovery (read-only)","GameId="..tostring(read(game,"GameId") or "?"),"PlaceId="..tostring(read(game,"PlaceId") or "?"),"ReplicatedStorage="..(rs and "available" or "missing"),"LocalPlayer="..(p and tostring(read(p,"Name") or "available") or "missing")}
-        lines[#lines+1]="Build: verified loaded visuals V10"
+        lines[#lines+1]="Build: saved original gun visuals V11"
+        if gunLibrary then
+            local names={};for _,entry in ipairs(gunLibrary.list()) do names[#names+1]=entry.name end
+            lines[#lines+1]="Saved guns="..#names.."; "..table.concat(names,", ")
+        end
         lines[#lines+1]="Selected Knife="..tostring(equipped.Knife).." Gun="..tostring(equipped.Gun).." Last equip error="..tostring(equipError or "none")
         lines[#lines+1]="Pending Knife="..tostring(pending.Knife).." Gun="..tostring(pending.Gun).." Last result="..tostring(lastEquipResult or "none")
         if lastAttempt then
@@ -638,6 +691,10 @@ return function(game, injectedRequire)
             lines[#lines+1]=label.." requireType="..status.dataType.." error="..tostring(status.error or "none").." samples="..samples(rawData[kind])
         end
         local gui=p and read(p,"PlayerGui"); local paths={}; for _,o in ipairs(descendants(rs)) do local path=fullName(o); local x=lower(path); if (x:find("database",1,true) or x:find("item",1,true) or x:find("emote",1,true) or x:find("inventory",1,true)) and (isA(o,"ModuleScript") or isA(o,"Folder") or isA(o,"Model") or isA(o,"LocalScript")) then paths[#paths+1]="RS match: "..path end end; for _,o in ipairs(descendants(gui)) do local path=fullName(o); local x=lower(path); if (x:find("inventory",1,true) or x:find("item",1,true) or x:find("emote",1,true)) and (isA(o,"ModuleScript") or isA(o,"LocalScript") or isA(o,"ScreenGui") or isA(o,"Frame")) then paths[#paths+1]="PlayerGui match: "..path end end; local c=p and read(p,"Character"); for _,o in ipairs(children(c)) do if isA(o,"Tool") or isA(o,"Accessory") then paths[#paths+1]="Equipped "..tostring(read(o,"ClassName") or "Instance")..": "..fullName(o) end end; for _,path in ipairs(paths) do if #lines<80 then lines[#lines+1]=path end end; return table.concat(lines,"\n")
+    end
+    if gunLibrary then
+        local savedId=gunLibrary.getSelected()
+        if savedId and findEntry(savedId,"Gun") then api.equip(savedId,"Gun") end
     end
     return api
 end

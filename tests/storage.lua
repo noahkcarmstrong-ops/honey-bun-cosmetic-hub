@@ -82,6 +82,7 @@ firstGui:SetAttribute('HoneyBunCosmeticSettings', '{"accessories":[]}')
 firstGui:SetAttribute('HoneyBunCosmeticEmotes', '{"1":12345,"3":123}')
 firstGui:SetAttribute('HoneyBunCosmeticAnimationBundle', 82)
 firstGui:SetAttribute('HoneyBunCosmeticEffects', '{"version":1,"entries":[]}')
+firstGui:SetAttribute('HoneyBunCosmeticGuns', '{"version":1,"guns":[]}')
 firstGui:SetAttribute('HoneyBunCosmeticClothes', '{"Shirt":123,"Pants":456}')
 firstGui:SetAttribute('HoneyBunCosmeticUI_Theme', 'dark')
 firstGui:SetAttribute('HoneyBunCosmeticUI_Scale', 1.25)
@@ -107,6 +108,7 @@ assert(value(restoredGui, 'HoneyBunCosmeticSettings') == '{"accessories":[]}', '
 assert(value(restoredGui, 'HoneyBunCosmeticEmotes') == '{"1":12345,"3":123}', 'emotes including slot 1 restore after rejoin')
 assert(value(restoredGui, 'HoneyBunCosmeticAnimationBundle') == 82, 'animation bundle restore after rejoin')
 assert(value(restoredGui, 'HoneyBunCosmeticEffects') == '{"version":1,"entries":[]}', 'Saved player effects restore after rejoin')
+assert(value(restoredGui, 'HoneyBunCosmeticGuns') == '{"version":1,"guns":[]}', 'saved gun choices restore after rejoin')
 assert(value(restoredGui, 'HoneyBunCosmeticClothes') == '{"Shirt":123,"Pants":456}', 'classic shirt and pants restore after rejoin')
 assert(value(restoredGui, 'HoneyBunCosmeticUI_Theme') == 'dark' and value(restoredGui, 'HoneyBunCosmeticUI_Scale') == 1.25, 'UI values restore after rejoin')
 restored:destroy()
@@ -191,6 +193,16 @@ characterRejoinGui:SetAttribute('HoneyBunCosmeticCharacters', nil)
 local characterDeletedGui, characterDeletedStorage = rejoin(808)
 assert(value(characterDeletedGui, 'HoneyBunCosmeticCharacters') == nil, 'character library deletion persists')
 characterStorage:destroy(); characterRejoinStorage:destroy(); characterDeletedStorage:destroy()
+
+-- Gun choices restore in a fresh GUI and nil removal persists immediately.
+local gunGui, gunStorage = rejoin(909)
+gunGui:SetAttribute('HoneyBunCosmeticGuns', '{"version":1,"guns":[{"id":123}]}')
+local gunRejoinGui, gunRejoinStorage = rejoin(909)
+assert(value(gunRejoinGui, 'HoneyBunCosmeticGuns') == '{"version":1,"guns":[{"id":123}]}', 'gun choices restore after rejoin')
+gunRejoinGui:SetAttribute('HoneyBunCosmeticGuns', nil)
+local gunDeletedGui, gunDeletedStorage = rejoin(909)
+assert(value(gunDeletedGui, 'HoneyBunCosmeticGuns') == nil, 'gun choice deletion persists')
+gunStorage:destroy(); gunRejoinStorage:destroy(); gunDeletedStorage:destroy()
 
 _G.characterRejoin = rejoin
 _G.characterFlush = flush

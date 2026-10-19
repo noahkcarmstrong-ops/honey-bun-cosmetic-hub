@@ -4,6 +4,7 @@ local Input = game:GetService("UserInputService")
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
 local mm2MenuOpen = false
 local mm2API,mm2NativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
+local mm2GunLibraryAPI
 local effectPlayerInput="qosra"
 local gunPlayerInput="BIearyEyed"
 local mm2Enabled,mm2EffectsEnabled=false,false
@@ -378,9 +379,12 @@ local function mm2()
     assert(isMM2,"This menu is only available in MM2.")
     if mm2API then return mm2API end
     api()
+    local librarySource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/gun_library.lua",false)
+    local libraryChunk,libraryError=loadstring(librarySource);assert(libraryChunk,libraryError)
+    mm2GunLibraryAPI=libraryChunk()(game,gui)
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/mm2.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
-    mm2API=chunk()(game)
+    mm2API=chunk()(game,nil,mm2GunLibraryAPI)
     return mm2API
 end
 local function nativeMM2()
@@ -490,7 +494,13 @@ render=function()
                 end
                 return message
             end) end)
-            caption("Copies their currently loaded gun mesh for you only. Stays through resets in this hub session. Collect again after rejoining. Does not copy custom animations or effects.",72)
+            caption("Saves their original gun mesh for you only. Saved guns remain available after rejoining when Auto-save is on. Does not copy custom animations or effects.",72)
+            button("Open saved guns",function() action(function() mm2();return "Your saved guns are listed below." end) end)
+            if mm2API then
+                for _,entry in ipairs(mm2API.savedGuns()) do
+                    button("Equip "..entry.name,function() action(function() return mm2().equip(entry.id,"Gun") end) end)
+                end
+            end
 
             caption("Select a skin in MM2's inventory. Only you see it; the avatar preview needs an available model. Your choice stays selected through resets.",64)
             button("Copy MM2 report",function() action(function()
@@ -910,5 +920,6 @@ render()
 action(function(editor)
     local message=reapplyAll(editor)
     if activePage=="Characters" then characterModules() end
+    if isMM2 and gui:GetAttribute("HoneyBunCosmeticGuns") then mm2() end
     return message
 end)
