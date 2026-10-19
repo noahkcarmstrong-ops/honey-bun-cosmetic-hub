@@ -124,16 +124,20 @@ return function(player,onStatus)
     local changed=player.CharacterAdded:Connect(function(character)
         generation=generation+1;for _,kind in ipairs({"Shirt","Pants"}) do local s=state[kind];if s then clearApplied(s);for _,item in ipairs(s.originals) do item:Destroy() end;state[kind]=nil end end
         local ticket=generation;task.spawn(function()
-            for attempt=1,50 do
+            for attempt=1,100 do
                 if not alive or ticket~=generation or player.Character~=character then return end
+                local humanoid=character:FindFirstChildOfClass("Humanoid")
                 local ok,ready=pcall(function() return player:HasAppearanceLoaded() end)
-                if (ok and ready) or attempt==50 then
+                if humanoid and humanoid.Health>0 and ((ok and ready) or attempt>=50) then
+                    task.wait(0.25)
+                    if not alive or ticket~=generation or player.Character~=character then return end
                     local applied,message=pcall(api.reapplySaved)
                     if not applied and onStatus then onStatus("Could not restore saved clothes: "..tostring(message)) end
                     return
                 end
                 task.wait(0.1)
             end
+            if alive and ticket==generation and onStatus then onStatus("Avatar is not ready. Reapply saved cosmetics after it finishes spawning.") end
         end)
     end)
     function api.destroy()

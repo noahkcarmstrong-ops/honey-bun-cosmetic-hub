@@ -33,3 +33,42 @@ assert(not pcall(partial.reapplySaved),"failed saved shirt is reported")
 assert(player.Character:FindFirstChildOfClass("Pants").PantsTemplate=="pants-new" and partial.getSettings().Shirt==123,"pants still replay and failed shirt stays saved for retry")
 partial.destroy()
 print("Clothes backend fixture and lifecycle tests passed.")
+
+-- Appearance can report loaded before the new Humanoid is inserted.
+game.GetObjects=load
+local resetApi=create(player)
+resetApi.equipShirt(123);resetApi.equipPants(456)
+local fresh=node("Model","DelayedCharacter")
+player.Character=fresh;player.CharacterAdded:Fire(fresh)
+local oldWait=task.wait
+local waits=0
+task.wait=function()
+    waits=waits+1
+    if waits==1 then local h=node("Humanoid","Humanoid");h.Health=100;h.Parent=fresh end
+end
+while #task.queue>0 do table.remove(task.queue,1)() end
+task.wait=oldWait
+assert(fresh:FindFirstChildOfClass("Shirt") and fresh:FindFirstChildOfClass("Shirt").ShirtTemplate=="shirt-new", "reset waits for a live Humanoid before restoring the saved shirt")
+assert(fresh:FindFirstChildOfClass("Pants") and fresh:FindFirstChildOfClass("Pants").PantsTemplate=="pants-new", "reset restores saved pants after delayed character readiness")
+resetApi.destroy()
+print("Delayed character readiness preserves saved clothes.")
+
+local stopped=create(player)
+local closing=character();player.Character=closing;player.CharacterAdded:Fire(closing)
+task.wait=function() stopped.destroy() end
+while #task.queue>0 do table.remove(task.queue,1)() end
+task.wait=oldWait
+assert(not closing:FindFirstChildOfClass("Shirt") and not closing:FindFirstChildOfClass("Pants"), "closing the hub cancels a pending reset restore")
+local rapid=create(player)
+local outdated=character();player.Character=outdated;player.CharacterAdded:Fire(outdated)
+local latest
+local once=false
+task.wait=function()
+    if not once then once=true;latest=character();player.Character=latest;player.CharacterAdded:Fire(latest) end
+end
+while #task.queue>0 do table.remove(task.queue,1)() end
+task.wait=oldWait
+assert(not outdated:FindFirstChildOfClass("Shirt") and not outdated:FindFirstChildOfClass("Pants"), "a second reset cancels restoration on the outdated character")
+assert(latest:FindFirstChildOfClass("Shirt").ShirtTemplate=="shirt-new" and latest:FindFirstChildOfClass("Pants").PantsTemplate=="pants-new", "rapid resets restore clothes only to the latest character")
+rapid.destroy()
+print("Reset cancellation and rapid reset clothes checks passed.")
