@@ -866,7 +866,7 @@ return function(playerGui,catalog,onStatus,mode)
                             local save=option("HoneyBunSaveName","Save",0.55)
                             local cancel=option("HoneyBunCancelSaved","Cancel",0.77)
                             local function reset()
-                                rename.Visible=catalog.rename~=nil;remove.Visible=true;remove.Text="Delete"
+                                rename.Visible=catalog.rename~=nil;remove.Visible=true;remove.Text="Delete";remove.Position=UDim2.fromScale(0.05,0.79)
                                 for _,button in ipairs(adjustmentButtons) do button.Visible=true end
                                 field.Visible=false;save.Visible=false;cancel.Visible=false;field.Text=entry.name
                             end
@@ -882,7 +882,7 @@ return function(playerGui,catalog,onStatus,mode)
                             end)
                             bind(cancel,function()reset();menu.Visible=false;openOptions=nil end)
                             bind(remove,function()
-                                if remove.Text~="Confirm delete" then remove.Text="Confirm delete";rename.Visible=false;cancel.Visible=true;for _,button in ipairs(adjustmentButtons) do button.Visible=false end;return end
+                                if remove.Text~="Confirm delete" then remove.Text="Confirm delete";remove.Position=UDim2.fromScale(0.05,0.55);rename.Visible=false;cancel.Visible=true;for _,button in ipairs(adjustmentButtons) do button.Visible=false end;return end
                                 local good,result=pcall(catalog.remove,entry.id)
                                 if good then openOptions=nil;renderSaved() else reset() end
                                 status(good and (result or "Saved item deleted.") or ("Could not delete: "..tostring(result)))
