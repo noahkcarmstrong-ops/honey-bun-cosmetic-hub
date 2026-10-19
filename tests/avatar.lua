@@ -72,7 +72,7 @@ local originalHat=freshAccessory();originalHat.Name="Original Roblox Hat";origin
 local wardrobe=create(player);wardrobe.equipAccessory(123)
 local addedHat=wardrobe.listAccessories()[1]
 wardrobe.removeCurrentAccessories()
-assert(originalHat.Parent==body and originalHat:FindFirstChild('Handle').LocalTransparencyModifier==1 and not originalHat.destroyed,"original accessory is hidden without changing its parent")
+assert(originalHat.Parent==body and originalHat:FindFirstChild('Handle').Transparency==1 and not originalHat.destroyed,"original accessory is hidden without changing its parent")
 assert(#wardrobe.listAccessories()==1 and wardrobe.listAccessories()[1].key==addedHat.key,"hub-added accessory stays equipped")
 wardrobe.removeCurrentAccessories();wardrobe.restore()
 assert(originalHat.Parent==body and not originalHat.destroyed,"restore returns original hat")
@@ -85,7 +85,7 @@ mode="normal"; local persist=create(player); persist.equipAccessory(123); persis
 local saved=persist.getSettings(); assert(saved and saved.accessories and #saved.accessories==1 and saved.colors and saved.colors.All and saved.hideOriginals==true,"getSettings returns normalized saved selections")
 persist.destroy(); local resumed=create(player); local fresh=body:Clone(); local freshHum=fresh:FindFirstChildOfClass("Humanoid"); freshHum.Health=100; freshHum.RigType=Enum.HumanoidRigType.R15; freshHum.replaced={}; freshHum.GetAppliedDescription=hum().GetAppliedDescription; freshHum.ReplaceBodyPartR15=function(self,n,p)self.replaced[n]=p;p.Parent=self.Parent;return true end; freshHum.AddAccessory=function(self,a)a.Parent=self.Parent end; local freshHat=freshAccessory();freshHat.Name="Original Roblox Hat";freshHat.Parent=fresh; player.Character=fresh; player.CharacterAdded:Fire(fresh)
 while #task.queue>0 do local work=table.remove(task.queue,1);work() end
-assert(resumed.getSettings().accessories and #resumed.getSettings().accessories==1,"new editor reads prior session settings"); assert(freshHat.Parent==fresh and freshHat:FindFirstChild("Handle").LocalTransparencyModifier==1 and not freshHat.destroyed,"saved hideOriginals hides fresh original accessories without reparenting"); local replay=resumed.reapplySaved(); assert(type(replay)=="string" and #replay>0,"saved accessories/body/color replay on fresh character"); local count=#resumed.listAccessories(); resumed.reapplySaved(); assert(#resumed.listAccessories()==count,"manual replay does not duplicate cosmetics")
+assert(resumed.getSettings().accessories and #resumed.getSettings().accessories==1,"new editor reads prior session settings"); assert(freshHat.Parent==fresh and freshHat:FindFirstChild("Handle").Transparency==1 and not freshHat.destroyed,"saved hideOriginals hides fresh original accessories without reparenting"); local replay=resumed.reapplySaved(); assert(type(replay)=="string" and #replay>0,"saved accessories/body/color replay on fresh character"); local count=#resumed.listAccessories(); resumed.reapplySaved(); assert(#resumed.listAccessories()==count,"manual replay does not duplicate cosmetics")
 mode="blocked"; local failed=pcall(function()resumed.reapplySaved()end); assert(failed,"blocked saved asset reports without throwing"); local failedMessage=resumed.reapplySaved(); assert(failedMessage:match("some could not load") and #resumed.getSettings().accessories==1,"failed saved accessory remains persisted")
 mode="normal"; resumed.restore(); local cleared=resumed.getSettings(); assert((not cleared.accessories or #cleared.accessories==0) and freshHat.Parent==fresh,"restore clears saved selections and restores original hat"); resumed.destroy()
 
@@ -98,7 +98,7 @@ skinOnly.equipAccessory(123); skinOnly.equipAccessory(123); skinOnly.removeCurre
 local beforeSkinOnly=skinOnly.getSettings(); assert(beforeSkinOnly.hideOriginals and beforeSkinOnly.body and #skinOnly.listAccessories()==2,"skin-only setup keeps multiple cosmetics")
 local changedBodyHead=player.Character:FindFirstChild("Head")
 skinOnly.restoreSkin(); local afterSkinOnly=skinOnly.getSettings()
-assert(#skinOnly.listAccessories()==2 and hiddenHat.Parent==body and hiddenHat:FindFirstChild("Handle").LocalTransparencyModifier==1 and not hiddenHat.destroyed,"skin-only restore preserves added hats and hidden originals")
+assert(#skinOnly.listAccessories()==2 and hiddenHat.Parent==body and hiddenHat:FindFirstChild("Handle").Transparency==1 and not hiddenHat.destroyed,"skin-only restore preserves added hats and hidden originals")
 assert(afterSkinOnly.hideOriginals and afterSkinOnly.body and next(afterSkinOnly.colors)==nil,"skin-only restore clears saved colors only")
 assert(player.Character:FindFirstChild("Head")==changedBodyHead and changedBodyHead.Color==originalSkin,"skin-only restore returns actual original color without replacing body")
 skinOnly.destroy()
@@ -145,6 +145,14 @@ local gameHandle=gameEquipment:FindFirstChild('Handle')
 local gameWeld=node('Weld','GameWeaponJoint');gameWeld.Part0=gameHandle;gameWeld.Part1=rightHand;gameWeld.Parent=gameHandle
 local weaponController=node('LocalScript','GameWeaponController');weaponController.Parent=gameEquipment
 local appliedHat=freshAccessory();appliedHat.SourceAssetId=nil;appliedHat.Parent=body
+player.UserId=55
+function players:GetCharacterAppearanceInfoAsync(id)
+    assert(id==55);self.appearanceReads=(self.appearanceReads or 0)+1
+    return {assets={{id=555,name='Account hair',assetType={id=41}},{id=777,name='Game weapon',assetType={id=19}}}}
+end
+local accountHair=freshAccessory();accountHair.Name='Account hair';accountHair.SourceAssetId=nil;accountHair.Parent=body
+local hairHandle=accountHair:FindFirstChild('Handle');hairHandle.Transparency=0.3
+local hairEffect=node('ParticleEmitter','Hair effect');hairEffect.Enabled=true;hairEffect.Parent=hairHandle
 local liveDescription=node('HumanoidDescription','Live Description');liveDescription.Parent=body:FindFirstChildOfClass('Humanoid')
 local hatDescription=node('AccessoryDescription','Avatar Hat');hatDescription.Parent=liveDescription
 function hatDescription:GetAppliedInstance()return appliedHat end
@@ -166,8 +174,20 @@ assert(not grip.destroyed and grip.Parent==rightHand and not gearScript.destroye
 assert(body:FindFirstChild("RightHand")==rightHand and gear.Parent==body and not gear.destroyed,"cosmetics replaced the live gear-holding hand or equipped tool")
 assert(heldAttachment.CFrame.y==0.25 and body:FindFirstChildOfClass('Humanoid').HipHeight==1.5,'Package applies floor height without moving gear attachment offsets')
 gearApi.removeCurrentAccessories()
-assert(gameEquipment.Parent==body and gameHandle.LocalTransparencyModifier~=1 and not gameWeld.destroyed and not weaponController.destroyed,'Avatar hat hiding leaves game weapons and their welds/controllers alone')
-assert(appliedHat.Parent==body and appliedHat:FindFirstChild('Handle').LocalTransparencyModifier==1,'Public applied accessory descriptions identify hats without protected SourceAssetId')
+assert(gameEquipment.Parent==body and gameHandle.Transparency~=1 and not gameWeld.destroyed and not weaponController.destroyed,'Avatar hat hiding leaves game weapons and their welds/controllers alone')
+assert(appliedHat.Parent==body and appliedHat:FindFirstChild('Handle').Transparency==1,'Public applied accessory descriptions identify hats without protected SourceAssetId')
+local originalHandle=appliedHat:FindFirstChild('Handle')
+originalHandle.LocalTransparencyModifier=0 -- Roblox's camera resets this during normal play.
+gearApi.equipAccessory(123);local removable=gearApi.listAccessories();gearApi.removeAccessory(removable[#removable].key)
+assert(originalHandle.Transparency==1,'Removing added hats must not reveal originals after the camera resets local transparency')
+assert(hairHandle.Transparency==1 and not hairEffect.Enabled,'Account accessory names hide originals and their effects when asset IDs cannot be read')
+assert(gearApi.getSettings().hideOriginals==true,'Removing added hats preserves the originals-hidden setting')
+originalHandle.Transparency=0;gearApi.removeCurrentAccessories()
+assert(originalHandle.Transparency==1 and players.appearanceReads==1,'Repeated remove re-hides existing originals without another account lookup')
+local stayedHiddenDuringLoad=false
+players.onGenerate=function()stayedHiddenDuringLoad=originalHandle.Transparency==1 end
+local hiddenReplay=gearApi.reapplySaved();players.onGenerate=nil
+assert(stayedHiddenDuringLoad and not hiddenReplay:find('some could not load',1,true),'Replaying cosmetics keeps originals hidden throughout successful asset loading')
 gearApi.restoreBody()
 assert(upper.Size.Y==2 and elbow.C0.y==-1 and elbow.C1.y==1 and elbow0.CFrame.y==-1,'Restore returns original dimensions, attachment positions, and existing motor offsets')
 assert(body:FindFirstChildOfClass('Humanoid').HipHeight==2,'Restore returns original floor height')
@@ -181,7 +201,8 @@ gearApi.restoreBody()
 gearApi.reapplySaved();gearApi.destroy()
 assert(not grip.destroyed and gear.Parent==body,"restore, replay, and cleanup preserve equipped gear")
 assert(storedGear.Parent==backpack and not storedGear.destroyed and not gameWeld.destroyed,'Backpack gear and game weapon joints survive all cosmetic operations')
-assert(appliedHat:FindFirstChild('Handle').LocalTransparencyModifier==0,'Cleanup restores hidden avatar visuals without destroying inventory')
+assert(appliedHat:FindFirstChild('Handle').Transparency==0,'Cleanup restores hidden avatar visuals without destroying inventory')
+assert(hairHandle.Transparency==0.3 and hairEffect.Enabled,'Cleanup restores original accessory transparency and effects exactly')
 -- A Part-based R15 head keeps its existing face, joints, and controllers too.
 Enum.MeshType={FileMesh='FileMesh'}
 Vector3={new=function(x,y,z)return{X=x,Y=y,Z=z}end}

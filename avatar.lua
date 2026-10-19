@@ -51,6 +51,7 @@ end
 return function(player,onStatus)
     local alive,generation=true,0
     local snapshot,added,skin,hidden=nil,{},{},{}
+    local accountAccessoryNames
     local nextKey=0
     local playerGui=player:FindFirstChildOfClass("PlayerGui")
     local attribute="HoneyBunCosmeticSettings"
@@ -118,7 +119,9 @@ return function(player,onStatus)
     end
     local function showOriginalAccessories()
         for _,entry in ipairs(hidden) do
-            for part,value in pairs(entry.parts) do pcall(function() part.LocalTransparencyModifier=value end) end
+            for part,properties in pairs(entry.parts) do
+                for property,value in pairs(properties) do pcall(function() part[property]=value end) end
+            end
         end
         hidden={}
     end
@@ -395,22 +398,48 @@ return function(player,onStatus)
             if read then for _,entry in ipairs(entries) do avatarIds[entry.AssetId]=true end end
             description:Destroy()
         end
+        -- Some games omit applied accessory instances, and SourceAssetId is restricted.
+        -- Use trusted account accessory names as a fallback, never arbitrary game gear.
+        if not accountAccessoryNames and type(player.UserId)=="number" then
+            local loaded,appearance=pcall(function() return Players:GetCharacterAppearanceInfoAsync(player.UserId) end)
+            check(ctx)
+            if loaded and type(appearance)=="table" and type(appearance.assets)=="table" then
+                accountAccessoryNames={}
+                local types={[8]=true,[41]=true,[42]=true,[43]=true,[44]=true,[45]=true,[46]=true,[47]=true,[76]=true,[77]=true}
+                for _,asset in ipairs(appearance.assets) do
+                    if type(asset)=="table" and type(asset.assetType)=="table" and types[asset.assetType.id] and type(asset.name)=="string" then
+                        accountAccessoryNames[asset.name]=true
+                    end
+                end
+            end
+        end
         local alreadyHidden={}
         for _,entry in ipairs(hidden) do alreadyHidden[entry.object]=true end
-        local count=0
         for _,item in ipairs(ctx.character:GetChildren()) do
             local identified,id=pcall(function() return item.SourceAssetId end)
-            if (item:IsA("Accessory") or item:IsA("Hat")) and not hubAdded[item] and not alreadyHidden[item] and (avatarInstances[item] or (identified and avatarIds[id])) then
+            if (item:IsA("Accessory") or item:IsA("Hat")) and not hubAdded[item] and not alreadyHidden[item] and (avatarInstances[item] or (identified and avatarIds[id]) or (accountAccessoryNames and accountAccessoryNames[item.Name])) then
                 local entry={object=item,parts={}}
                 for _,part in ipairs(item:GetDescendants()) do
-                    if part:IsA("BasePart") then entry.parts[part]=part.LocalTransparencyModifier or 0;part.LocalTransparencyModifier=1 end
+                    if part:IsA("BasePart") or part:IsA("Decal") or part:IsA("Texture") then
+                        entry.parts[part]={Transparency=part.Transparency or 0};part.Transparency=1
+                    elseif part:IsA("ParticleEmitter") or part:IsA("Beam") or part:IsA("Trail") or part:IsA("Light") or part:IsA("Fire") or part:IsA("Smoke") or part:IsA("Sparkles") then
+                        entry.parts[part]={Enabled=part.Enabled==true};part.Enabled=false
+                    end
                 end
                 table.insert(hidden,entry)
-                count=count+1
+            end
+        end
+        -- Repeated clicks also re-hide originals if the game changed their visibility.
+        for _,entry in ipairs(hidden) do
+            for part,properties in pairs(entry.parts) do
+                pcall(function()
+                    if properties.Transparency~=nil then part.Transparency=1 end
+                    if properties.Enabled~=nil then part.Enabled=false end
+                end)
             end
         end
         if not reapplying then settings.hideOriginals=true;save() end
-        return count==0 and "No identified Roblox avatar accessories to hide. Game equipment was left alone." or "Hidden "..count.." Roblox accessories. Restore original appearance brings them back."
+        return #hidden==0 and "No identified Roblox avatar accessories to hide. Game equipment was left alone." or "Hidden "..#hidden.." Roblox accessories. Restore original appearance brings them back."
     end
     function api.setSkin(color,region)
         local ctx=context();region=region or "All"
@@ -555,11 +584,11 @@ return function(player,onStatus)
         skin={}
         return true
     end
-    local function restoreAppearance()
+    local function restoreAppearance(keepOriginalsHidden)
         local ctx=context()
         clearAdded()
         if not snapshot or snapshot.character~=ctx.character then return "Nothing to restore on this character." end
-        showOriginalAccessories()
+        if not keepOriginalsHidden then showOriginalAccessories() end
         if snapshot.bodyChanged then
             if ctx.humanoid.RigType==Enum.HumanoidRigType.R15 then restoreBodyParts(ctx)
             else
@@ -615,7 +644,7 @@ return function(player,onStatus)
         local desired=copySettings()
         local failures={}
         local ok,message=pcall(function()
-            restoreAppearance()
+            restoreAppearance(desired.hideOriginals)
             local function apply(operation,...)
                 check(ctx)
                 local success,err=pcall(operation,...)
