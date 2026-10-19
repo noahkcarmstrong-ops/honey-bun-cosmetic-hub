@@ -106,7 +106,7 @@ return function(game, injectedRequire, gunLibrary)
         local chroma=field(def,"Chroma")
         return {id=e.id,name=e.customName and e.name or (e.catalog and e.catalog.Name or e.name),kind=e.kind,rarity=rarity,
             image=field(def,"Image") or field(def,"ImageId") or field(def,"ImageID"),
-            visual=field(e.definition,"PortableGun") and e.definition or nil,
+            visual=field(e.definition,"PortableGun") and e.definition or nil,previewOffset=e.previewOffset or 0,
             category=categoryName,year=year,event=event,rarityColor=rarityColor,rarityOrder=rarityOrder,
             season=field(def,"Season"),sortOrder=sortOrder,chroma=chroma==true or (type(chroma)=="string" and lower(chroma)~="" and lower(chroma)~="false")}
     end
@@ -837,6 +837,11 @@ return function(game, injectedRequire, gunLibrary)
     end
     function api.savedWeapons(kind) return gunLibrary and gunLibrary.list(kind) or {} end
     function api.savedGuns() return api.savedWeapons("Gun") end
+    function api.setSavedPreviewOffset(id,value)
+        assert(alive and gunLibrary,"The saved weapon library is unavailable.")
+        gunLibrary.setPreviewOffset(id,value)
+        return "Saved weapon preview position."
+    end
     function api.renameSavedWeapon(id,name)
         assert(alive and gunLibrary,"The saved weapon library is unavailable.")
         local entry=gunLibrary.rename(id,name)

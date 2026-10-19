@@ -516,7 +516,7 @@ local function savedNativeMM2()
     local backend=mm2()
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/native_inventory.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
-    local savedCatalog={list=backend.savedInventory,equip=backend.equip,getEquipped=backend.getEquipped,remove=backend.removeSavedWeapon,rename=backend.renameSavedWeapon}
+    local savedCatalog={list=backend.savedInventory,equip=backend.equip,getEquipped=backend.getEquipped,remove=backend.removeSavedWeapon,rename=backend.renameSavedWeapon,setPreviewOffset=backend.setSavedPreviewOffset}
     mm2SavedNativeAPI=chunk()(playerGui,savedCatalog,function(message)
         if alive and statusLabel then statusLabel.Text=message end
     end,"saved")

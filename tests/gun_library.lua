@@ -324,6 +324,32 @@ assert(#migrated.list('Gun')==1 and migrated.getSelected()==migrated.list('Gun')
 local persistedMigration=http:JSONDecode(migratedGui:GetAttribute('HoneyBunCosmeticGuns'))
 assert(#persistedMigration.entries==1,'Migrated duplicate cleanup persists')
 
+-- Preview placement is entry metadata: it survives ordinary edits and
+-- recapture without changing the visual definition or its equip ID.
+local previewGui=gui();local previewLibrary=create(game,previewGui)
+local previewEntry=previewLibrary.capture(sourceMesh,'PreviewPlayer')
+assert(previewEntry.previewOffset==0,'new saved weapons default preview offset to zero')
+local previewId=previewEntry.id
+assert(previewLibrary.setPreviewOffset(previewId,0.75)==0.75 and previewEntry.previewOffset==0.75,'preview offset updates the saved entry')
+assert(not previewEntry.definition.previewOffset,'preview offset is kept outside the portable definition')
+assert(not pcall(function()previewLibrary.setPreviewOffset(previewId,1.01)end),'preview offsets above one are rejected')
+assert(not pcall(function()previewLibrary.setPreviewOffset(previewId,-1.01)end),'preview offsets below negative one are rejected')
+assert(not pcall(function()previewLibrary.setPreviewOffset(previewId,math.huge)end),'infinite preview offsets are rejected')
+assert(not pcall(function()previewLibrary.setPreviewOffset(previewId,'0.5')end),'non-number preview offsets are rejected')
+previewLibrary.rename(previewId,'Preview Renamed')
+previewLibrary.setCatalog(previewId,{Id='preview-item',Name='Preview Item',Category='classic'})
+local recaptured=previewLibrary.capture(sourceMesh,'PreviewAgain')
+assert(recaptured.id==previewId and recaptured.previewOffset==0.75,'recapture preserves the ID and preview offset')
+local previewRecord=http:JSONDecode(previewGui:GetAttribute('HoneyBunCosmeticGuns')).entries[1]
+assert(previewRecord.previewOffset==0.75 and previewRecord.definition.previewOffset==nil,'preview offset persists at the entry record level')
+local previewReload=create(game,gui(previewGui:GetAttribute('HoneyBunCosmeticGuns')))
+local reloadedPreview=previewReload.list()[1]
+assert(reloadedPreview.id==previewId and reloadedPreview.previewOffset==0.75,'preview offset survives rejoin')
+local legacyPreviewPayload=http:JSONDecode(previewGui:GetAttribute('HoneyBunCosmeticGuns'))
+legacyPreviewPayload.entries[1].previewOffset=nil
+local legacyPreview=create(game,gui(http:JSONEncode(legacyPreviewPayload)))
+assert(legacyPreview.list()[1].previewOffset==0,'legacy records without preview offset default to zero')
+
 local bad=gui(http:JSONEncode({version=1,entries={{id="bad",name="bad",definition={PortableGun=true}}}}))
 assert(#create(game,bad).list()==0,"malformed saved definitions are rejected")
 print("Gun mesh capture, SpecialMesh precedence, normalized MeshPart scale, deduplication, source preservation, selection, and rejoin persistence passed.")

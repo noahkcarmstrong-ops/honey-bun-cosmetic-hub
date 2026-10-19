@@ -397,6 +397,10 @@ savedCatalog.remove=function(id)
     for i,e in ipairs(savedDefs) do if e.id==id then table.remove(savedDefs,i);return 'Deleted saved weapon'end end
     error('Saved weapon missing')
 end
+savedCatalog.setPreviewOffset=function(id,value)
+    for _,entry in ipairs(savedDefs)do if entry.id==id then entry.previewOffset=value;return 'Preview saved' end end
+end
+Vector2={new=function(x,y)return {X=x,Y=y}end}
 nestedApi.disable();nestedApi.enable();flush()
 rebuiltPane=descNamed(inventory,'HoneyBunLocal_SavedPane')
 local deleteCard
@@ -405,6 +409,17 @@ local cog=deleteCard:FindFirstChild('HoneyBunSavedOptions')
 local options=deleteCard:FindFirstChild('HoneyBunSavedOptionsMenu')
 assert(cog and not options.Visible and not deleteCard:FindFirstChild('HoneyBunDeleteSaved'),'Cog replaces the always-visible Delete button')
 cog.Activated:Fire();assert(options.Visible,'Cog opens saved item actions')
+options:FindFirstChild('HoneyBunAdjustPreview').Activated:Fire()
+local adjustment=deleteCard:FindFirstChild('HoneyBunPreviewAdjustment')
+assert(adjustment.Visible and not options.Visible,'Adjust preview opens slider controls')
+adjustment:FindFirstChild('HoneyBunPreviewRight').Activated:Fire()
+local adjustedEntry;for _,entry in ipairs(savedDefs)do if entry.id=='holiday-saved' then adjustedEntry=entry end end
+assert(adjustedEntry.previewOffset==0.05,'Right arrow saves a per-weapon horizontal offset')
+adjustment:FindFirstChild('HoneyBunPreviewReset').Activated:Fire()
+assert(adjustedEntry.previewOffset==0,'Reset restores the original preview position')
+adjustment:FindFirstChild('HoneyBunPreviewDone').Activated:Fire()
+assert(not adjustment.Visible,'Done closes the adjustment controls')
+cog.Activated:Fire()
 local deleteButton=options:FindFirstChild('HoneyBunDeleteSaved')
 assert(deleteButton,'Saved inventory cards offer deletion')
 deleteButton.Activated:Fire();assert(#savedDefs==2 and deleteButton.Text=='Confirm delete','First click requests confirmation without deleting')

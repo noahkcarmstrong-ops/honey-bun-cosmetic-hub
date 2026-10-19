@@ -472,7 +472,7 @@ return function(playerGui,catalog,onStatus,mode)
     end
     local function savedMetadataFor(entry)
         return {id=entry.id,kind=entry.kind,category=entryCategory(entry),name=entry.name,image=entry.image,previewImage=entry.previewImage,editable=entry.editable,rarity=entry.rarity,
-            rarityColor=entry.rarityColor,sortOrder=entry.sortOrder,rarityOrder=entry.rarityOrder,chroma=entry.chroma}
+            previewOffset=entry.previewOffset,rarityColor=entry.rarityColor,sortOrder=entry.sortOrder,rarityOrder=entry.rarityOrder,chroma=entry.chroma}
     end
     local function sameSavedMetadata(a,b)
         if not a or not b then return false end
@@ -755,7 +755,18 @@ return function(playerGui,catalog,onStatus,mode)
                         end
                         local image=entry.image or entry.previewImage;if type(image)=="number" or (type(image)=="string" and image:match("^%d+$")) then image="rbxassetid://"..tostring(image) end
                         local targetIcon=icon(card);if targetIcon then targetIcon.Image=type(image)=="string" and image or "" end
-                        savedModelIcon(card,targetIcon,entry)
+                        local modelIcon=savedModelIcon(card,targetIcon,entry)
+                        local iconPosition=targetIcon and read(targetIcon,"Position")
+                        local function positionPreview(value)
+                            if not iconPosition then return end
+                            local position=UDim2.new(iconPosition.X.Scale+value*0.3,iconPosition.X.Offset,iconPosition.Y.Scale,iconPosition.Y.Offset)
+                            targetIcon.Position=position
+                            if modelIcon then modelIcon.Position=position end
+                        end
+                        if not effects then
+                            card.ClipsDescendants=true
+                            pcall(positionPreview,entry.previewOffset or 0)
+                        end
                         if not entry.image and entry.previewImage then
                             local label=Instance.new("TextLabel");label.Name="HoneyBunParticlePreview";label.Text="Particle preview"
                             label.BackgroundTransparency=1;label.TextColor3=Color3.fromRGB(220,220,220);label.TextScaled=true
@@ -777,6 +788,63 @@ return function(playerGui,catalog,onStatus,mode)
                                 local o=Instance.new("TextButton");o.Name=name;o.Text=text;o.TextScaled=true
                                 o.Size=UDim2.fromScale(0.9,0.2);o.Position=UDim2.fromScale(0.05,y);o.BackgroundTransparency=1
                                 o.TextColor3=Color3.fromRGB(245,245,250);o.ZIndex=click.ZIndex+2;o.Parent=menu;return o
+                            end
+                            if not effects and catalog.setPreviewOffset then
+                                local adjust=option("HoneyBunAdjustPreview","Adjust preview",0.08)
+                                local controls=Instance.new("Frame");controls.Parent=card
+                                controls.Name="HoneyBunPreviewAdjustment";controls.Visible=false
+                                controls.Position=UDim2.fromScale(0,0.58);controls.Size=UDim2.fromScale(1,0.42)
+                                controls.BackgroundColor3=Color3.fromRGB(25,25,30);controls.ZIndex=click.ZIndex+4
+                                local value=entry.previewOffset or 0
+                                local function control(name,label,x,width,y)
+                                    local b=Instance.new("TextButton");b.Parent=controls;b.Name=name;b.Text=label;b.TextScaled=true
+                                    b.Position=UDim2.fromScale(x,y);b.Size=UDim2.fromScale(width,0.4)
+                                    b.ZIndex=controls.ZIndex+1;b.TextColor3=Color3.fromRGB(255,255,255)
+                                    b.BackgroundColor3=Color3.fromRGB(60,60,65);return b
+                                end
+                                local left=control("HoneyBunPreviewLeft","<",0,0.15,0.05)
+                                local right=control("HoneyBunPreviewRight",">",0.85,0.15,0.05)
+                                local track=control("HoneyBunPreviewTrack","",0.2,0.6,0.05)
+                                local thumb=Instance.new("Frame");thumb.Parent=track;thumb.Name="Thumb"
+                                thumb.Size=UDim2.fromScale(0.08,1);thumb.AnchorPoint=Vector2.new(0.5,0)
+                                thumb.BackgroundColor3=Color3.fromRGB(138,43,226);thumb.ZIndex=track.ZIndex+1
+                                local reset=control("HoneyBunPreviewReset","Reset",0.02,0.46,0.55)
+                                local done=control("HoneyBunPreviewDone","Done",0.52,0.46,0.55)
+                                local function update(nextValue)
+                                    value=math.max(-1,math.min(1,nextValue))
+                                    thumb.Position=UDim2.fromScale((value+1)/2,0)
+                                    pcall(positionPreview,value)
+                                end
+                                local function commit()
+                                    local good,result=pcall(catalog.setPreviewOffset,entry.id,value)
+                                    if good then entry.previewOffset=value else update(entry.previewOffset or 0) end
+                                    status(good and (result or "Preview position saved.") or tostring(result))
+                                end
+                                bind(adjust,function()menu.Visible=false;openOptions=controls;controls.Visible=true;update(entry.previewOffset or 0)end)
+                                bind(left,function()update(value-0.05);commit()end)
+                                bind(right,function()update(value+0.05);commit()end)
+                                bind(reset,function()update(0);commit()end)
+                                bind(done,function()commit();controls.Visible=false;openOptions=nil end)
+                                local inputService
+                                pcall(function()inputService=game:GetService("UserInputService")end)
+                                local dragging
+                                local function drag(input)
+                                    local width=track.AbsoluteSize.X
+                                    if width>0 then update((input.Position.X-track.AbsolutePosition.X)/width*2-1) end
+                                end
+                                local began=read(track,"InputBegan")
+                                if began then savedCardConnections[id][#savedCardConnections[id]+1]=began:Connect(function(input)
+                                    if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=input;drag(input) end
+                                end) end
+                                if inputService then
+                                    savedCardConnections[id][#savedCardConnections[id]+1]=inputService.InputChanged:Connect(function(input)
+                                        if dragging and controls.Visible and (input==dragging or input.UserInputType==Enum.UserInputType.MouseMovement) then drag(input) end
+                                    end)
+                                    savedCardConnections[id][#savedCardConnections[id]+1]=inputService.InputEnded:Connect(function(input)
+                                        if dragging and (input==dragging or input.UserInputType==Enum.UserInputType.MouseButton1) then dragging=nil;if controls.Visible then commit() end end
+                                    end)
+                                end
+                                update(value)
                             end
                             local rename=option("HoneyBunRenameSaved","Rename",0.32)
                             local remove=option("HoneyBunDeleteSaved","Delete",0.56)
