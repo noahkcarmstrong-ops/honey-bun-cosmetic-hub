@@ -2,9 +2,11 @@
 return function(playerGui,catalog,onStatus)
     local api={}
     local enabled,dead=false,false
-    local grid,template,root,ownedLayout,scroll,scrollState,gridState
+    local grid,template,root,ownedRoot,nativePane,nativeHost
+    local panePath,gridPath
+    local mounting,queued=false,false
     local cards,originals,connections,cardConnections={},{},{},{}
-    local query,season="",nil
+    local query,season="","season1"
     local lastReport="Native inventory has not been detected yet."
     local function read(o,k) local ok,v=pcall(function() return o[k] end);if ok then return v end end
     local function is(o,c) local ok,v=pcall(function() return o:IsA(c) end);return ok and v end
@@ -74,18 +76,60 @@ return function(playerGui,catalog,onStatus)
         return table.concat(lines,"\n")
     end
     local function own(o) return lower(o.Name):sub(1,14)=="honeybunlocal_" end
-    local function hideOriginal(o)
-        if is(o,"GuiObject") and not own(o) then
-            if originals[o]==nil then originals[o]=o.Visible end
-            o.Visible=false
-        end
-    end
-    local function seasonMatches(value)
-        if not season or value==nil then return true end
+    local function category(value)
         local v=normalize(value)
-        if season=="season1" then return v=="1" or v=="season1" end
-        if season=="classic" then return v=="classic" or v=="0" end
-        return v=="holiday" or v:find("halloween",1,true) or v:find("christmas",1,true)
+        if v=="season1" or v=="1" then return "season1" end
+        if v=="classic" or v=="0" then return "classic" end
+        if v=="holiday" or v:find("halloween",1,true) or v:find("christmas",1,true) then return "holiday" end
+    end
+    local function entryCategory(entry)
+        return category(entry.category) or category(entry.event) or category(entry.season) or "classic"
+    end
+    local function pathFrom(ancestor,object)
+        local path={}
+        while object and object~=ancestor do table.insert(path,1,object.Name);object=object.Parent end
+        return object==ancestor and path or nil
+    end
+    local function atPath(ancestor,path)
+        if not path then return nil end
+        local o=ancestor
+        for _,name in ipairs(path or {}) do o=o and o:FindFirstChild(name) end
+        return o
+    end
+    local function alive(o)
+        while o do if o==playerGui then return true end;o=o.Parent end
+        return false
+    end
+    local function localObject(o)
+        while o and o~=playerGui do if own(o) then return true end;o=o.Parent end
+        return false
+    end
+    local function paneFor(nativeGrid,inventory)
+        local branch=nativeGrid
+        local fallback=nativeGrid
+        while branch and branch~=inventory do
+            if is(branch,"ScrollingFrame") then fallback=branch end
+            local parent=branch.Parent
+            local categories=0
+            for _,sibling in ipairs(children(parent)) do
+                if is(sibling,"GuiObject") and not is(sibling,"GuiButton") and category(sibling.Name) then categories=categories+1 end
+            end
+            if categories>=2 and category(branch.Name) then return parent,branch end
+            branch=parent
+        end
+        return fallback.Parent,fallback
+    end
+    local rarityRanks={unique=8,ancient=7,godly=6,vintage=5,classic=5,legendary=4,rare=3,uncommon=2,common=1}
+    local function compare(a,b)
+        local ao,bo=type(a.sortOrder)=="number",type(b.sortOrder)=="number"
+        if ao~=bo then return ao end
+        if ao and a.sortOrder~=b.sortOrder then return a.sortOrder<b.sortOrder end
+        local ar=a.rarityOrder or rarityRanks[lower(a.rarity)] or 0
+        local br=b.rarityOrder or rarityRanks[lower(b.rarity)] or 0
+        if ar~=br then return ar>br end
+        if (a.chroma==true)~=(b.chroma==true) then return a.chroma==true end
+        if lower(a.name)~=lower(b.name) then return lower(a.name)<lower(b.name) end
+        return tostring(a.id)<tostring(b.id)
     end
     local function icon(card)
         local best,area
@@ -117,9 +161,9 @@ return function(playerGui,catalog,onStatus)
         for _,card in ipairs(cards) do destroy(card) end
         cards={}
     end
-    local function render()
-        assert(template and template.Parent==grid,"MM2 rebuilt the inventory. Turn Show all cosmetics off and on again.")
-        for o in pairs(originals) do pcall(function() o.Visible=false end) end
+    local render
+    render=function()
+        assert(grid and alive(grid),"MM2 inventory is being rebuilt.")
         clearCards()
         local items={}
         for _,kind in ipairs({"Knife","Gun"}) do
@@ -127,15 +171,21 @@ return function(playerGui,catalog,onStatus)
             assert(type(list)=="table","MM2 catalog did not return an item list.")
             for _,entry in ipairs(list) do items[#items+1]=entry end
         end
+        table.sort(items,compare)
+        local equipped=catalog.getEquipped and catalog.getEquipped() or {}
         local ok,message=pcall(function()
             for _,entry in ipairs(items) do
-                if seasonMatches(entry.season) then
+                if entryCategory(entry)==season then
                     local card=template:Clone()
                     cards[#cards+1]=card
                     card.Name="HoneyBunLocal_"..entry.kind.."_"..tostring(entry.id)
                     card.Visible=true;card.LayoutOrder=#cards
                     for _,v in ipairs(texts(card)) do
-                        if (is(v,"TextLabel") or is(v,"TextButton")) and (v.Text=="Default Knife" or v.Text=="Default Gun") then v.Text=entry.name end
+                        if (is(v,"TextLabel") or is(v,"TextButton")) and (v.Text=="Default Knife" or v.Text=="Default Gun") then
+                            v.Text=entry.name
+                            if entry.rarityColor then v.TextColor3=entry.rarityColor end
+                        end
+                        if is(v,"GuiObject") and (normalize(v.Name)=="equipped" or normalize(v.Name)=="selected") then v.Visible=equipped[entry.kind]==entry.id end
                     end
                     local image=entry.image
                     if type(image)=="number" or (type(image)=="string" and image:match("^%d+$")) then image="rbxassetid://"..tostring(image) end
@@ -143,8 +193,13 @@ return function(playerGui,catalog,onStatus)
                     if target then target.Image=type(image)=="string" and image or "" end
                     local button=overlay(card)
                     cardConnections[#cardConnections+1]=button.Activated:Connect(function()
-                        local good,result=pcall(catalog.preview,entry.id,entry.kind)
-                        status(good and (result or "Preview applied.") or ("Preview unavailable: "..tostring(result)))
+                        local good,result=pcall(catalog.equip or catalog.preview,entry.id,entry.kind)
+                        status(good and (result or "Local item selected.") or ("Could not equip locally: "..tostring(result)))
+                        if good then
+                            local shown=lastReport
+                            local refreshed,err=pcall(render)
+                            if not refreshed then status(err) else status(shown) end
+                        end
                     end)
                     card.Parent=grid
                 end
@@ -153,69 +208,127 @@ return function(playerGui,catalog,onStatus)
         if not ok then clearCards();error(message) end
         return #cards,#items
     end
-    local function update()
-        local ok,n=pcall(render)
-        status(ok and ("MM2 inventory: "..n.." local cosmetic cards.") or ("MM2 inventory update failed: "..tostring(n)))
+    local refresh
+    local function schedule()
+        if not enabled or mounting or queued or dead then return end
+        queued=true
+        task.defer(function()
+            queued=false
+            if enabled and not dead then
+                local ok,message=pcall(refresh)
+                if not ok then status("Waiting for MM2 inventory: "..tostring(message)) end
+            end
+        end)
+    end
+    local function releaseMount()
+        disconnect(connections);connections={};clearCards()
+        if ownedRoot then destroy(ownedRoot);ownedRoot=nil end
+        for o,visible in pairs(originals) do pcall(function() o.Visible=visible end) end
+        originals={};grid=nil
+    end
+    local function hidePane(o)
+        if originals[o]==nil then originals[o]=o.Visible end
+        o.Visible=false
+        connections[#connections+1]=o:GetPropertyChangedSignal("Visible"):Connect(function()
+            if enabled and o.Visible then o.Visible=false end
+        end)
     end
     local function bindControls()
         for _,o in ipairs(descendants(root)) do
-            if is(o,"TextBox") and (lower(o.Name):find("search",1,true) or lower(o.PlaceholderText):find("search",1,true)) then
-                query=lower(o.Text)
-                connections[#connections+1]=o:GetPropertyChangedSignal("Text"):Connect(function() query=lower(o.Text);update() end)
-            elseif is(o,"TextButton") and (normalize(o.Text)=="season1" or normalize(o.Text)=="classic" or normalize(o.Text)=="holiday") then
-                connections[#connections+1]=o.Activated:Connect(function() season=normalize(o.Text);update() end)
+            if not localObject(o) then
+                if is(o,"TextBox") and (lower(o.Name):find("search",1,true) or lower(o.PlaceholderText):find("search",1,true)) then
+                    query=lower(o.Text)
+                    connections[#connections+1]=o:GetPropertyChangedSignal("Text"):Connect(function() query=lower(o.Text);schedule() end)
+                elseif is(o,"GuiButton") then
+                    local key=category(read(o,"Text")) or category(o.Name)
+                    if key then connections[#connections+1]=o.Activated:Connect(function() season=key;schedule() end) end
+                end
             end
         end
+        if is(root,"GuiObject") then connections[#connections+1]=root:GetPropertyChangedSignal("Visible"):Connect(schedule) end
     end
+    local function mount()
+        local source=atPath(playerGui,panePath)
+        local originalGrid=atPath(source,gridPath)
+        local detectedTemplate
+        if not source or not originalGrid or not alive(originalGrid) then
+            local detectedRoot,nativeGrid,card=detect()
+            assert(nativeGrid,"Open MM2's Weapons inventory so its item panel can be detected.")
+            root=detectedRoot
+            nativeHost,nativePane=paneFor(nativeGrid,root)
+            source=nativePane;originalGrid=nativeGrid;detectedTemplate=card
+            panePath=pathFrom(playerGui,source);gridPath=pathFrom(source,originalGrid)
+        else
+            nativePane=source;nativeHost=source.Parent
+            root=inventoryAncestor(originalGrid) or root
+        end
+        assert(source and nativeHost,"Native inventory content panel was not found.")
+        if not template then
+            assert(detectedTemplate,"Native item card template is unavailable.")
+            template=detectedTemplate:Clone()
+        end
+        ownedRoot=source:Clone();ownedRoot.Name="HoneyBunLocal_Collection"
+        for _,o in ipairs(texts(ownedRoot)) do if is(o,"LuaSourceContainer") then destroy(o) end end
+        grid=atPath(ownedRoot,gridPath)
+        assert(grid,"The copied native item grid could not be located.")
+        for _,o in ipairs(children(grid)) do if is(o,"GuiObject") then destroy(o) end end
+        local layout=grid:FindFirstChildOfClass("UIGridLayout")
+        if not layout then
+            layout=Instance.new("UIGridLayout");layout.CellSize=template.Size;layout.CellPadding=UDim2.fromOffset(4,4);layout.Parent=grid
+        end
+        layout.SortOrder=Enum.SortOrder.LayoutOrder
+        local scrolling=grid
+        while scrolling and scrolling~=ownedRoot.Parent and not is(scrolling,"ScrollingFrame") do scrolling=scrolling.Parent end
+        if scrolling then
+            scrolling.AutomaticCanvasSize=Enum.AutomaticSize.Y
+            if scrolling~=grid then grid.AutomaticSize=Enum.AutomaticSize.Y end
+        end
+        ownedRoot.Visible=true
+        for _,o in ipairs(children(nativeHost)) do
+            if is(o,"GuiObject") and not own(o) and (o==source or (category(o.Name) and not is(o,"GuiButton"))) then hidePane(o) end
+        end
+        ownedRoot.Parent=nativeHost
+        connections[#connections+1]=ownedRoot:GetPropertyChangedSignal("Visible"):Connect(schedule)
+        bindControls()
+    end
+    refresh=function()
+        if not ownedRoot or not alive(ownedRoot) then
+            mounting=true
+            releaseMount()
+            local ok,message=pcall(mount)
+            mounting=false
+            if not ok then releaseMount();error(message) end
+        end
+        ownedRoot.Visible=true
+        for pane in pairs(originals) do pcall(function() pane.Visible=false end) end
+        local n,total=render()
+        assert(total>0,"MM2's item database returned no knife/gun cosmetics. Copy MM2 report for details.")
+        status("MM2 "..season.." inventory: "..n.." local cosmetic cards.")
+        return lastReport
+    end
+    local watchers={}
     function api.disable()
-        disconnect(connections);connections={};clearCards()
-        for o,visible in pairs(originals) do pcall(function() o.Visible=visible end) end
-        originals={}
-        if ownedLayout then destroy(ownedLayout);ownedLayout=nil end
-        if scroll and scrollState then pcall(function() scroll.CanvasSize=scrollState.canvas;scroll.AutomaticCanvasSize=scrollState.auto end) end
-        if grid and gridState then pcall(function() grid.Size=gridState.size;grid.AutomaticSize=gridState.auto end) end
-        scroll,scrollState,gridState=nil,nil,nil
-        enabled=false
+        enabled=false;queued=false
+        disconnect(watchers);watchers={};releaseMount()
+        if template then destroy(template);template=nil end
+        panePath,gridPath=nil,nil
         return "Original MM2 inventory display restored."
     end
     function api.enable()
         assert(not dead,"MM2 inventory preview was closed.")
-        if enabled then return true,lastReport end
-        root,grid,template=detect()
-        if not grid then
-            status("Native inventory not detected. Open MM2 Weapons inventory showing Default Knife and Default Gun, then try again.\n"..inventoryTree())
-            return false,lastReport
+        if enabled then local ok,message=pcall(refresh);return ok,message end
+        enabled=true;query="";season="season1"
+        local ok,message=pcall(refresh)
+        if not ok then api.disable();status("MM2 inventory could not load: "..tostring(message).."\n"..inventoryTree());return false,lastReport end
+        local function changed(o)
+            if not mounting and not localObject(o) and (inventoryAncestor(o) or lower(o.Name):find("inventory",1,true)) then schedule() end
         end
-        local ok,message=pcall(function()
-            if not grid:FindFirstChildOfClass("UIGridLayout") then
-                ownedLayout=Instance.new("UIGridLayout")
-                ownedLayout.Name="HoneyBunLocalLayout";ownedLayout.CellSize=template.Size
-                ownedLayout.CellPadding=UDim2.fromOffset(4,4);ownedLayout.SortOrder=Enum.SortOrder.LayoutOrder
-                ownedLayout.Parent=grid
-            end
-            scroll=grid
-            while scroll and not is(scroll,"ScrollingFrame") do scroll=scroll.Parent end
-            if scroll then
-                scrollState={canvas=scroll.CanvasSize,auto=scroll.AutomaticCanvasSize}
-                scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
-                if grid~=scroll then
-                    gridState={size=grid.Size,auto=grid.AutomaticSize}
-                    grid.AutomaticSize=Enum.AutomaticSize.Y
-                end
-            end
-            for _,o in ipairs(children(grid)) do hideOriginal(o) end
-            connections[#connections+1]=grid.ChildAdded:Connect(hideOriginal)
-            query="";season=nil;bindControls()
-            local n,total=render()
-            assert(total>0,"MM2's item database returned no knife/gun cosmetics. Copy MM2 report for the database details.")
-            return "MM2 inventory: "..n.." local cosmetic cards added."
-        end)
-        if not ok then api.disable();status("MM2 inventory could not load: "..tostring(message));return false,lastReport end
-        enabled=true;status(message)
+        watchers[#watchers+1]=playerGui.DescendantAdded:Connect(changed)
+        watchers[#watchers+1]=playerGui.DescendantRemoving:Connect(changed)
         return true,message
     end
     function api.report()
-        return "Native inventory build: local cards V2\n"..lastReport.."\nGrid="..(grid and grid:GetFullName() or "none").."\nGenerated="..#cards
+        return "Native inventory build: persistent category panels V3\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nGenerated="..#cards
     end
     function api.destroy() if not dead then api.disable();dead=true end end
     return api

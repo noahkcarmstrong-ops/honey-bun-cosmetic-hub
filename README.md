@@ -108,6 +108,6 @@ API references: [Accessories](https://create.roblox.com/docs/reference/engine/cl
 
 ## MM2 local cosmetics
 
-Open MM2's Weapons inventory, then open **MM2 → Open MM2 menu** in the hub and enable **Show all cosmetics**. Supported native item cards are copied into the game's inventory window using the loaded knife/gun catalog. Click a local card to preview it on your matching held weapon. Disable the toggle to restore the original inventory display and weapon appearance.
+Open MM2's Weapons inventory, then open **MM2 → Open MM2 menu** in the hub and enable **Show all cosmetics**. Supported native item cards are copied into the game's inventory window using the loaded knife/gun catalog. Click a local card to select it. The selection applies to a matching native weapon now or when it becomes available, and reapplies after respawning. Season 1, Classic, and Holiday use the loaded item metadata; cards sort by available order metadata, rarity, chroma status, and name. The local collection reconnects when MM2 reopens or rebuilds its inventory. Disable the toggle to restore the original inventory display and weapon appearance.
 
 This changes the local inventory display; it does not add ownership or trading rights. It requires a recognizable native card layout and loaded catalog. Unsupported layouts or model formats report an explanation. Use **Copy MM2 report** if the inventory cannot be detected. Live compatibility with every rare item and emote is not yet verified.

@@ -65,3 +65,34 @@ mm2.restore();assert(stopped and removed,'Restore stops and destroys the emote t
 local errorReport=create(badGame,function()error('Fixture cannot load module')end).report()
 assert(errorReport:find('Fixture cannot load module',1,true),'Reports database errors for live diagnosis')
 print('MM2 multi-weapon restoration and emote lifecycle checks passed.')
+
+-- Metadata keeps explicit holiday flags ahead of Season and equip waits for the native Tool lifecycle.
+local signal=function() local listeners={}; return {Connect=function(_,fn) listeners[#listeners+1]=fn; return {Disconnect=function() end} end,Fire=function(_,value) for _,fn in ipairs(listeners) do fn(value) end end} end
+local mixed=node('Item','ModuleScript'); mixed.Data={Mixed={ItemName='Mixed Holiday',ItemType='Knife',Season=1,Event='Halloween',Year=2024,Rarity='Godly',SortOrder=7,Chroma='true',Model='HolidayMesh'},Classic={ItemName='Classic',ItemType='Knife',Season=0},Plain={ItemName='Plain',ItemType='Knife'}}
+local mixedSync=node('Sync','Folder',{mixed}); local mixedDb=node('Database','Folder',{mixedSync}); local source=node('HolidayMesh','MeshPart'); source.IsA=function(self,c)return c=='MeshPart' or c=='BasePart' or c==self.ClassName end; local resources=node('Resources','Folder',{source}); local mixedRs=node('ReplicatedStorage','ReplicatedStorage',{mixedDb,resources})
+local backpack={GetChildren=function()return {} end,ChildAdded=signal()}; local character={GetChildren=function()return {} end,ChildAdded=signal()}; local mixedPlayer={Character=character,Backpack=backpack,CharacterAdded=signal()}
+local mixedApi=create({GetService=function(_,name) return name=='ReplicatedStorage' and mixedRs or name=='Players' and {LocalPlayer=mixedPlayer} end},function(module)return module.Data end)
+local cards=mixedApi.list('Knife'); local byId={}; for _,card in ipairs(cards) do byId[card.id]=card end
+assert(byId.Mixed.category=='holiday' and byId.Mixed.year==2024 and byId.Mixed.event=='Halloween' and byId.Mixed.sortOrder==7 and byId.Mixed.chroma,'Combines explicit holiday metadata without losing season/year fields')
+assert(byId.Classic.category=='classic' and byId.Plain.category=='classic','Season zero and missing season remain classic')
+assert(mixedApi.equip('Mixed','Knife'):find('waiting',1,true),'Equip accepts a supported cosmetic before a Tool exists')
+local liveHandle=node('Handle','MeshPart'); liveHandle.ApplyMesh=function(self,source) self.applied=source end; liveHandle.Clone=function(self)return {original=self,Destroy=function()self.destroyed=true end}end
+local arriving=node('Knife','Tool',{liveHandle}); character.GetChildren=function()return {arriving}end; character.ChildAdded:Fire(arriving)
+assert(liveHandle.applied==source,'Pending selection applies the resolved model to the arriving Tool Handle')
+-- A successful initial equip must survive a fresh character, not just a still-pending selection.
+local respawnHandle=node('Handle','MeshPart')
+respawnHandle.ApplyMesh=liveHandle.ApplyMesh;respawnHandle.Clone=liveHandle.Clone
+local respawnTool=node('Knife','Tool',{respawnHandle})
+local respawnCharacter={GetChildren=function()return{respawnTool}end,ChildAdded=signal()}
+mixedPlayer.Character=respawnCharacter;mixedPlayer.CharacterAdded:Fire(respawnCharacter)
+assert(respawnHandle.applied==source,'Selected cosmetic reapplies after respawn even after pending state was cleared')
+assert(mixedApi.getEquipped().Knife=='Mixed','Selection remains equipped across character replacement')
+local displayHandle=node('Handle','MeshPart')
+displayHandle.ApplyMesh=liveHandle.ApplyMesh;displayHandle.Clone=liveHandle.Clone
+local display=node('KnifeDisplay','Model',{displayHandle})
+respawnCharacter.ChildAdded:Fire(display)
+assert(displayHandle.applied==source,'Existing native holstered weapon displays use the same local skin without replacing joints')
+mixedApi.restore(); assert(liveHandle.applied and liveHandle.applied.original==liveHandle,'Restore reapplies the cloned original MeshPart source')
+assert(respawnHandle.applied and respawnHandle.applied.original==respawnHandle and displayHandle.applied.original==displayHandle,'Restore returns respawned and holstered weapon meshes')
+assert(not mixedApi.getEquipped().Knife,'Restore clears pending and selected cosmetics')
+print('MM2 metadata, pending equip, respawn persistence and mesh restoration passed.')
