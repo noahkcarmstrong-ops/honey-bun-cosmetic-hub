@@ -149,13 +149,36 @@ local liveDescription=node('HumanoidDescription','Live Description');liveDescrip
 local hatDescription=node('AccessoryDescription','Avatar Hat');hatDescription.Parent=liveDescription
 function hatDescription:GetAppliedInstance()return appliedHat end
 local gearApi=create(player)
+local upper=body:FindFirstChild('LeftUpperArm');local lower=body:FindFirstChild('LeftLowerArm')
+upper.Size={X=1,Y=2,Z=1};template:FindFirstChild('LeftUpperArm').Size={X=0.8,Y=1.4,Z=0.8}
+local elbow0=node('Attachment','LeftElbowRigAttachment');elbow0.CFrame=cf(0,-1,0);elbow0.Parent=upper
+local elbow1=node('Attachment','LeftElbowRigAttachment');elbow1.CFrame=cf(0,1,0);elbow1.Parent=lower
+local sourceElbow0=node('Attachment','LeftElbowRigAttachment');sourceElbow0.CFrame=cf(0,-0.7,0);sourceElbow0.Parent=template:FindFirstChild('LeftUpperArm')
+local sourceElbow1=node('Attachment','LeftElbowRigAttachment');sourceElbow1.CFrame=cf(0,0.6,0);sourceElbow1.Parent=template:FindFirstChild('LeftLowerArm')
+local elbow=node('Motor6D','LeftElbow');elbow.Part0=upper;elbow.Part1=lower;elbow.C0=elbow0.CFrame;elbow.C1=elbow1.CFrame;elbow.Parent=lower
+local heldAttachment=node('Attachment','RightGripAttachment');heldAttachment.CFrame=cf(0,0.25,0);heldAttachment.Parent=rightHand
+local templateGrip=node('Attachment','RightGripAttachment');templateGrip.CFrame=cf(0,9,0);templateGrip.Parent=template:FindFirstChild('RightHand')
+body:FindFirstChildOfClass('Humanoid').HipHeight=2
+local templateHumanoid=hum();templateHumanoid.HipHeight=1.5;templateHumanoid.Parent=template
 gearApi.applyBody("Girl")
+assert(upper.Size.Y==1.4 and elbow0.CFrame.y==-0.7 and elbow.C0.y==-0.7 and elbow.C1.y==0.6,'Package proportions and existing skeletal joints must match the source package')
 assert(not grip.destroyed and grip.Parent==rightHand and not gearScript.destroyed,"cosmetic body change destroyed equipped gear grip or controller")
 assert(body:FindFirstChild("RightHand")==rightHand and gear.Parent==body and not gear.destroyed,"cosmetics replaced the live gear-holding hand or equipped tool")
+assert(heldAttachment.CFrame.y==0.25 and body:FindFirstChildOfClass('Humanoid').HipHeight==1.5,'Package applies floor height without moving gear attachment offsets')
 gearApi.removeCurrentAccessories()
 assert(gameEquipment.Parent==body and gameHandle.LocalTransparencyModifier~=1 and not gameWeld.destroyed and not weaponController.destroyed,'Avatar hat hiding leaves game weapons and their welds/controllers alone')
 assert(appliedHat.Parent==body and appliedHat:FindFirstChild('Handle').LocalTransparencyModifier==1,'Public applied accessory descriptions identify hats without protected SourceAssetId')
-gearApi.restoreBody();gearApi.reapplySaved();gearApi.destroy()
+gearApi.restoreBody()
+assert(upper.Size.Y==2 and elbow.C0.y==-1 and elbow.C1.y==1 and elbow0.CFrame.y==-1,'Restore returns original dimensions, attachment positions, and existing motor offsets')
+assert(body:FindFirstChildOfClass('Humanoid').HipHeight==2,'Restore returns original floor height')
+body:FindFirstChildOfClass('Humanoid').failName='LeftLowerArm'
+assert(not pcall(gearApi.applyBodyPart,'LeftArm','https://www.roblox.com/bundles/555'),'A blocked region fails safely')
+body:FindFirstChildOfClass('Humanoid').failName=nil
+assert(upper.Size.Y==2 and elbow0.CFrame.y==-1 and elbow.C0.y==-1,'Failed package operation rolls back dimensions, attachment offsets, and joints')
+gearApi.applyBodyPart('LeftArm','https://www.roblox.com/bundles/555')
+assert(upper.Size.Y==1.4 and elbow.C0.y==-0.7 and body:FindFirstChildOfClass('Humanoid').HipHeight==2,'Mixed arm applies its own proportions without changing floor height')
+gearApi.restoreBody()
+gearApi.reapplySaved();gearApi.destroy()
 assert(not grip.destroyed and gear.Parent==body,"restore, replay, and cleanup preserve equipped gear")
 assert(storedGear.Parent==backpack and not storedGear.destroyed and not gameWeld.destroyed,'Backpack gear and game weapon joints survive all cosmetic operations')
 assert(appliedHat:FindFirstChild('Handle').LocalTransparencyModifier==0,'Cleanup restores hidden avatar visuals without destroying inventory')

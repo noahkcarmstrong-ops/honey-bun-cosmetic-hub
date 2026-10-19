@@ -155,6 +155,15 @@ return function(player,onStatus)
             end)
             if not ok then for _,part in pairs(copies) do part:Destroy() end;error(message) end
             snapshot.parts=copies
+            snapshot.joints={}
+            local bodyParts={[ctx.character:FindFirstChild("HumanoidRootPart") or ctx.character]=true}
+            for _,name in ipairs(r15) do bodyParts[ctx.character:FindFirstChild(name)]=true end
+            for _,joint in ipairs(ctx.character:GetDescendants()) do
+                if joint:IsA("Motor6D") and bodyParts[joint.Part0] and bodyParts[joint.Part1] then
+                    snapshot.joints[joint]={C0=joint.C0,C1=joint.C1}
+                end
+            end
+            snapshot.hipHeight=ctx.humanoid.HipHeight
         end
     end
     local function paint(c,color,region)
@@ -214,8 +223,8 @@ return function(player,onStatus)
     end
     local function applyPartAppearance(target,source)
         if target:IsA("MeshPart") and source:IsA("MeshPart") then
-            local size=target.Size
-            target:ApplyMesh(source);target.Size=size
+            target:ApplyMesh(source)
+            if source.Size then target.Size=source.Size end
         elseif target:IsA("Part") and (source:IsA("Part") or source:IsA("MeshPart")) then
             local prepared={}
             if source:IsA("MeshPart") then
@@ -223,16 +232,44 @@ return function(player,onStatus)
                 assert(bounds and bounds.X>0 and bounds.Y>0 and bounds.Z>0,"This head has no usable mesh dimensions.")
                 local mesh=Instance.new("SpecialMesh")
                 mesh.MeshType=Enum.MeshType.FileMesh;mesh.MeshId=source.MeshId;mesh.TextureId=source.TextureID
-                mesh.Scale=Vector3.new(target.Size.X/bounds.X,target.Size.Y/bounds.Y,target.Size.Z/bounds.Z)
+                local size=source.Size or target.Size
+                mesh.Scale=Vector3.new(size.X/bounds.X,size.Y/bounds.Y,size.Z/bounds.Z)
                 prepared[1]=mesh
             else
                 for _,item in ipairs(source:GetChildren()) do if item:IsA("SpecialMesh") then prepared[#prepared+1]=item:Clone() end end
             end
             for _,item in ipairs(target:GetChildren()) do if item:IsA("SpecialMesh") then item:Destroy() end end
             for _,item in ipairs(prepared) do item.Parent=target end
+            if source.Size then target.Size=source.Size end
             if source:IsA("Part") then target.Shape=source.Shape end
         else
             error("This body part cannot be changed safely on this avatar. Your gear was left alone.")
+        end
+        for _,attachment in ipairs(source:GetChildren()) do
+            if attachment:IsA("Attachment") and attachment.Name:match("RigAttachment$") then
+                local existing=target:FindFirstChild(attachment.Name)
+                if existing and existing:IsA("Attachment") then existing.CFrame=attachment.CFrame end
+            end
+        end
+    end
+    local function fitBodyJoints(ctx,names)
+        local bodyParts,affected={},{}
+        for _,name in ipairs(names) do affected[ctx.character:FindFirstChild(name)]=true end
+        for _,name in ipairs(r15) do bodyParts[ctx.character:FindFirstChild(name) or ctx.character]=true end
+        bodyParts[ctx.character:FindFirstChild("HumanoidRootPart") or ctx.character]=true
+        for _,joint in ipairs(ctx.character:GetDescendants()) do
+            if joint:IsA("Motor6D") and bodyParts[joint.Part0] and bodyParts[joint.Part1] and (affected[joint.Part0] or affected[joint.Part1]) then
+                local attachmentName=(joint.Name=="RootJoint" and "Root" or joint.Name).."RigAttachment"
+                for _,attachment in ipairs(joint.Part0:GetChildren()) do
+                    if attachment:IsA("Attachment") and attachment.Name==attachmentName then
+                        local other=joint.Part1:FindFirstChild(attachment.Name)
+                        if other and other:IsA("Attachment") then
+                            joint.C0,joint.C1=attachment.CFrame,other.CFrame
+                            break
+                        end
+                    end
+                end
+            end
         end
     end
     local function replaceParts(ctx,parts,names)
@@ -241,17 +278,21 @@ return function(player,onStatus)
             local target=ctx.character:FindFirstChild(name)
             assert(parts[name] and parts[name]:IsA("BasePart") and target and target:IsA("BasePart"),"This package does not contain the selected R15 body part.")
         end
-        local backups,changed={},{}
+        local backups,changed,joints={},{},{}
+        for _,joint in ipairs(ctx.character:GetDescendants()) do
+            if joint:IsA("Motor6D") then joints[joint]={C0=joint.C0,C1=joint.C1} end
+        end
         for _,name in ipairs(names) do backups[name]=bodyClone(ctx.character:FindFirstChild(name)) end
         local ok,err=pcall(function()
             for _,name in ipairs(names) do
                 local target=ctx.character:FindFirstChild(name)
                 -- Keep the actual limb, attachments, RightGrip, and game controllers.
                 -- ApplyMesh changes appearance without destroying the gear-holding part.
+                table.insert(changed,name)
                 local success,message=pcall(applyPartAppearance,target,parts[name])
                 if not success then error("Roblox blocked changing "..name.." safely: "..tostring(message)) end
-                table.insert(changed,name)
             end
+            fitBodyJoints(ctx,names)
         end)
         if not ok then
             for i=#changed,1,-1 do
@@ -259,9 +300,17 @@ return function(player,onStatus)
                 local target=ctx.character:FindFirstChild(name)
                 pcall(applyPartAppearance,target,backups[name])
             end
+            for joint,offset in pairs(joints) do joint.C0,joint.C1=offset.C0,offset.C1 end
         end
         for _,part in pairs(backups) do part:Destroy() end
         assert(ok,err)
+    end
+    local function restoreBodyParts(ctx)
+        replaceParts(ctx,snapshot.parts)
+        for joint,offset in pairs(snapshot.joints or {}) do
+            if joint.Parent then joint.C0,joint.C1=offset.C0,offset.C1 end
+        end
+        if snapshot.hipHeight~=nil then ctx.humanoid.HipHeight=snapshot.hipHeight end
     end
     local api={}
     function api.equipAccessory(value)
@@ -426,6 +475,8 @@ return function(player,onStatus)
                 end
                 capture(ctx,true)
                 replaceParts(ctx,parts)
+                local generatedHumanoid=template:FindFirstChildOfClass("Humanoid")
+                if generatedHumanoid and generatedHumanoid.HipHeight~=nil then ctx.humanoid.HipHeight=generatedHumanoid.HipHeight end
             end
             snapshot.bodyChanged=true
             if skin.All then paint(ctx.character,skin.All,"All") end
@@ -510,7 +561,7 @@ return function(player,onStatus)
         if not snapshot or snapshot.character~=ctx.character then return "Nothing to restore on this character." end
         showOriginalAccessories()
         if snapshot.bodyChanged then
-            if ctx.humanoid.RigType==Enum.HumanoidRigType.R15 then replaceParts(ctx,snapshot.parts)
+            if ctx.humanoid.RigType==Enum.HumanoidRigType.R15 then restoreBodyParts(ctx)
             else
                 for _,item in ipairs(ctx.character:GetChildren()) do if item:IsA("CharacterMesh") then item:Destroy() end end
                 for _,mesh in ipairs(snapshot.meshes) do mesh:Clone().Parent=ctx.character end
@@ -529,7 +580,7 @@ return function(player,onStatus)
     function api.restoreBody()
         local ctx=context()
         if snapshot and snapshot.character==ctx.character and snapshot.bodyChanged then
-            if ctx.humanoid.RigType==Enum.HumanoidRigType.R15 then replaceParts(ctx,snapshot.parts)
+            if ctx.humanoid.RigType==Enum.HumanoidRigType.R15 then restoreBodyParts(ctx)
             else
                 for _,item in ipairs(ctx.character:GetChildren()) do if item:IsA("CharacterMesh") then item:Destroy() end end
                 for _,mesh in ipairs(snapshot.meshes) do mesh:Clone().Parent=ctx.character end
