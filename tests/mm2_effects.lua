@@ -93,6 +93,22 @@ local switchedRoot=node('Folder','SupersededAsset');node('ParticleEmitter','OldE
 game.GetObjects=function()api.equip('Spark','Effect');return{switchedRoot}end
 assert(api.equip('AssetOnly','Effect'):find('cancelled')and switchedRoot.destroyed,'A new selection supersedes an older yielding request')
 assert(api.getEquipped().Effect=='Spark'and count(replacement,'ParticleEmitter')==1,'Late old results do not overwrite the new selection')
+-- Real MM2 definitions reference visual assets through KnifeModule.
+module.Data.LegacyFire={Name='Legacy Fire',KnifeModule=473588389}
+local legacyApi=dofile('mm2_effects.lua')(game)
+local downloaded=node('ModuleScript','KnifeEffect')
+local downloadedVisual=node('Fire','Flame',downloaded)
+node('Script','NeverExecute',downloaded)
+local requested
+local requireBefore=require
+require=function(m)assert(m==module,'Downloaded effect code must never execute');return requireBefore(m)end
+game.GetObjects=function(_,asset)requested=asset;return{downloaded}end
+assert(legacyApi.equip('LegacyFire','Effect'):find('Equipped effect'),'KnifeModule assets supply visual children')
+assert(requested=='rbxassetid://473588389' and count(replacement,'Fire')==1,'Actual knife display receives KnifeModule visual')
+assert(count(replacement,'Script')==0,'Downloaded scripts are never attached')
+assert(legacyApi.report():find('selected definition=LegacyFire',1,true),'Report includes selected effect definition even beyond sample limit')
+legacyApi.destroy()
+require=requireBefore
 local report=api.report();assert(report:find('defs=')and report:find('targets=')and report:find('source='),'Report includes definition and target diagnostics')
 api.destroy();assert(#replacement:GetChildren()==0 and #lateHandle:GetChildren()==0,'Closing the hub cleans all previews')
 assert(not pcall(api.equip,'Spark','Effect'),'Closed effect service cannot equip')
