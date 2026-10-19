@@ -5,6 +5,7 @@ Vector3={new=function(x,y,z)return typed("Vector3",{X=x,Y=y,Z=z})end}
 Color3={new=function(r,g,b)return typed("Color3",{R=r,G=g,B=b})end}
 Enum={Material=setmetatable({},{__index=function(_,name)return setmetatable(typed("EnumItem",{label="Enum.Material."..name}),{__tostring=function(v)return v.label end})end})}
 local material=Enum.Material.Metal
+local function content(uri)return typed("Content",{Uri=uri})end
 local function copy(v)
     if type(v)~="table"then return v end
     local out={};for k,x in pairs(v)do out[k]=copy(x)end;return out
@@ -59,6 +60,17 @@ local surfacePart=object("MeshPart",{Name="SurfaceGun",MeshId="rbxassetid://surf
 local surfaceEntry=library.capture(surfacePart,"BIearyEyed")
 assert(surfaceEntry.definition.SurfaceAppearance.ColorMap=="rbxassetid://color","SurfaceAppearance maps are captured")
 local latestSaved=screen:GetAttribute("HoneyBunCosmeticGuns")
+
+-- Modern Content properties are normalized to their URI, with legacy values
+-- retained when the modern property is present but empty.
+local modernSurface=object("SurfaceAppearance",{ColorMapContent=content("rbxassetid://modern-color"),ColorMap="rbxassetid://legacy-color",
+    MetalnessMapContent=content(""),MetalnessMap="rbxassetid://legacy-metal"})
+local modernPart=object("MeshPart",{Name="ModernGun",MeshId="rbxassetid://modern-mesh",TextureContent=content("rbxassetid://modern-texture"),TextureID="rbxassetid://legacy-texture",
+    Size=Vector3.new(2,2,2),MeshSize=Vector3.new(1,1,1),Color=Color3.new(1,1,1),Material=material},modernSurface)
+local modernEntry=library.capture(modernPart,"BIearyEyed")
+assert(modernEntry.definition.TextureId=="rbxassetid://modern-texture","MeshPart TextureContent is captured as its URI")
+assert(modernEntry.definition.SurfaceAppearance.ColorMap=="rbxassetid://modern-color","SurfaceAppearance ColorMapContent is captured as its URI")
+assert(modernEntry.definition.SurfaceAppearance.MetalnessMap=="rbxassetid://legacy-metal","empty modern content falls back to the legacy map")
 
 local restoredGui=gui(saved)
 local restored=create(game,restoredGui)
@@ -236,6 +248,14 @@ local metadataEntry=metadataLibrary.capture(sourceMesh,'Test')
 metadataLibrary.setCatalog(metadataEntry.id,presentationLibrary.list('Gun')[1].catalog)
 local persistedMetadata=create(mm2Game,gui(metadataGui:GetAttribute('HoneyBunCosmeticGuns')))
 assert(persistedMetadata.list()[1].catalog.Name=='Gingerscope','Saved catalog labels persist without the original player')
+catalogApi.equip(beforeId,'Gun')
+local identified=catalogApi.identifySavedWeapon('Not Captured','Gun')
+assert(identified:find('Not Captured',1,true),'Identifying a saved weapon reports the matched catalog name')
+local identifiedEntry=presentationLibrary.list('Gun')[1]
+assert(identifiedEntry.id==beforeId and identifiedEntry.catalog.Name=='Not Captured' and identifiedEntry.catalog.Image=='rbxassetid://777'
+    and identifiedEntry.catalog.Rarity=='Common' and identifiedEntry.catalog.Category=='season1','Identification updates metadata without changing the saved ID')
+local invalidIdentify=pcall(function()catalogApi.identifySavedWeapon('missing-name','Gun')end)
+assert(not invalidIdentify and presentationLibrary.list('Gun')[1].catalog.Name=='Not Captured','Invalid identification preserves saved metadata')
 catalogApi.destroy()
 
 local bad=gui(http:JSONEncode({version=1,entries={{id="bad",name="bad",definition={PortableGun=true}}}}))

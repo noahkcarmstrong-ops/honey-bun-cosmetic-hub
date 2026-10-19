@@ -298,9 +298,12 @@ assert(#holidaySaved==1,'Saved holiday weapon is inserted into the native Holida
 assert(holidaySaved[1]:FindFirstChild('ItemName').Text=='Saved Holiday Gun','Saved card shows the catalog name')
 assert(holidaySaved[1]:FindFirstChild('Icon').Image=='rbxassetid://987','Saved card shows the catalog image')
 assert(holidaySaved[1]:FindFirstChild('Rarity').Text=='Godly','Saved card shows the catalog rarity')
+assert(holidaySaved[1]:FindFirstChild('ItemName').BackgroundColor3.R==1 and holidaySaved[1]:FindFirstChild('ItemName').BackgroundColor3.B==1,'Godly name banner uses its pink rarity color')
 assert(knife.Parent==seasonPane and gun.Parent==seasonPane and knife.Visible and not gun.Visible,'Saved mode keeps native cards and their visibility intact')
 assert(seasonPane.Visible and classicPane.Visible==false and holidayPane.Visible==false,'Saved mode never hides or opens native category panels')
 overlay(holidaySaved[1]).Activated:Fire();assert(savedChoice=='holiday-saved:Gun','Saved card equips through the saved backend ID')
+local gunBanner=equipped:FindFirstChild('Gun'):FindFirstChild('ItemName')
+assert(gunBanner.BackgroundColor3.R==1 and gunBanner.BackgroundColor3.B==1 and gunBanner.BackgroundTransparency==0,'Equipped side name banner receives the same rarity color')
 assert(holidaySaved[1]:FindFirstChild('Equipped').Visible,'Saved selection marker updates immediately on click')
 local existingSaved=holidaySaved[1]
 savedDefs[#savedDefs+1]={id='new-capture',kind='Knife',name='New Capture',image=654,category='classic',rarity='Rare'}

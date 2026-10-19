@@ -804,6 +804,27 @@ return function(game, injectedRequire, gunLibrary)
         gunLibrary.setCatalog(entry.id,{Id=match.id,Name=match.name,Image=field(def,"Image") or field(def,"ImageId") or field(def,"ImageID") or (presentation and presentation.ToolIcon),
             Rarity=field(def,"Rarity"),Category=category,Season=field(def,"Season"),Year=field(def,"Year"),Event=field(def,"Event"),Chroma=field(def,"Chroma"),SortOrder=field(def,"SortOrder")})
     end
+    function api.identifySavedWeapon(name,kind)
+        assert(kind=="Gun" or kind=="Knife","Choose knife or gun.")
+        local id=equipped[kind]
+        local entry=id and findEntry(id,kind)
+        assert(entry and field(entry.definition,"PortableGun"),"Equip the saved "..kind:lower().." you want to identify first.")
+        local query=lower(tostring(name or ""):match("^%s*(.-)%s*$"));assert(query~="","Enter the original MM2 weapon name.")
+        local match
+        for _,candidate in ipairs(catalog(kind)) do if lower(candidate.id)==query then match=candidate;break end end
+        if not match then
+        for _,candidate in ipairs(catalog(kind)) do
+            if lower(candidate.name)==query then
+                assert(not match,"Several items share that name. Enter the exact item ID instead.")
+                match=candidate
+            end
+        end
+        end
+        assert(match,"That name was not found in MM2's "..kind:lower().." catalog.")
+        local def=match.definition
+        gunLibrary.setCatalog(id,{Id=match.id,Name=match.name,Image=field(def,"Image") or field(def,"ImageId") or field(def,"ImageID"),Rarity=field(def,"Rarity"),Category=metadata(def),Season=field(def,"Season"),Year=field(def,"Year"),Event=field(def,"Event"),Chroma=field(def,"Chroma"),SortOrder=field(def,"SortOrder")})
+        return "Matched saved "..kind:lower().." to "..match.name..". Its original name, icon, and rarity are saved."
+    end
     function api.collectPlayerWeapon(username,kind)
         kind=kind=="Knife" and "Knife" or "Gun"
         local kindLower=kind:lower()

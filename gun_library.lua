@@ -5,6 +5,21 @@ return function(game,gui)
     local MAX_BYTES,MAX_ENTRIES,MAX_STRING=1400000,128,2048
     local function finite(n)return type(n)=="number"and n==n and math.abs(n)<1e9 end
     local function read(o,key)local ok,v=pcall(function()return o[key]end);return ok and v or nil end
+    -- Roblox's modern asset properties return Content values, while the older
+    -- properties return strings. Keep only a bounded URI/string for persistence.
+    local function assetContent(value)
+        if type(value)=="string" then
+            return #value<=MAX_STRING and value or nil
+        end
+        local uri=read(value,"Uri")
+        return type(uri)=="string" and #uri<=MAX_STRING and uri or nil
+    end
+    local function assetProperty(object,modern,legacy)
+        local value=assetContent(read(object,modern))
+        if value and value~="" then return value end
+        value=assetContent(read(object,legacy))
+        return value or ""
+    end
     local function vector(kind,v)
         if typeof(v)~=kind then return nil end
         local out={}
@@ -56,10 +71,10 @@ return function(game,gui)
         if surface==nil then return nil end
         local packed={}
         for _,key in ipairs(SURFACE_FIELDS) do
-            local value=read(surface,key)
-            if value~=nil then
-                if type(value)~="string" or #value>MAX_STRING then return nil end
-                if value~="" then packed[key]=value end
+            local value=assetContent(read(surface,key.."Content"))
+            if not value or value=="" then value=assetContent(read(surface,key)) end
+            if value and value~="" then
+                packed[key]=value
             end
         end
         return next(packed) and packed or nil
@@ -247,7 +262,7 @@ return function(game,gui)
         if mesh then
             meshId=read(mesh,"MeshId");textureId=read(mesh,"TextureId");scale=read(mesh,"Scale");offset=read(mesh,"Offset");vertexColor=read(mesh,"VertexColor")
         elseif class=="MeshPart"then
-            meshId=read(sourceBasePart,"MeshId");textureId=read(sourceBasePart,"TextureID")
+            meshId=read(sourceBasePart,"MeshId");textureId=assetProperty(sourceBasePart,"TextureContent","TextureID")
             local meshSize=read(sourceBasePart,"MeshSize")
             assert(typeof(meshSize)=="Vector3"and meshSize.X~=0 and meshSize.Y~=0 and meshSize.Z~=0,"Gun mesh has no valid mesh size.")
             scale=Vector3.new(size.X/meshSize.X,size.Y/meshSize.Y,size.Z/meshSize.Z);offset=Vector3.new(0,0,0);vertexColor=Vector3.new(1,1,1)

@@ -182,6 +182,12 @@ return function(playerGui,catalog,onStatus,mode)
         return fallback.Parent,fallback
     end
     local rarityRanks={unique=8,ancient=7,godly=6,vintage=5,classic=5,legendary=4,rare=3,uncommon=2,common=1}
+    local rarityColors={unique={255,100,0},ancient={138,43,226},godly={255,0,255},vintage={255,255,0},classic={255,255,0},legendary={255,0,0},rare={0,200,0},uncommon={0,100,255},common={179,179,179}}
+    local function entryColor(entry)
+        if entry.rarityColor then return entry.rarityColor end
+        local rgb=rarityColors[lower(entry.rarity)]
+        if rgb and Color3 and Color3.fromRGB then return Color3.fromRGB(table.unpack(rgb)) end
+    end
     local function compare(a,b)
         local ao,bo=type(a.sortOrder)=="number",type(b.sortOrder)=="number"
         if ao~=bo then return ao end
@@ -321,6 +327,13 @@ return function(playerGui,catalog,onStatus,mode)
             end
             local name=sideText(slot,kind,false)
             if name then snapshot(name,"Text");name.Text=entry and entry.name or read(name,"Text") end
+            if name and entry then
+                local color=entryColor(entry)
+                if color then
+                    for _,key in ipairs({"BackgroundColor3","BackgroundTransparency","TextColor3"}) do snapshot(name,key) end
+                    name.BackgroundColor3=color;name.BackgroundTransparency=0;name.TextColor3=Color3.fromRGB(255,255,255)
+                end
+            end
             local rarity=sideText(slot,kind,true)
             if rarity and entry and entry.rarity then snapshot(rarity,"Text");rarity.Text=tostring(entry.rarity) end
         end
@@ -485,23 +498,24 @@ return function(playerGui,catalog,onStatus,mode)
                     end
                     if not savedCards[id] or not alive(savedCards[id]) then
                         local card=template:Clone();savedCards[id]=card;savedEntries[card]=entry
+                        local rarityColor=entryColor(entry)
                         card.Name="HoneyBunLocal_Saved_"..entry.kind.."_"..tostring(entry.id);card.Visible=true
                         for _,v in ipairs(texts(card)) do
                             if (is(v,"TextLabel") or is(v,"TextButton")) and (v.Text=="Default Knife" or v.Text=="Default Gun" or normalize(v.Name)=="itemname") then
                                 v.Text=entry.name
-                                if entry.rarityColor then
-                                    pcall(function()v.BackgroundColor3=entry.rarityColor end)
+                                if rarityColor then
+                                    pcall(function()v.BackgroundColor3=rarityColor;v.BackgroundTransparency=0 end)
                                     pcall(function()v.TextColor3=Color3.fromRGB(255,255,255)end)
                                 end
                             end
-                            if (is(v,"TextLabel") or is(v,"TextButton")) and normalize(v.Name)=="rarity" then v.Text=tostring(entry.rarity or "");if entry.rarityColor then v.TextColor3=entry.rarityColor end end
+                            if (is(v,"TextLabel") or is(v,"TextButton")) and normalize(v.Name)=="rarity" then v.Text=tostring(entry.rarity or "");if rarityColor then v.TextColor3=rarityColor end end
                             if is(v,"LuaSourceContainer") then destroy(v) end
                         end
                         local hasRarity=false
                         for _,v in ipairs(texts(card)) do if (is(v,"TextLabel") or is(v,"TextButton")) and normalize(v.Name)=="rarity" then hasRarity=true end end
                         if not hasRarity and entry.rarity then
                             local rarity=Instance.new("TextLabel");rarity.Name="Rarity";rarity.BackgroundTransparency=1;rarity.Text=tostring(entry.rarity)
-                            if entry.rarityColor then rarity.TextColor3=entry.rarityColor end
+                            if rarityColor then rarity.TextColor3=rarityColor end
                             rarity.Size=UDim2.fromScale(0.42,0.16);rarity.Position=UDim2.fromScale(0.58,0.02);rarity.TextScaled=true;rarity.TextStrokeTransparency=0.5
                             if entry.rarityColor then pcall(function()rarity.BackgroundColor3=entry.rarityColor end) end
                             rarity.Parent=card

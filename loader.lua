@@ -517,6 +517,15 @@ render=function()
                 return "Open MM2's Weapons inventory. Your saved weapons appear alongside your existing items."
             end) end)
             button("Remove saved weapon appearances",function() action(function()return mm2().restore()end) end)
+            caption("FIX AN UNIDENTIFIED WEAPON",24)
+            caption("Equip a saved copy, then enter its original MM2 name to match its name, icon, rarity, and category.",48)
+            local weaponName=input("Original weapon name or item ID","",function()end)
+            for _,kind in ipairs({"Knife","Gun"}) do
+                button("Match equipped saved "..kind:lower(),function() action(function()
+                    local message=mm2().identifySavedWeapon(weaponName.Text,kind)
+                    updateWeapons();return message
+                end) end)
+            end
             if mm2EffectsLibraryAPI then
                 caption("SAVED PLAYER EFFECTS",24)
                 local entries=mm2EffectsLibraryAPI.list()
