@@ -59,6 +59,7 @@ return function(playerGui, catalog, onStatus)
             orbitDragging=false
             if previousMouseBehavior then UserInputService.MouseBehavior=previousMouseBehavior end
             previousMouseBehavior=nil
+            if projectAxes then pcall(projectAxes) end
         end
     end
     local function stopConnections()
@@ -74,12 +75,13 @@ return function(playerGui, catalog, onStatus)
     projectAxes=function()
         if not camera or not viewport then return end
         for _,guide in ipairs(guides) do
+            guide.Transparency=orbitDragging and 0 or 1
             local label=axisLabels[guide.Name]
             if label then
                 local point=camera.CFrame:PointToObjectSpace(guide:GetAttribute("AxisEnd"))
                 local size=viewport.AbsoluteSize
                 local focal=size.Y/(2*math.tan(math.rad(camera.FieldOfView)/2))
-                label.Visible=point.Z<-.1
+                label.Visible=orbitDragging==true and point.Z<-.1
                 if label.Visible then label.Position=UDim2.fromOffset(size.X/2+point.X*focal/-point.Z,size.Y/2-point.Y*focal/-point.Z) end
             end
         end
@@ -94,7 +96,7 @@ return function(playerGui, catalog, onStatus)
         for _,axis in ipairs({"X","Y","Z"})do
             local delta=axis=="X" and Vector3.new(1.5,0,0) or axis=="Y" and Vector3.new(0,1.5,0) or Vector3.new(0,0,1.5)
             local endpoint=frame:PointToWorldSpace(delta)
-            local rod=make("Part",worldModel,{Name=axis,Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,Material=Enum.Material.Neon,Color=colors[axis],Size=Vector3.new(.045,.045,1.5),CFrame=CFrame.lookAt(center,endpoint)*CFrame.new(0,0,-.75)})
+            local rod=make("Part",worldModel,{Name=axis,Transparency=orbitDragging and 0 or 1,Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,Material=Enum.Material.Neon,Color=colors[axis],Size=Vector3.new(.045,.045,1.5),CFrame=CFrame.lookAt(center,endpoint)*CFrame.new(0,0,-.75)})
             rod:SetAttribute("AxisEnd",endpoint);guides[#guides+1]=rod
             if not axisLabels[axis] then
                 local tag=label(viewport,axis,UDim2.fromOffset(24,24),colors[axis],18);tag.Name="AxisLabel"..axis;tag.AnchorPoint=Vector2.new(.5,.5);tag.ZIndex=7
@@ -191,7 +193,7 @@ return function(playerGui, catalog, onStatus)
         local right=make("ScrollingFrame",panel,{Position=UDim2.new(.46,8,0,62),Size=UDim2.new(.54,-26,1,-116),CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=6})
         local layout=make("UIListLayout",right,{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder}); make("UIPadding",right,{PaddingLeft=UDim.new(0,6),PaddingRight=UDim.new(0,8)})
         local tabs=make("Frame",right,{Size=UDim2.new(1,0,0,34),BackgroundTransparency=1,LayoutOrder=0}); local holster=button(tabs,"Hip / Back",UDim2.new(.49,0,1,0)); local held=button(tabs,"Holding",UDim2.new(.49,0,1,0)); held.Position=UDim2.new(.51,0,0,0)
-        buildControls(right); statusLabel=label(viewport,"Right-click + drag to rotate. X: red · Y: green · Z: blue",UDim2.new(1,-20,0,42),Color3.fromRGB(215,225,240),12); statusLabel.Position=UDim2.fromOffset(10,8);statusLabel.TextWrapped=true;statusLabel.ZIndex=5
+        buildControls(right); statusLabel=label(viewport,"Left-click + drag to rotate and show axes. X: red · Y: green · Z: blue",UDim2.new(1,-20,0,42),Color3.fromRGB(215,225,240),12); statusLabel.Position=UDim2.fromOffset(10,8);statusLabel.TextWrapped=true;statusLabel.ZIndex=5
         local orbitLeft=button(viewport,"◀",UDim2.fromOffset(30,28)); orbitLeft.Position=UDim2.new(0,8,1,-36)
         local orbitRight=button(viewport,"▶",UDim2.fromOffset(30,28)); orbitRight.Position=UDim2.new(0,42,1,-36)
         local zoomOut=button(viewport,"−",UDim2.fromOffset(30,28)); zoomOut.Position=UDim2.new(0,76,1,-36)
@@ -202,10 +204,11 @@ return function(playerGui, catalog, onStatus)
         connect(zoomOut.Activated,function() cameraDistance=math.min(14,cameraDistance+1); orbit(0) end); connect(zoomIn.Activated,function() cameraDistance=math.max(4,cameraDistance-1); orbit(0) end)
         local reset=button(panel,"Reset",UDim2.fromOffset(82,30)); reset.Position=UDim2.new(1,-307,1,-42); local cancel=button(panel,"Cancel",UDim2.fromOffset(82,30)); cancel.Position=UDim2.new(1,-215,1,-42); local done=button(panel,"Save / Done",UDim2.fromOffset(105,30)); done.Position=UDim2.new(1,-123,1,-42);done.Modal=true
         connect(viewport.InputBegan,function(input)
-            if input.UserInputType==Enum.UserInputType.MouseButton2 and not dragging and not orbitDragging then
+            if input.UserInputType==Enum.UserInputType.MouseButton1 and not dragging and not orbitDragging then
                 previousMouseBehavior=UserInputService.MouseBehavior
                 orbitDragging=true
                 UserInputService.MouseBehavior=Enum.MouseBehavior.LockCurrentPosition
+                pcall(projectAxes)
             end
         end)
         connect(UserInputService.WindowFocusReleased,stopOrbit)
@@ -218,7 +221,7 @@ return function(playerGui, catalog, onStatus)
             if dragging and (input==dragging.input or input.UserInputType==Enum.UserInputType.MouseMovement and dragging.input.UserInputType==Enum.UserInputType.MouseButton1) then dragging.update(input,false) end
         end)
         connect(UserInputService.InputEnded,function(input)
-            if input.UserInputType==Enum.UserInputType.MouseButton2 then stopOrbit() end
+            if input.UserInputType==Enum.UserInputType.MouseButton1 then stopOrbit() end
             if dragging and (input==dragging.input or input.UserInputType==Enum.UserInputType.MouseButton1 and dragging.input.UserInputType==Enum.UserInputType.MouseButton1) then dragging=nil end
         end)
         local function paintModeButtons() holster.BackgroundColor3=mode=="Holster" and Color3.fromRGB(70,125,205) or Color3.fromRGB(52,65,82); held.BackgroundColor3=mode=="Held" and Color3.fromRGB(70,125,205) or Color3.fromRGB(52,65,82) end

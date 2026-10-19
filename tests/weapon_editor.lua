@@ -45,15 +45,15 @@ local camera;for _,o in ipairs(objects)do if o.ClassName=='Camera'then camera=o 
 assert(camera.CFrame.Target.X==100,'Camera targets avatar location instead of world origin')
 local view;for _,o in ipairs(objects)do if o.ClassName=='ViewportFrame'then view=o end end
 local startX=camera.CFrame.Position.X
-view.InputBegan:Fire({UserInputType='MouseButton2'})
+view.InputBegan:Fire({UserInputType='MouseButton1'})
 input.InputChanged:Fire({UserInputType='MouseMovement',Delta={X=40,Y=25}})
-assert(camera.CFrame.Position.X~=startX and camera.CFrame.Position.Y~=20,'Right drag orbits horizontally and vertically')
+assert(camera.CFrame.Position.X~=startX and camera.CFrame.Position.Y~=20,'Left drag orbits horizontally and vertically')
 assert(input.MouseBehavior=='LockCurrentPosition','Orbit locks the cursor for continuous dragging')
-input.InputEnded:Fire({UserInputType='MouseButton2'})
+input.InputEnded:Fire({UserInputType='MouseButton1'})
 local endedX=camera.CFrame.Position.X
 input.InputChanged:Fire({UserInputType='MouseMovement',Delta={X=40,Y=25}})
-assert(camera.CFrame.Position.X==endedX and input.MouseBehavior=='Default','Releasing right click ends rotation and restores cursor')
-view.InputBegan:Fire({UserInputType='MouseButton2'});input.WindowFocusReleased:Fire()
+assert(camera.CFrame.Position.X==endedX and input.MouseBehavior=='Default','Releasing left click ends rotation and restores cursor')
+view.InputBegan:Fire({UserInputType='MouseButton1'});input.WindowFocusReleased:Fire()
 assert(input.MouseBehavior=='Default','Losing window focus releases cursor')
 
 local x=field('PositionX');x.Text='1.25';x.FocusLost:Fire();flush()
@@ -80,7 +80,7 @@ assert(values.Held.Rotation.X==45 and values.Holster.Position.X==1.25,'Cancel re
 api.open(entry,'Holster');button('Reset').Activated:Fire()
 assert(field('PositionX').Text=='0.00','Reset restores current mode controls')
 local closingView;for _,o in ipairs(objects)do if o.ClassName=='ViewportFrame' and not o.destroyed then closingView=o end end
-closingView.InputBegan:Fire({UserInputType='MouseButton2'})
+closingView.InputBegan:Fire({UserInputType='MouseButton1'})
 api.destroy();flush()
 assert(input.MouseBehavior=='Default','Closing editor restores cursor during orbit')
 for _,s in ipairs({input.InputChanged,input.InputEnded})do for _,c in ipairs(s.listeners)do assert(not c.active,'Global input handlers disconnect')end end
