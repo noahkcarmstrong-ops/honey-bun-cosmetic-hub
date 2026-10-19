@@ -81,6 +81,35 @@ assert(weld and weld.Part0==localTorso and weld.Part1==overlay,"knife overlay we
 local visualMarker=localKnife:FindFirstChild("HoneyBunCosmeticVisual")
 assert(visualMarker and visualMarker.Value==overlay,"the original knife points effect previews at the copied knife visual")
 assert(localKnife.LocalTransparencyModifier==1,"knife preview hides only the local original knife")
+
+-- Thrown knives arrive piecemeal and only accept a link into the local character.
+local thrown=node("Model","ThrowingKnife",workspace)
+workspace.DescendantAdded:Fire(thrown)
+local thrownLink=node("ObjectValue","HandleLink",thrown);thrownLink.Value=localKnife
+workspace.DescendantAdded:Fire(thrownLink)
+local thrownVisual=node("Part","KnifeVisual",thrown)
+thrownVisual.CFrame=frame(107,8,3);thrownVisual.Size=Vector3.new(1,1,1)
+thrownVisual.MeshId=source.MeshId;thrownVisual.TextureID=source.TextureID
+thrownVisual.LocalTransparencyModifier=1
+workspace.DescendantAdded:Fire(thrownVisual)
+local thrownMarker=thrownVisual:FindFirstChild("HoneyBunCosmeticVisual")
+local thrownOverlay=thrownMarker and thrownMarker.Value
+assert(thrownOverlay and thrownOverlay.CFrame.X==thrownVisual.CFrame.X and thrownOverlay.CFrame.Y==thrownVisual.CFrame.Y and thrownOverlay.CFrame.Z==thrownVisual.CFrame.Z,"thrown knife overlay uses neutral KnifeVisual placement")
+local thrownWeld=thrownOverlay:FindFirstChildOfClass("WeldConstraint")
+assert(thrownWeld and thrownWeld.Part0==thrownVisual,"thrown knife overlay attaches directly to KnifeVisual")
+assert(thrownVisual.LocalTransparencyModifier==1,"thrown knife hides its original KnifeVisual")
+assert(thrownOverlay.LocalTransparencyModifier==0,"thrown knife overlay stays visible when its original is already hidden")
+local missingLink=node("Model","ThrowingKnife",workspace)
+local missingVisual=node("Part","KnifeVisual",missingLink);workspace.DescendantAdded:Fire(missingVisual)
+assert(not missingVisual:FindFirstChild("HoneyBunCosmeticVisual"),"thrown knife without HandleLink is ignored")
+local foreignThrow=node("Model","ThrowingKnife",workspace)
+local foreignLink=node("ObjectValue","HandleLink",foreignThrow);foreignLink.Value=source;workspace.DescendantAdded:Fire(foreignLink)
+local foreignVisual=node("Part","KnifeVisual",foreignThrow);workspace.DescendantAdded:Fire(foreignVisual)
+assert(not foreignVisual:FindFirstChild("HoneyBunCosmeticVisual"),"thrown knife linked to another player is ignored")
+mm2.restore()
+assert(thrownVisual.LocalTransparencyModifier==1 and thrownOverlay.destroyed,"restore clears thrown knife visibility and overlay")
+mm2.equip(knifeId,"Knife")
+
 -- Captured from MM2's native LowerTorso.KnifeBelt joint report.
 local localLowerTorso=node("Part","LowerTorso",localPlayer.Character)
 localLowerTorso.CFrame=frame(100,-2,0);localLowerTorso.Size=Vector3.new(2,1,1)

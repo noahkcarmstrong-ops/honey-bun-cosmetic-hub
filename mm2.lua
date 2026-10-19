@@ -537,7 +537,7 @@ return function(game, injectedRequire, gunLibrary)
         end
         return anchor,offset,mount
     end
-    local function applySavedGun(handle,e,held,tool,previewCharacter)
+    local function applySavedGun(handle,e,held,tool,previewCharacter,projectile)
         local kind=e.kind or "Gun"
         assert(handle,"Your "..kind:lower().." display has not loaded yet.")
         local old=not previewCharacter and snapshots[handle]
@@ -546,11 +546,12 @@ return function(game, injectedRequire, gunLibrary)
         local p=read(service("Players"),"LocalPlayer")
         local character=previewCharacter or read(p,"Character")
         local def=e.definition
-        local anchor,offset,mount=resolveSavedPlacement(handle,e,held,tool,character)
+        local anchor,offset,mount=handle,nil,nil
+        if not projectile then anchor,offset,mount=resolveSavedPlacement(handle,e,held,tool,character) end
         local overlay=Instance.new("Part")
         local ok,message=pcall(function()
             overlay.Name=kind=="Gun" and "HoneyBunSavedGun" or "HoneyBunSavedKnife"
-            local adjustment=weaponAdjustment(e,held)
+            local adjustment=weaponAdjustment(projectile and {} or e,held)
             overlay.Size=scaledVector(def.Size or Vector3.new(1,1,1),adjustment.Scale)
             local baseCFrame=offset and anchor.CFrame*offset or handle.CFrame
             -- Position is expressed in the anchor's local axes, followed by local rotation.
@@ -562,7 +563,7 @@ return function(game, injectedRequire, gunLibrary)
             overlay.Color=def.Color or handle.Color
             overlay.Material=def.Material or handle.Material
             overlay.Transparency=def.Transparency or (not previewCharacter and read(handle,"Transparency")) or 0
-            overlay.LocalTransparencyModifier=read(handle,"LocalTransparencyModifier") or 0
+            overlay.LocalTransparencyModifier=projectile and 0 or (read(handle,"LocalTransparencyModifier") or 0)
             local mesh=Instance.new("SpecialMesh")
             mesh.MeshType=Enum.MeshType.FileMesh
             -- Portable Part meshes use the original surface color map as their diffuse texture.
@@ -875,6 +876,41 @@ return function(game, injectedRequire, gunLibrary)
             connect(read(character,"ChildAdded"),watchReference)
         end
     end
+    local thrownApplied,throwError=0,nil
+    local function applyThrownKnife(object)
+        if not alive or not equipped.Knife then return end
+        local model=object
+        for depth=1,4 do
+            if not model then return end
+            if read(model,"Name")=="ThrowingKnife" and isA(model,"Model") then break end
+            model=read(model,"Parent")
+        end
+        if not model or read(model,"Name")~="ThrowingKnife" or not isA(model,"Model") then return end
+        local link=child(model,"HandleLink")
+        if isA(link,"ObjectValue") and not observed[link] then
+            observed[link]=true
+            local changed=read(link,"GetPropertyChangedSignal")
+            if type(changed)=="function" then connect(changed(link,"Value"),function() applyThrownKnife(model) end) end
+        end
+        local source=isA(link,"ObjectValue") and read(link,"Value")
+        local player=read(service("Players"),"LocalPlayer")
+        local character=read(player,"Character")
+        -- The game's HandleLink identifies the thrower. Never infer ownership by distance.
+        local ancestor=source
+        local owned=false
+        for depth=1,8 do
+            if not ancestor then break end
+            if ancestor==character then owned=true;break end
+            ancestor=read(ancestor,"Parent")
+        end
+        if not owned then return end
+        local visual=child(model,"KnifeVisual")
+        local entry=findEntry(equipped.Knife,"Knife")
+        if not isA(visual,"BasePart") or not entry or not field(entry.definition,"PortableGun") then return end
+        if snapshots[visual] then return end
+        local ok,message=pcall(applySavedGun,visual,entry,false,model,nil,true)
+        if ok then thrownApplied=thrownApplied+1;throwError=nil else throwError=tostring(message) end
+    end
     -- Retain short-lived projectile structure after a throw for the discovery report.
     local throwDiscoveries={}
     local function recordThrowCandidate(object)
@@ -922,7 +958,10 @@ return function(game, injectedRequire, gunLibrary)
         local ps=service("Players");local p=read(ps,"LocalPlayer")
         if not watchersActive then
             watchersActive=true
-            connect(read(service("Workspace"),"DescendantAdded"),recordThrowCandidate)
+            connect(read(service("Workspace"),"DescendantAdded"),function(object)
+                applyThrownKnife(object)
+                recordThrowCandidate(object)
+            end)
             connect(read(p,"CharacterAdded"),watchCharacter)
             connect(read(p,"ChildAdded"),function(o) if isA(o,"Backpack") then watchContainer(o) end end)
         end
@@ -1333,7 +1372,7 @@ return function(game, injectedRequire, gunLibrary)
     function api.report()
         local rs=service("ReplicatedStorage"); local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local lines={"MM2 discovery (read-only)","GameId="..tostring(read(game,"GameId") or "?"),"PlaceId="..tostring(read(game,"PlaceId") or "?"),"ReplicatedStorage="..(rs and "available" or "missing"),"LocalPlayer="..(p and tostring(read(p,"Name") or "available") or "missing")}
         lines[#lines+1]="Build: native knife mount diagnostics V13"
-        lines[#lines+1]="Throw diagnostics V14"
+        lines[#lines+1]="Thrown knife reskin V15 applied="..thrownApplied.." error="..tostring(throwError or "none")
         lines[#lines+1]="Recent throw candidates="..#throwDiscoveries
         for _,entry in ipairs(throwDiscoveries) do lines[#lines+1]="Throw candidate: "..entry end
         if gunLibrary then
