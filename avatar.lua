@@ -377,17 +377,26 @@ return function(player,onStatus)
         if not reapplying then settings.accessories={};save() end
         return "Removed accessories added by this hub."
     end
-    local function attachedToHead(item,c)
-        local head=c:FindFirstChild("Head")
+    local function attachedToAvatar(item,c)
         local handle=item:FindFirstChild("Handle")
-        if not head or not handle or not handle:IsA("BasePart") then return false end
-        local headNames={HatAttachment=true,HairAttachment=true,FaceFrontAttachment=true,FaceCenterAttachment=true}
+        if not handle or not handle:IsA("BasePart") then return false end
+        local attachmentParts={
+            HatAttachment={"Head"},HairAttachment={"Head"},FaceFrontAttachment={"Head"},FaceCenterAttachment={"Head"},
+            NeckAttachment={"UpperTorso","Torso"},BodyBackAttachment={"UpperTorso","Torso"},BodyFrontAttachment={"UpperTorso","Torso"},
+            LeftCollarAttachment={"UpperTorso","Torso"},RightCollarAttachment={"UpperTorso","Torso"},
+            LeftShoulderAttachment={"LeftUpperArm","Left Arm"},RightShoulderAttachment={"RightUpperArm","Right Arm"},
+            WaistFrontAttachment={"LowerTorso","Torso"},WaistCenterAttachment={"LowerTorso","Torso"},WaistBackAttachment={"LowerTorso","Torso"},
+        }
         for _,child in ipairs(handle:GetChildren()) do
-            if child:IsA("Attachment") and headNames[child.Name] then
-                local matching=head:FindFirstChild(child.Name)
-                if matching and matching:IsA("Attachment") then return true end
+            if child:IsA("Attachment") then
+                for _,name in ipairs(attachmentParts[child.Name] or {}) do
+                    local part=c:FindFirstChild(name)
+                    local matching=part and part:IsA("BasePart") and part:FindFirstChild(child.Name)
+                    if matching and matching:IsA("Attachment") then return true end
+                end
             elseif child:IsA("JointInstance") and child.Name=="AccessoryWeld" then
-                if (child.Part0==handle and child.Part1==head) or (child.Part1==handle and child.Part0==head) then return true end
+                local head=c:FindFirstChild("Head")
+                if head and ((child.Part0==handle and child.Part1==head) or (child.Part1==handle and child.Part0==head)) then return true end
             end
         end
         return false
@@ -432,7 +441,7 @@ return function(player,onStatus)
         for _,entry in ipairs(hidden) do alreadyHidden[entry.object]=true end
         for _,item in ipairs(ctx.character:GetChildren()) do
             local identified,id=pcall(function() return item.SourceAssetId end)
-            if (item:IsA("Accessory") or item:IsA("Hat")) and not hubAdded[item] and not alreadyHidden[item] and (avatarInstances[item] or (identified and avatarIds[id]) or (accountAccessoryNames and accountAccessoryNames[item.Name]) or attachedToHead(item,ctx.character)) then
+            if (item:IsA("Accessory") or item:IsA("Hat")) and not hubAdded[item] and not alreadyHidden[item] and (avatarInstances[item] or (identified and avatarIds[id]) or (accountAccessoryNames and accountAccessoryNames[item.Name]) or attachedToAvatar(item,ctx.character)) then
                 local entry={object=item,parts={}}
                 for _,part in ipairs(item:GetDescendants()) do
                     if part:IsA("BasePart") or part:IsA("Decal") or part:IsA("Texture") then
@@ -458,11 +467,11 @@ return function(player,onStatus)
     end
     function api.accessoryReport()
         local ctx=context()
-        local lines={"Honey Bun Cosmetic Hub accessory report","Build: head attachment detection V2","Hide originals saved: "..tostring(settings.hideOriginals),"Tracked hidden accessories: "..#hidden}
+        local lines={"Honey Bun Cosmetic Hub accessory report","Build: avatar attachment detection V3","Hide originals saved: "..tostring(settings.hideOriginals),"Tracked hidden accessories: "..#hidden}
         local owned={};for _,entry in ipairs(added) do owned[entry.object]=true end
         for _,item in ipairs(ctx.character:GetChildren()) do
             if item:IsA("Accessory") or item:IsA("Hat") then
-                local details={item.Name.." ["..item.ClassName.."]", "hub="..tostring(owned[item]==true),"head match="..tostring(attachedToHead(item,ctx.character))}
+                local details={item.Name.." ["..item.ClassName.."]", "hub="..tostring(owned[item]==true),"avatar match="..tostring(attachedToAvatar(item,ctx.character))}
                 local handle=item:FindFirstChild("Handle")
                 if handle then
                     details[#details+1]="transparency="..tostring(handle.Transparency)

@@ -153,6 +153,13 @@ end
 local accountHair=freshAccessory();accountHair.Name='Account hair';accountHair.SourceAssetId=nil;accountHair.Parent=body
 local renamedHat=freshAccessory();renamedHat.Name='Renamed server hat';renamedHat.SourceAssetId=nil;renamedHat.Parent=body
 local renamedAttachment=node('Attachment','HatAttachment');renamedAttachment.CFrame=cf();renamedAttachment.Parent=renamedHat:FindFirstChild('Handle')
+local bodyAccessories={}
+for _,spec in ipairs({{'GravyScarf','NeckAttachment'},{'FestiveChristmasPixaxePack','BodyBackAttachment'}}) do
+    local a=freshAccessory();a.Name=spec[1];a.SourceAssetId=nil;a.Parent=body
+    node('Attachment',spec[2]).Parent=a:FindFirstChild('Handle')
+    node('Attachment',spec[2]).Parent=body:FindFirstChild('UpperTorso')
+    table.insert(bodyAccessories,a)
+end
 local hairHandle=accountHair:FindFirstChild('Handle');hairHandle.Transparency=0.3
 local hairEffect=node('ParticleEmitter','Hair effect');hairEffect.Enabled=true;hairEffect.Parent=hairHandle
 local liveDescription=node('HumanoidDescription','Live Description');liveDescription.Parent=body:FindFirstChildOfClass('Humanoid')
@@ -176,9 +183,10 @@ assert(not grip.destroyed and grip.Parent==rightHand and not gearScript.destroye
 assert(body:FindFirstChild("RightHand")==rightHand and gear.Parent==body and not gear.destroyed,"cosmetics replaced the live gear-holding hand or equipped tool")
 assert(heldAttachment.CFrame.y==0.25 and body:FindFirstChildOfClass('Humanoid').HipHeight==1.5,'Package applies floor height without moving gear attachment offsets')
 gearApi.removeCurrentAccessories()
+for _,a in ipairs(bodyAccessories) do assert(a:FindFirstChild('Handle').Transparency==1,'Neck and back avatar accessories must be hidden: '..a.Name) end
 assert(renamedHat:FindFirstChild('Handle').Transparency==1,'Head attachment fallback hides hats with missing asset identity and different server names')
 local accessoryReport=gearApi.accessoryReport()
-assert(accessoryReport:find('Renamed server hat',1,true) and accessoryReport:find('head match=true',1,true),'Accessory report includes the live detection path')
+assert(accessoryReport:find('Renamed server hat',1,true) and accessoryReport:find('avatar match=true',1,true),'Accessory report includes the live detection path')
 assert(gameEquipment.Parent==body and gameHandle.Transparency~=1 and not gameWeld.destroyed and not weaponController.destroyed,'Avatar hat hiding leaves game weapons and their welds/controllers alone')
 assert(appliedHat.Parent==body and appliedHat:FindFirstChild('Handle').Transparency==1,'Public applied accessory descriptions identify hats without protected SourceAssetId')
 local originalHandle=appliedHat:FindFirstChild('Handle')
@@ -208,6 +216,7 @@ assert(not grip.destroyed and gear.Parent==body,"restore, replay, and cleanup pr
 assert(storedGear.Parent==backpack and not storedGear.destroyed and not gameWeld.destroyed,'Backpack gear and game weapon joints survive all cosmetic operations')
 assert(appliedHat:FindFirstChild('Handle').Transparency==0,'Cleanup restores hidden avatar visuals without destroying inventory')
 assert(hairHandle.Transparency==0.3 and hairEffect.Enabled,'Cleanup restores original accessory transparency and effects exactly')
+for _,a in ipairs(bodyAccessories) do assert(a:FindFirstChild('Handle').Transparency==0,'Cleanup restores neck and back accessories') end
 assert(renamedHat:FindFirstChild('Handle').Transparency==0,'Head attachment fallback preserves reversible visibility')
 -- A Part-based R15 head keeps its existing face, joints, and controllers too.
 Enum.MeshType={FileMesh='FileMesh'}
