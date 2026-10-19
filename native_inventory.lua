@@ -525,11 +525,15 @@ return function(playerGui,catalog,onStatus,mode)
             local shade=selected and 12 or 48
             local edge=selected and 0 or 48
             for _,o in ipairs(texts(tab)) do
-                local border=normalize(o.Name):find("border",1,true)
+                local name=normalize(o.Name)
+                local border=name:find("border",1,true) or name:find("line",1,true) or name:find("separator",1,true)
                 local properties
                 if o==tab or is(o,"GuiButton") then properties={BackgroundColor3=Color3.fromRGB(shade,shade,shade),BorderColor3=Color3.fromRGB(edge,edge,edge)}
                 elseif is(o,"UIStroke") then properties={Color=Color3.fromRGB(edge,edge,edge)}
-                elseif border and is(o,"GuiObject") then properties={BackgroundColor3=Color3.fromRGB(edge,edge,edge),BorderColor3=Color3.fromRGB(edge,edge,edge)} end
+                elseif border and is(o,"GuiObject") then
+                    properties={BackgroundColor3=Color3.fromRGB(edge,edge,edge),BorderColor3=Color3.fromRGB(edge,edge,edge)}
+                    if is(o,"ImageLabel") then properties.ImageColor3=Color3.fromRGB(edge,edge,edge) end
+                end
                 for key,value in pairs(properties or {}) do
                     if remember then savedHeader[o]=savedHeader[o] or {};if savedHeader[o][key]==nil then savedHeader[o][key]=read(o,key) end end
                     o[key]=value

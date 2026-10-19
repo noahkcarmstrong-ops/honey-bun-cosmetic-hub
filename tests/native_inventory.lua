@@ -327,6 +327,7 @@ local headerSearch=node('TextBox','Search',tabsRoot);headerSearch.LayoutOrder=10
 tabCurrent.LayoutOrder=1;tabClassic.LayoutOrder=2;tabHoliday.LayoutOrder=3
 local originalCurrentSize=tabCurrent.Size
 node('LocalScript','NativeTabScript',tabCurrent)
+local leftLine=node('Frame','LeftLine',tabCurrent);leftLine.BackgroundColor3=Color3.fromRGB(48,48,48)
 local nestedSearch=headerSearch
 currentView.Activated:Connect(function()currentBranch.Visible=true;classicBranch.Visible=false;holidayBranch.Visible=false end)
 classicView.Activated:Connect(function()currentBranch.Visible=false;classicBranch.Visible=true;holidayBranch.Visible=false end)
@@ -371,6 +372,7 @@ savedTab:FindFirstChild('View',true).Activated:Fire();flush()
 assert(savedPane.Visible and not currentBranch.Visible and not classicBranch.Visible and not holidayBranch.Visible,'Saved tab shows only the owned pane')
 assert(tabClassic.BackgroundColor3.R==48/255 and tabCurrent.BackgroundColor3.R==48/255 and savedTab.BackgroundColor3.R==12/255,'Selecting Saved clears every native dark tab background')
 assert(savedTab.BorderColor3.R==0,'Selected Saved tab has a black border')
+assert(savedTab:FindFirstChild('LeftLine').BackgroundColor3.R==0,'Selected Saved tab left divider turns black')
 nestedSearch.Text='holiday';flush();assert(#savedCardsIn(savedGrid)==1,'Native search filters the combined Saved pane')
 nestedSearch.Text='';flush();classicView.Activated:Fire();flush();assert(not savedPane.Visible and classicBranch.Visible,'Native category tabs hide Saved and keep game behavior')
 savedPane.Visible=true;flush()
