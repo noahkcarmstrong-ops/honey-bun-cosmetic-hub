@@ -277,6 +277,23 @@ local statusText = "Local avatar editor. Saved selections reapply automatically.
 local statusLabel, render,lastRenderedPage
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
 local skyboxInput=uiSetting("skybox","")
+local skyboxName=""
+local function savedSkies()
+    local raw=uiSetting("savedSkyboxes","")
+    if raw=="" then return {} end
+    local entries=game:GetService("HttpService"):JSONDecode(raw)
+    assert(type(entries)=="table" and #entries<=30,"Saved skyboxes are invalid.")
+    for _,entry in ipairs(entries) do
+        assert(type(entry)=="table" and type(entry.name)=="string" and #entry.name<=40
+            and type(entry.asset)=="string" and #entry.asset<=512 and type(entry.daylight)=="boolean","Saved skybox is invalid.")
+    end
+    return entries
+end
+local function storeSkies(entries)
+    local raw=game:GetService("HttpService"):JSONEncode(entries)
+    assert(#raw<=8192,"Skybox library is full. Delete a saved skybox first.")
+    playerGui:SetAttribute("HoneyBunCosmeticUI_savedSkyboxes",raw)
+end
 local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animationBundle","")
 local shirtInput,pantsInput=uiSetting("shirt",""),uiSetting("pants","")
 local characterName=uiSetting("characterName","")
@@ -1095,7 +1112,43 @@ render=function()
             if type(setclipboard)=="function" then setclipboard(report);return "Sky report copied. Paste it into chat." end
             return report
         end)end)
-        caption("Only you see this change. If Roblox cannot load the asset, your current sky stays in place.",48)
+        caption("SAVED SKYBOXES",24)
+        local nameField=input("Skybox name",skyboxName,function(value)skyboxName=value end)
+        button("Save skybox",function()
+            local asset=field.Text:match("^%s*(.-)%s*$")
+            local label=nameField.Text:match("^%s*(.-)%s*$")
+            action(function()
+                assert(#label>0 and #label<=40,"Enter a name with 1-40 characters.")
+                assert(#asset>0 and #asset<=512,"Enter a skybox model link or ID.")
+                local entries=savedSkies()
+                local index
+                for i,entry in ipairs(entries) do if entry.asset==asset then index=i;break end end
+                assert(index or #entries<30,"You can save up to 30 skyboxes. Delete one first.")
+                local ok,message=atmosphere().apply(asset);assert(ok,message)
+                entries[index or #entries+1]={name=label,asset=asset,daylight=atmosphere().daylightEnabled()}
+                storeSkies(entries);skyboxInput=asset;skyboxName="";saveUI()
+                return "Skybox saved: "..label
+            end)
+        end)
+        local loaded,entries=pcall(savedSkies)
+        if not loaded then caption("Saved skyboxes could not load: "..tostring(entries),48)
+        elseif #entries==0 then caption("No saved skyboxes yet. Enter a name above and press Save skybox.",44)
+        else
+            for index,entry in ipairs(entries) do
+                caption(entry.name,24)
+                button("Load "..entry.name,function()action(function()
+                    local ok,message=atmosphere().apply(entry.asset);assert(ok,message)
+                    atmosphere().setDaylight(entry.daylight)
+                    skyboxInput=entry.asset;saveUI()
+                    return "Loaded skybox: "..entry.name
+                end)end)
+                button("Delete "..entry.name,function()action(function()
+                    local current=savedSkies();table.remove(current,index);storeSkies(current)
+                    return "Deleted saved skybox: "..entry.name
+                end)end)
+            end
+        end
+        caption("Only you see this change. Saved skyboxes belong to your account and load again using Load.",48)
     elseif activePage=="Animations" then
         caption("ANIMATION BUNDLES",24)
         caption("Paste a Roblox animation bundle link to change your walk, run, idle, and the other movement animations included in that bundle.",56)

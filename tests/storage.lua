@@ -212,6 +212,16 @@ local gunDeletedGui, gunDeletedStorage = rejoin(909)
 assert(value(gunDeletedGui, 'HoneyBunCosmeticGuns') == nil, 'gun choice deletion persists')
 gunStorage:destroy(); gunRejoinStorage:destroy(); gunDeletedStorage:destroy()
 
+-- Saved skyboxes share the existing per-account UI storage.
+local skyGui, skyStorage = rejoin(1001)
+skyGui:SetAttribute('HoneyBunCosmeticUI_savedSkyboxes', '[{"name":"Classic","asset":"339406852","daylight":true}]')
+flush()
+local skyRejoin, skyReload = rejoin(1001)
+assert(value(skyRejoin, 'HoneyBunCosmeticUI_savedSkyboxes') == value(skyGui, 'HoneyBunCosmeticUI_savedSkyboxes'), 'saved skyboxes restore after rejoin')
+local otherSkyGui, otherSkyStorage = rejoin(1002)
+assert(value(otherSkyGui, 'HoneyBunCosmeticUI_savedSkyboxes') == nil, 'saved skyboxes remain private to their account')
+skyStorage:destroy(); skyReload:destroy(); otherSkyStorage:destroy()
+
 _G.characterRejoin = rejoin
 _G.characterFlush = flush
 
