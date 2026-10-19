@@ -151,15 +151,20 @@ return function(game, injectedRequire)
         if isA(model,"Model") or isA(model,"Tool") then return child(model,"Handle") end
         if isA(model,"BasePart") then return model end
     end
-    local assetCache,assetRoots={},{}
+    local assetCache,assetRoots,assetFailures,resourceCache={},{},{},{}
     local lastAttempt
     local function itemAsset(assetId)
         local id=tonumber(assetId)
         assert(id and id>0 and id%1==0,"The item has an invalid ItemID asset.")
         local key=tostring(id)
         if assetCache[key] then return assetCache[key] end
+        if assetFailures[key] then error(assetFailures[key]) end
         local ok,objects=pcall(function() return game:GetObjects("rbxassetid://"..string.format("%.0f",id)) end)
-        assert(ok and type(objects)=="table","Could not load ItemID "..key..": "..tostring(objects))
+        if not ok or type(objects)~="table" or #objects==0 then
+            local message="Could not load ItemID "..key..": "..tostring(objects)
+            if ok and type(objects)=="table" then message="ItemID "..key.." returned no objects; its asset is unavailable to this client." end
+            assetFailures[key]=message;error(message)
+        end
         local all={}
         for _,object in ipairs(objects) do
             assetRoots[#assetRoots+1]=object
@@ -181,15 +186,47 @@ return function(game, injectedRequire)
                 if #layout<16 then layout[#layout+1]=tostring(read(object,"Name")).."["..tostring(read(object,"ClassName")).."]" end
             end
             if #parts==1 then visual=parts[1] elseif #parts==0 and #meshes==1 then visual=meshes[1] end
-            assert(visual,"ItemID "..key.." has an unsupported visual layout: "..table.concat(layout,", "))
+            if not visual then
+                local message="ItemID "..key.." has an unsupported visual layout: "..table.concat(layout,", ")
+                assetFailures[key]=message;error(message)
+            end
         end
         assetCache[key]=visual
         return visual
     end
-    local function handleVisual(def)
+    local function resourceVisual(entry)
+        if resourceCache[entry.id] then return resourceCache[entry.id] end
+        local resources=child(service("ReplicatedStorage"),"Resources")
+        local candidates={entry.id,field(entry.definition,"ItemName"),field(entry.definition,"Name"),field(entry.definition,"ItemID")}
+        local objects=descendants(resources)
+        for i=1,4 do
+            local name=candidates[i]
+            if name then
+                for _,object in ipairs(objects) do
+                    if tostring(read(object,"Name"))==tostring(name) then
+                        local source=modelHandle(object)
+                        if not source and isA(object,"SpecialMesh") then source=object end
+                        if not source and (isA(object,"Model") or isA(object,"Tool") or isA(object,"Folder")) then
+                            local parts={}
+                            for _,desc in ipairs(descendants(object)) do
+                                if isA(desc,"BasePart") then
+                                    parts[#parts+1]=desc
+                                    if read(desc,"Name")=="Handle" then source=desc;break end
+                                end
+                            end
+                            if not source and #parts==1 then source=parts[1] end
+                        end
+                        if source then resourceCache[entry.id]=source;return source end
+                    end
+                end
+            end
+        end
+    end
+    local function handleVisual(def,entry)
         local mesh,texture=field(def,"MeshId") or field(def,"MeshID"),field(def,"TextureId") or field(def,"TextureID"); local color=field(def,"Color") or field(def,"Color3"); local material=field(def,"Material")
         local scale,meshType=field(def,"Scale"),field(def,"MeshType")
         local h=modelHandle(field(def,"Model"))
+        if not h and entry then h=resourceVisual(entry) end
         if not h and field(def,"ItemID") then h=itemAsset(field(def,"ItemID")) end
         if h then
             local m=isA(h,"SpecialMesh") and h or childClass(h,"SpecialMesh")
@@ -244,11 +281,14 @@ return function(game, injectedRequire)
         end
         local _,handle=targetTool(kind)
         if selectedTool then assert(weaponTarget(selectedTool) and toolKind(selectedTool)==kind,"Matching native weapon is required.");handle=weaponHandle(selectedTool) end
-        local meshId,textureId,color,material,scale,meshType,source=handleVisual(e.definition)
+        if not handle and allowPending then
+            pending[kind]=e.id;equipped[kind]=e.id
+            return "Queued "..kind:lower().." locally: "..e.name.." (waiting for your matching weapon)"
+        end
+        local meshId,textureId,color,material,scale,meshType,source=handleVisual(e.definition,e)
         if field(e.definition,"Model")~=nil then assert(source,"Cosmetic model reference could not be resolved from ReplicatedStorage.Resources.") end
         assert(meshId or textureId or color or material or scale or meshType or source,"Cosmetic has no supported local visual fields (explicit MeshId/TextureId, model, Handle mesh, Color, or Material).")
         if not handle then
-            if allowPending then pending[kind]=e.id; equipped[kind]=e.id; return "Queued "..kind:lower().." locally: "..e.name.." (waiting for your matching weapon)" end
             error("Equip a matching "..kind:lower().." Tool with a Handle before previewing this cosmetic.")
         end
         local mesh=childClass(handle,"SpecialMesh")
@@ -345,7 +385,7 @@ return function(game, injectedRequire)
         if alive then
             alive=false;api.restore()
             for _,object in ipairs(assetRoots) do pcall(function() object:Destroy() end) end
-            assetRoots={};assetCache={}
+            assetRoots={};assetCache={};assetFailures={};resourceCache={}
         end
     end
     local function fullName(o) local fn=read(o,"GetFullName"); if type(fn)=="function" then local ok,v=pcall(fn,o); if ok and type(v)=="string" then return v end end; return tostring(read(o,"Name") or "") end
@@ -369,11 +409,22 @@ return function(game, injectedRequire)
     end
     function api.report()
         local rs=service("ReplicatedStorage"); local ps=service("Players"); local p=ps and read(ps,"LocalPlayer"); local lines={"MM2 discovery (read-only)","GameId="..tostring(read(game,"GameId") or "?"),"PlaceId="..tostring(read(game,"PlaceId") or "?"),"ReplicatedStorage="..(rs and "available" or "missing"),"LocalPlayer="..(p and tostring(read(p,"Name") or "available") or "missing")}
-        lines[#lines+1]="Build: standalone mesh equip V4"
+        lines[#lines+1]="Build: resource-first pending equip V5"
         lines[#lines+1]="Selected Knife="..tostring(equipped.Knife).." Gun="..tostring(equipped.Gun).." Last equip error="..tostring(equipError or "none")
         lines[#lines+1]="Pending Knife="..tostring(pending.Knife).." Gun="..tostring(pending.Gun).." Last result="..tostring(lastEquipResult or "none")
         if lastAttempt then
             lines[#lines+1]="Last attempted item="..lastAttempt.id.." kind="..lastAttempt.kind.." ItemID="..tostring(field(lastAttempt.definition,"ItemID")).." Model="..tostring(field(lastAttempt.definition,"Model"))
+        end
+        local resources=child(rs,"Resources")
+        local resourceInfo={}
+        for _,object in ipairs(children(resources)) do
+            if #resourceInfo>=16 then break end
+            resourceInfo[#resourceInfo+1]=tostring(read(object,"Name")).."["..tostring(read(object,"ClassName")).."]"
+        end
+        lines[#lines+1]="Loaded resources="..(resources and table.concat(resourceInfo,", ") or "missing")
+        if lastAttempt then
+            local source=resourceCache[lastAttempt.id]
+            lines[#lines+1]="Resolved local resource="..(source and fullName(source) or "none")
         end
         local ps=service("Players");local current=read(ps,"LocalPlayer")
         for _,area in ipairs({"Character","Backpack"}) do

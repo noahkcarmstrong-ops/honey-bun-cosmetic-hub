@@ -137,8 +137,13 @@ for _,v in ipairs(card:GetDescendants())do
     assert(not v:IsA('LuaSourceContainer'),'Cloned scripts are stripped')
     if v.Name=='NativeEquip'then assert(not v.Active,'Native remote-driven button is disabled')end
 end
+local cardsBefore=generated();local firstGenerated,secondGenerated=cardsBefore[1],cardsBefore[2]
 overlay(card).Activated:Fire();assert(lastEquip=='godly:Gun','Click equips the selected cosmetic rather than requiring an immediate preview')
+assert(generated()[1]==firstGenerated and generated()[2]==secondGenerated,'Click updates existing cards without rebuilding the grid')
 assert(generated()[1]:FindFirstChild('Equipped').Visible,'Native equipped marker reflects local selection')
+overlay(secondGenerated).Activated:Fire();assert(lastEquip=='rare:Knife','Second click equips the other cosmetic')
+assert(generated()[1]==firstGenerated and generated()[2]==secondGenerated,'Second click keeps the existing cards')
+assert(generated()[1]:FindFirstChild('Equipped').Visible and generated()[2]:FindFirstChild('Equipped').Visible,'Each weapon category keeps its selection marker without rebuilding')
 buttons.Classic.Activated:Fire();flush()
 assert(#generated()==1 and generated()[1].Name:find('classic',1,true),'Classic tab works even when native game changes panels')
 assert(collection().Visible and not classicPane.Visible,'Local collection remains visible after native category switch')

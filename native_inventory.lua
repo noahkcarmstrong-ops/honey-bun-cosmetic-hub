@@ -5,7 +5,7 @@ return function(playerGui,catalog,onStatus)
     local grid,template,root,ownedRoot,nativePane,nativeHost
     local panePath,gridPath
     local mounting,queued=false,false
-    local cards,originals,connections,cardConnections={},{},{},{}
+    local cards,cardEntries,originals,connections,cardConnections={},{},{},{},{}
     local query,season="","season1"
     local lastReport="Native inventory has not been detected yet."
     local tabBindings,categoryCounts={},{season1=0,classic=0,holiday=0}
@@ -160,7 +160,19 @@ return function(playerGui,catalog,onStatus)
     local function clearCards()
         disconnect(cardConnections);cardConnections={}
         for _,card in ipairs(cards) do destroy(card) end
-        cards={}
+        cards={};cardEntries={}
+    end
+    local function updateSelection(equipped)
+        for _,card in ipairs(cards) do
+            local entry=cardEntries[card]
+            if entry then
+                for _,v in ipairs(texts(card)) do
+                    if is(v,"GuiObject") and (normalize(v.Name)=="equipped" or normalize(v.Name)=="selected") then
+                        v.Visible=equipped[entry.kind]==entry.id
+                    end
+                end
+            end
+        end
     end
     local render
     render=function()
@@ -181,6 +193,7 @@ return function(playerGui,catalog,onStatus)
                 if entryCategory(entry)==season and (query=="" or lower(entry.name):find(query,1,true) or lower(entry.id):find(query,1,true)) then
                     local card=template:Clone()
                     cards[#cards+1]=card
+                    cardEntries[card]=entry
                     card.Name="HoneyBunLocal_"..entry.kind.."_"..tostring(entry.id)
                     card.Visible=true;card.LayoutOrder=#cards
                     for _,v in ipairs(texts(card)) do
@@ -199,9 +212,7 @@ return function(playerGui,catalog,onStatus)
                         local good,result=pcall(catalog.equip or catalog.preview,entry.id,entry.kind)
                         status(good and (result or "Local item selected.") or ("Could not equip locally: "..tostring(result)))
                         if good then
-                            local shown=lastReport
-                            local refreshed,err=pcall(render)
-                            if not refreshed then status(err) else status(shown) end
+                            updateSelection(catalog.getEquipped and catalog.getEquipped() or {})
                         end
                     end)
                     card.Parent=grid

@@ -146,3 +146,27 @@ assert(displayMesh.MeshId=='standalone-mesh' and displayMesh.TextureId=='standal
 meshApi.restore()
 assert(displayMesh.MeshId=='old-display','Standalone asset restores original weapon')
 print('Standalone ItemID mesh equip and restoration passed.')
+
+-- Replay: the live report has no native weapon and GetObjects returns an empty array.
+local emptyLoads=0
+local emptyGame={GetService=assetGame.GetService,GetObjects=function()emptyLoads=emptyLoads+1;return{}end}
+assetPlayer.Character=node('Character','Model',{})
+local emptyApi=create(emptyGame,function(module)return module.Data end)
+assert(emptyApi.equip('Fragile_G_2023','Gun'):find('waiting',1,true),'No native weapon queues a selection before loading any asset')
+assert(emptyLoads==0,'Selecting without a native weapon never downloads an asset')
+assetPlayer.Character=node('Character','Model',{directDisplay})
+local fail1,err1=pcall(emptyApi.equip,'Fragile_G_2023','Gun')
+local fail2,err2=pcall(emptyApi.equip,'Fragile_G_2023','Gun')
+assert(not fail1 and not fail2 and tostring(err1):find('returned no objects',1,true),'Empty asset results report the actual load failure')
+assert(emptyLoads==1,'Unavailable ItemID is not downloaded repeatedly on every click')
+-- Existing replicated weapon resources must win over blocked external downloads.
+local resourceSource=node('Fragile_G_2023','Part',{standalone})
+resourceSource.IsA=function(_,c)return c=='Part' or c=='BasePart'end
+local resourceRs=node('ReplicatedStorage','ReplicatedStorage',{node('Database','Folder',{node('Sync','Folder',{realData})}),node('Resources','Folder',{resourceSource})})
+local resourceGame={GetService=function(_,name)return name=='ReplicatedStorage' and resourceRs or assetServices[name]end,GetObjects=function()error('Must use replicated resource first')end}
+local resourceApi=create(resourceGame,function(module)return module.Data end)
+resourceApi.equip('Fragile_G_2023','Gun')
+assert(displayMesh.MeshId=='standalone-mesh','Matching replicated resource equips without an external request')
+resourceApi.restore()
+assert(displayMesh.MeshId=='old-display','Replicated visual restores original native weapon')
+print('Missing weapon queue, empty asset caching and replicated resource resolution passed.')
