@@ -6,6 +6,8 @@ return function(game)
     local generation = 0
     local destroyed = false
     local keeper,blueprint
+    local appliedId,lastFailure
+    local repairs=0
     local skyProperties={"SkyboxBk","SkyboxDn","SkyboxFt","SkyboxLf","SkyboxRt","SkyboxUp"}
     local function service(name)local ok,value=pcall(game.GetService,game,name);if ok then return value end end
 
@@ -53,7 +55,7 @@ return function(game)
         local token = generation
         local roots
         local ok, result = pcall(function() return game:GetObjects("rbxassetid://" .. assetId) end)
-        if not ok then return false, "Could not load that Roblox model asset: " .. tostring(result) end
+        if not ok then lastFailure=tostring(result);return false, "Could not load that Roblox model asset: " .. tostring(result) end
         roots = result
         local found = {}
         if type(roots) == "table" then
@@ -115,6 +117,7 @@ return function(game)
         if custom then custom.Parent = nil; custom:Destroy() end
         replacement.Parent = lighting
         custom = replacement
+        appliedId=assetId;lastFailure=nil;repairs=0
         if blueprint then blueprint:Destroy() end
         blueprint=replacement:Clone()
         if keeper then keeper:Disconnect() end
@@ -128,7 +131,7 @@ return function(game)
                     if child:IsA("Sky") and child~=custom then
                         local known=false;for _,entry in ipairs(originals) do if entry.object==child then known=true;break end end
                         if not known then originals[#originals+1]={object=child,parent=lighting} end
-                        child.Parent=nil
+                        child.Parent=nil;repairs=repairs+1
                     end
                 end
                 local ok=pcall(function()
@@ -149,6 +152,36 @@ return function(game)
         for _, entry in ipairs(originals) do entry.object.Parent = entry.parent end
         originals={}
         return true
+    end
+
+    function api.report()
+        local lines={"Atmosphere build: sky diagnostics V3","Requested asset="..tostring(appliedId or "none"),
+            "Custom sky parent="..tostring(custom and custom.Parent and custom.Parent.Name or "none"),
+            "Override active="..tostring(keeper~=nil).." competing sky removals="..repairs,
+            "Last load failure="..tostring(lastFailure or "none")}
+        for _,key in ipairs({"ClockTime","TimeOfDay","Brightness","ExposureCompensation","FogStart","FogEnd"}) do
+            lines[#lines+1]="Lighting."..key.."="..tostring(lighting[key])
+        end
+        for _,object in ipairs(lighting:GetChildren()) do
+            lines[#lines+1]="Lighting child="..object.Name.." ["..object.ClassName.."]"
+            if object:IsA("Sky") then
+                for _,key in ipairs(skyProperties) do lines[#lines+1]=key.."="..tostring(object[key]) end
+            elseif object:IsA("Atmosphere") then
+                lines[#lines+1]="Atmosphere density="..tostring(object.Density).." haze="..tostring(object.Haze).." glare="..tostring(object.Glare)
+            end
+        end
+        local world=service("Workspace")
+        if world then
+            local count=0
+            for _,object in ipairs(world:GetDescendants()) do
+                local name=object.Name:lower()
+                if object:IsA("BasePart") and (name:find("sky",1,true) or name:find("dome",1,true)) then
+                    lines[#lines+1]="Sky geometry="..object:GetFullName().." size="..tostring(object.Size).." transparency="..tostring(object.Transparency).." localTransparency="..tostring(object.LocalTransparencyModifier)
+                    count=count+1;if count>=20 then break end
+                end
+            end
+        end
+        return table.concat(lines,"\n")
     end
 
     function api.destroy()

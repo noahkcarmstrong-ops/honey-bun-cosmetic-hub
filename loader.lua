@@ -1086,6 +1086,11 @@ render=function()
             action(function()local ok,message=atmosphere().apply(skyboxInput);assert(ok,message);return "Skybox applied. Only you see this sky." end)
         end)
         button("Restore original sky",function()action(function()atmosphere().restore();return "Original sky restored." end)end)
+        button("Copy sky report",function()action(function()
+            local report=atmosphere().report()
+            if type(setclipboard)=="function" then setclipboard(report);return "Sky report copied. Paste it into chat." end
+            return report
+        end)end)
         caption("Only you see this change. If Roblox cannot load the asset, your current sky stays in place.",48)
     elseif activePage=="Animations" then
         caption("ANIMATION BUNDLES",24)

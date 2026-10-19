@@ -87,6 +87,8 @@ assert(#custom:GetChildren() == 0, "cloned Sky has no untrusted descendants")
 local gameReset=sky("Game reset");gameReset.Parent=lighting;custom.Parent=nil;tick()
 assert(custom.Parent==lighting and gameReset.Parent==nil,"Override removes newly inserted game skies and reparents custom sky")
 custom.SkyboxBk="game changed it";tick();assert(custom.SkyboxBk=="Source","Game sky texture changes are repaired")
+local report=api.report()
+assert(report:find("Requested asset=123",1,true) and report:find("SkyboxBk=Source",1,true),"Report includes requested model and actual active sky face IDs")
 game.fail = true; assert(not api.apply("rbxassetid://123"), "failed replacement is reported")
 assert(custom.Parent == lighting and not custom.destroyed, "failed replacement keeps current sky")
 game.fail = false
