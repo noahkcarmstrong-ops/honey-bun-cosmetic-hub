@@ -7,7 +7,7 @@ A universal, local avatar editor with the Larpblox menu style. It has its own re
 Run this in your executor:
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/main/loader.lua", false))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/main/loader.lua", false))()
 ```
 
 ## Accessories

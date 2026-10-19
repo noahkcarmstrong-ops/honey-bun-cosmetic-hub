@@ -125,7 +125,7 @@ local tweenService={Create=function(_,object,_,goal)
 end}
 game={GetService=function(_,name)return({Players={LocalPlayer=player},UserInputService=input,HttpService=http,TweenService=tweenService})[name]end}
 function game:HttpGet(url)
-    assert(url:find('/honey-bun-cosmetic-hub/',1,true),'Only the separate cosmetic repo is contacted')
+    assert(url:find('/larpblox/',1,true),'Only the separate cosmetic repo is contacted')
     if url:find('/commits/main',1,true)then return'revision'end
     assert(url:find('/'..string.rep('a',40)..'/',1,true),'Modules and Refresh use immutable commits')
     if url:find('/native_inventory.lua',1,true)then return'native-mm2-module'end

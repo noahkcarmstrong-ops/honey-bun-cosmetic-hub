@@ -70,11 +70,11 @@ local persistenceNotice="Auto-save: session only. Saved-settings support could n
 pcall(function()
     local stamp=tostring(DateTime.now().UnixTimestampMillis)
     local revision=game:GetService("HttpService"):JSONDecode(game:HttpGet(
-        "https://api.github.com/repos/noahkcarmstrong-ops/honey-bun-cosmetic-hub/commits/main?refresh="..stamp,false))
+        "https://api.github.com/repos/noahkcarmstrong-ops/larpblox/commits/main?refresh="..stamp,false))
     local sha=revision and revision.sha
     assert(type(sha)=="string" and #sha==40 and sha:match("^%x+$"),"Could not find the latest cosmetic update.")
     moduleRevision=sha
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..sha.."/storage.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..sha.."/storage.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     persistence=chunk()(playerGui,Players.LocalPlayer.UserId,function(message)
         if persistenceLabel and persistenceLabel.Parent then persistenceLabel.Text=message end
@@ -138,7 +138,7 @@ if type(customAsset)=="function" and type(writefile)=="function" and moduleRevis
     task.spawn(function()
         pcall(function()
             local file = "Larpblox-logo.png"
-            local bytes = game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/assets/larpblox-logo.png", false)
+            local bytes = game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/assets/larpblox-logo.png", false)
             assert(bytes:sub(1,8)=="\137PNG\13\10\26\10", "Invalid logo image")
             writefile(file, bytes)
             local logo = Instance.new("ImageLabel")
@@ -219,11 +219,11 @@ refresh.Activated:Connect(function()
     refresh.Text = "Refreshing..."
     local ok, message = pcall(function()
         local stamp = tostring(DateTime.now().UnixTimestampMillis)
-        local revisionUrl = "https://api.github.com/repos/noahkcarmstrong-ops/honey-bun-cosmetic-hub/commits/main?refresh=" .. stamp
+        local revisionUrl = "https://api.github.com/repos/noahkcarmstrong-ops/larpblox/commits/main?refresh=" .. stamp
         local revision = game:GetService("HttpService"):JSONDecode(game:HttpGet(revisionUrl, false))
         local sha = revision and revision.sha
         assert(type(sha) == "string" and #sha == 40 and sha:match("^%x+$"), "GitHub did not return a valid update revision")
-        local url = "https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/" .. sha .. "/loader.lua"
+        local url = "https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/" .. sha .. "/loader.lua"
         local source = game:HttpGet(url, false)
         local chunk, compileError = loadstring(source)
         assert(chunk, compileError)
@@ -404,12 +404,12 @@ local function api()
     if not sha then
         local stamp=tostring(DateTime.now().UnixTimestampMillis)
         local revision=game:GetService("HttpService"):JSONDecode(game:HttpGet(
-            "https://api.github.com/repos/noahkcarmstrong-ops/honey-bun-cosmetic-hub/commits/main?refresh="..stamp,false))
+            "https://api.github.com/repos/noahkcarmstrong-ops/larpblox/commits/main?refresh="..stamp,false))
         sha=revision and revision.sha
     end
     assert(type(sha)=="string" and #sha==40 and sha:match("^%x+$"),"Could not find the latest cosmetic update.")
     moduleRevision=sha
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..sha.."/avatar.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..sha.."/avatar.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Avatar editor failed to load.")
     assert(alive,"Menu was closed.")
@@ -422,7 +422,7 @@ local function api()
 end
 local function atmosphere()
     if atmosphereAPI then return atmosphereAPI end
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/atmosphere.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/atmosphere.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     atmosphereAPI=chunk()(game)
     return atmosphereAPI
@@ -430,7 +430,7 @@ end
 local function motion()
     if motionAPI then return motionAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/motion.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/motion.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     motionAPI=chunk()(Players.LocalPlayer,function(message)
         if not alive then return end
@@ -442,7 +442,7 @@ end
 local function animations()
     if animationAPI then return animationAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/animations.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/animations.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     animationAPI=chunk()(Players.LocalPlayer,function(message)
         if not alive then return end
@@ -454,7 +454,7 @@ end
 local function clothes()
     if clothesAPI then return clothesAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/clothes.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/clothes.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     clothesAPI=chunk()(Players.LocalPlayer,function(message)
         if not alive then return end
@@ -466,7 +466,7 @@ end
 local function characterModules()
     api()
     local function load(name)
-        local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/"..name..".lua",false)
+        local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/"..name..".lua",false)
         local chunk,message=loadstring(source);assert(chunk,message)
         assert(alive,"Menu was closed.")
         return chunk()
@@ -553,7 +553,7 @@ end
 local function hatSounds()
     if accessorySoundsAPI then return accessorySoundsAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/accessory_sounds.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/accessory_sounds.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     accessorySoundsAPI=chunk()(Players.LocalPlayer,playerGui)
     return accessorySoundsAPI
@@ -561,7 +561,7 @@ end
 local function customCrosshair()
     assert(isMM2,"Custom sheriff crosshairs are available in MM2.")
     if crosshairAPI then return crosshairAPI end
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/crosshair.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/crosshair.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     crosshairAPI=chunk()(game)
     return crosshairAPI
@@ -570,10 +570,10 @@ local function mm2()
     assert(isMM2,"This menu is only available in MM2.")
     if mm2API then return mm2API end
     api()
-    local librarySource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/gun_library.lua",false)
+    local librarySource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/gun_library.lua",false)
     local libraryChunk,libraryError=loadstring(librarySource);assert(libraryChunk,libraryError)
     mm2GunLibraryAPI=libraryChunk()(game,playerGui)
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/mm2.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/mm2.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     mm2API=chunk()(game,nil,mm2GunLibraryAPI)
     mm2API.setKnifeSide(knifeSide)
@@ -582,7 +582,7 @@ end
 local function nativeMM2()
     if mm2NativeAPI then return mm2NativeAPI end
     local catalog=mm2()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/native_inventory.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inventory.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     mm2NativeAPI=chunk()(playerGui,catalog,function(message)
         if not alive then return end
@@ -594,11 +594,11 @@ end
 local function savedNativeMM2()
     if mm2SavedNativeAPI then return mm2SavedNativeAPI end
     local backend=mm2()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/native_inventory.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inventory.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     local function openWeaponEditor(entry,mode)
         if not mm2WeaponEditorAPI then
-            local editorSource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/weapon_editor.lua",false)
+            local editorSource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/weapon_editor.lua",false)
             local editorChunk,editorError=loadstring(editorSource);assert(editorChunk,editorError)
             mm2WeaponEditorAPI=editorChunk()(playerGui,{
                 getEditorScene=backend.getWeaponEditorScene,
@@ -620,9 +620,9 @@ local function effectsMM2()
     assert(isMM2,"This menu is only available in MM2.")
     if mm2EffectsAPI then return mm2EffectsAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/mm2_effects.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/mm2_effects.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
-    local librarySource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/effect_library.lua",false)
+    local librarySource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/effect_library.lua",false)
     local libraryChunk,libraryError=loadstring(librarySource);assert(libraryChunk,libraryError)
     mm2EffectsLibraryAPI=libraryChunk()(game,playerGui)
     mm2EffectsAPI=chunk()(game,function(message)
@@ -633,7 +633,7 @@ end
 local function nativeEffectsMM2()
     if mm2EffectsNativeAPI then return mm2EffectsNativeAPI end
     local catalog=effectsMM2()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/native_inventory.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inventory.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     mm2EffectsNativeAPI=chunk()(playerGui,catalog,function(message)
         if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
@@ -642,7 +642,7 @@ local function nativeEffectsMM2()
 end
 local function emoteBarMM2()
     if mm2EmoteBarAPI then return mm2EmoteBarAPI end
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/emote_bar.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/emote_bar.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     local backend=mm2()
     mm2EmoteBarAPI=chunk()(playerGui,{list=backend.list,preview=backend.preview},function(message)
@@ -652,7 +652,7 @@ local function emoteBarMM2()
 end
 local function nativeEmotesMM2()
     if mm2EmotesNativeAPI then return mm2EmotesNativeAPI end
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/native_inventory.lua",false)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inventory.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     local backend=mm2()
     mm2EmotesNativeAPI=chunk()(playerGui,{list=backend.list,preview=backend.preview},function(message)
