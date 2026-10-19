@@ -253,6 +253,13 @@ assert(posed.character:FindFirstChild('RightUpperArm'):FindFirstChild('RightWris
 assert(hand.CFrame.Y==-3 and hand.CFrame.Z==0,'Holding preview does not pose the real avatar')
 local resting=editorBackend.getWeaponEditorScene(savedGunId,'Holster')
 assert(resting.character:FindFirstChild('RightHand').CFrame.Y==-3,'Holster preview preserves the original pose')
+-- Real shoulders have rotated joint bases; identity-only fixtures missed this.
+shoulder.C0=frame(1,0,0)*CFrame.Angles(0,math.pi/2,0)
+shoulder.C1=withInverse(frame(0,1,0)*CFrame.Angles(0,math.pi/2,0))
+local rotatedRig=editorBackend.getWeaponEditorScene(savedGunId,'Held')
+local straightHand=rotatedRig.character:FindFirstChild('RightHand')
+assert(straightHand.CFrame.Z<localTorso.CFrame.Z-2 and math.abs(straightHand.CFrame.Y-localTorso.CFrame.Y)<0.001,'Rotated shoulder basis still points the holding arm straight forward at shoulder height')
+rotatedRig.character:Destroy()
 posed.character:Destroy();resting.character:Destroy()
 
 gunScene.character:Destroy();knifeScene.character:Destroy();editorBackend.destroy()

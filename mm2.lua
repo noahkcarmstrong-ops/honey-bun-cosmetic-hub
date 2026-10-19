@@ -916,8 +916,13 @@ return function(game, injectedRequire, gunLibrary)
                     if isA(joint,"Motor6D") and (joint.Name=="RightShoulder" or joint.Name=="Right Shoulder") then shoulder=joint;break end
                 end
                 if shoulder and shoulder.Part0 and shoulder.Part1 then
-                    local r15=child(character,"RightUpperArm")~=nil
-                    local pose=r15 and CFrame.Angles(math.pi/2,0,0) or CFrame.Angles(0,0,math.pi/2)
+                    -- Rotate forward around the torso's right axis, not the
+                    -- shoulder joint's local axis (which varies between rigs).
+                    local pivot=torso.CFrame:ToObjectSpace(shoulder.Part0.CFrame*shoulder.C0)
+                    local _,_,_,r00,r01,r02,r10,r11,r12,r20,r21,r22=pivot:GetComponents()
+                    local basis=CFrame.new(0,0,0,r00,r01,r02,r10,r11,r12,r20,r21,r22)
+                    local inverseBasis=CFrame.new(0,0,0,r00,r10,r20,r01,r11,r21,r02,r12,r22)
+                    local pose=inverseBasis*CFrame.Angles(math.pi/2,0,0)*basis
                     local joints=descendants(character)
                     local visited={}
                     local function poseBranch(joint,transform)
