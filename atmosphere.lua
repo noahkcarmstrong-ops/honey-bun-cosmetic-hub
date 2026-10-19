@@ -5,7 +5,9 @@ return function(game)
     local custom
     local generation = 0
     local destroyed = false
-    local keeper,blueprint
+    local keeper,blueprint,skyAdded
+    local renderName="LarpbloxSkyOverride_"..tostring({})
+    local boundRun
     local appliedId,lastFailure
     local repairs=0
     local daylight=true
@@ -48,6 +50,31 @@ return function(game)
     end
 
     local api = {}
+
+    local function stopOverride()
+        if skyAdded then skyAdded:Disconnect();skyAdded=nil end
+        if keeper then keeper:Disconnect();keeper=nil end
+        if boundRun then pcall(function()boundRun:UnbindFromRenderStep(renderName)end);boundRun=nil end
+    end
+    local function removeCompeting(child)
+        if not custom or destroyed or child==custom or not child:IsA("Sky") then return end
+        local known=false
+        for _,entry in ipairs(originals) do if entry.object==child then known=true;break end end
+        if not known then originals[#originals+1]={object=child,parent=lighting} end
+        child.Parent=nil;repairs=repairs+1
+    end
+    local function enforceSky()
+        if not custom or destroyed then return end
+        if daylight and lighting.ClockTime~=14 then lighting.ClockTime=14 end
+        for _,child in ipairs(lighting:GetChildren()) do removeCompeting(child) end
+        local ok=pcall(function()
+            custom.Parent=lighting
+            for _,property in ipairs(skyProperties) do
+                if custom[property]~=blueprint[property] then custom[property]=blueprint[property] end
+            end
+        end)
+        if not ok then custom=blueprint:Clone();custom.Parent=lighting end
+    end
 
     function api.apply(value)
         if destroyed then return false, "Atmosphere customizer has been destroyed." end
@@ -116,45 +143,38 @@ return function(game)
                 if child:IsA("Sky") then originals[#originals+1]={object=child,parent=child.Parent} end
             end
         end
+        stopOverride()
         for _, entry in ipairs(originals) do entry.object.Parent = nil end
         if custom then custom.Parent = nil; custom:Destroy() end
-        replacement.Parent = lighting
         custom = replacement
+        replacement.Parent = lighting
         if daylight then lighting.ClockTime=14 end
         appliedId=assetId;lastFailure=nil;repairs=0
         if blueprint then blueprint:Destroy() end
         blueprint=replacement:Clone()
-        if keeper then keeper:Disconnect() end
+        if lighting.ChildAdded then skyAdded=lighting.ChildAdded:Connect(removeCompeting) end
         local run=service("RunService")
         if run then
-            local elapsed=0
-            keeper=run.Heartbeat:Connect(function(dt)
-                elapsed=elapsed+dt;if elapsed<0.25 then return end;elapsed=0
-                if not custom or destroyed then return end
-                if daylight and lighting.ClockTime~=14 then lighting.ClockTime=14 end
-                for _,child in ipairs(lighting:GetChildren()) do
-                    if child:IsA("Sky") and child~=custom then
-                        local known=false;for _,entry in ipairs(originals) do if entry.object==child then known=true;break end end
-                        if not known then originals[#originals+1]={object=child,parent=lighting} end
-                        child.Parent=nil;repairs=repairs+1
-                    end
-                end
-                local ok=pcall(function()
-                    custom.Parent=lighting
-                    for _,property in ipairs(skyProperties) do custom[property]=blueprint[property] end
-                end)
-                if not ok then custom=blueprint:Clone();custom.Parent=lighting end
-            end)
+            local priority=2001
+            pcall(function()priority=Enum.RenderPriority.Last.Value+1 end)
+            local bound=false
+            if run.BindToRenderStep then
+                bound=pcall(function()run:BindToRenderStep(renderName,priority,enforceSky)end)
+            end
+            if bound then boundRun=run
+            elseif run.RenderStepped then keeper=run.RenderStepped:Connect(enforceSky)
+            else keeper=run.Heartbeat:Connect(enforceSky) end
         end
+        enforceSky()
         return true
     end
 
     function api.restore()
         generation = generation + 1
-        if keeper then keeper:Disconnect();keeper=nil end
+        stopOverride()
         if blueprint then blueprint:Destroy();blueprint=nil end
         if custom then custom.Parent = nil; custom:Destroy(); custom = nil end
-        for _, entry in ipairs(originals) do entry.object.Parent = entry.parent end
+        for _, entry in ipairs(originals) do pcall(function()entry.object.Parent = entry.parent end) end
         originals={}
         if originalClock~=nil then lighting.ClockTime=originalClock;originalClock=nil end
         return true
@@ -171,9 +191,9 @@ return function(game)
     end
 
     function api.report()
-        local lines={"Atmosphere build: sky diagnostics V3","Requested asset="..tostring(appliedId or "none"),"Daylight="..tostring(daylight).." original clock="..tostring(originalClock),
+        local lines={"Atmosphere build: immediate sky override V4","Requested asset="..tostring(appliedId or "none"),"Daylight="..tostring(daylight).." original clock="..tostring(originalClock),
             "Custom sky parent="..tostring(custom and custom.Parent and custom.Parent.Name or "none"),
-            "Override active="..tostring(keeper~=nil).." competing sky removals="..repairs,
+            "Override active="..tostring(keeper~=nil or boundRun~=nil).." competing sky removals="..repairs,
             "Last load failure="..tostring(lastFailure or "none")}
         for _,key in ipairs({"ClockTime","TimeOfDay","Brightness","ExposureCompensation","FogStart","FogEnd"}) do
             lines[#lines+1]="Lighting."..key.."="..tostring(lighting[key])

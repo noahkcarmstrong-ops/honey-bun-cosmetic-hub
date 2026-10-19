@@ -1,10 +1,33 @@
 local objects = {}
 local methods = {}
+local function signal()
+    local listeners = {}
+    return {
+        Connect = function(_, fn)
+            local connection = {active = true}
+            function connection:Disconnect() self.active = false end
+            listeners[#listeners + 1] = {connection, fn}
+            return connection
+        end,
+        Fire = function(_, ...)
+            for _, pair in ipairs(listeners) do
+                if pair[1].active then pair[2](...) end
+            end
+        end,
+    }
+end
 local meta = {__index = function(o, k) return methods[k] or o.props[k] end,
-    __newindex = function(o, k, v) o.props[k] = v end}
+    __newindex = function(o, k, v)
+        local old = o.props[k]
+        o.props[k] = v
+        if k == "Parent" and v and v ~= old and v.props and v.props.ChildAdded then
+            v.props.ChildAdded:Fire(o)
+        end
+    end}
 
 Instance = {new = function(class, parent)
-    local o = setmetatable({props = {ClassName = class, Name = class, Parent = parent}, destroyed = false}, meta)
+    local o = setmetatable({props = {ClassName = class, Name = class, ChildAdded = signal()}, destroyed = false}, meta)
+    o.Parent = parent
     table.insert(objects, o)
     return o
 end}
@@ -38,9 +61,19 @@ local original = Instance.new("Sky", lighting); original.Name = "Original"; orig
 local game = {Lighting = lighting, assets = {}, fail = false, cancel = false}
 local api
 local callbacks={}
+local renderCallbacks={}; local bindCalls={}; local unbindCalls={}
 local heartbeat={Connect=function(_,fn)local c={active=true};function c:Disconnect()self.active=false end;callbacks[#callbacks+1]={c,fn};return c end}
-local function tick()for _,pair in ipairs(callbacks)do if pair[1].active then pair[2](.3)end end end
-function game:GetService(name)if name=="Lighting" then return self.Lighting elseif name=="RunService" then return {Heartbeat=heartbeat}elseif name=="ContentProvider" then return self.provider end end
+local renderService={
+    Heartbeat=heartbeat,
+    BindToRenderStep=function(_,name,priority,fn) bindCalls[#bindCalls+1]={name,priority};renderCallbacks[name]={fn=fn,active=true} end,
+    UnbindFromRenderStep=function(_,name) unbindCalls[#unbindCalls+1]=name;if renderCallbacks[name] then renderCallbacks[name].active=false end end,
+}
+local function tick(dt)
+    dt=dt or .3
+    for _,entry in pairs(renderCallbacks)do if entry.active then entry.fn(dt)end end
+    for _,pair in ipairs(callbacks)do if pair[1].active then pair[2](dt)end end
+end
+function game:GetService(name)if name=="Lighting" then return self.Lighting elseif name=="RunService" then return renderService elseif name=="ContentProvider" then return self.provider end end
 function game:GetObjects(uri)
     assert(uri == "rbxassetid://123")
     if self.fail then error("network") end
@@ -72,7 +105,7 @@ local ambiguous=model("Ambiguous",{sky("A"),sky("B")});game.assets={ambiguous}
 assert(not api.apply("123") and ambiguous.destroyed and original.Parent==lighting,"Ambiguous models are rejected and cleaned without changing the sky")
 local incomplete=sky("Incomplete");incomplete.SkyboxUp="";game.assets={model("Incomplete",{incomplete})}
 assert(not api.apply("123") and original.Parent==lighting,"Incomplete six-face skies never replace the game sky")
-Enum={AssetFetchStatus={Success="Success",Failure="Failure"}}
+Enum={AssetFetchStatus={Success="Success",Failure="Failure"},RenderPriority={Last={Value=200}}}
 game.provider={PreloadAsync=function(_,assets,callback)callback("blocked-image","Failure")end}
 game.assets={model("Blocked",{sky("Blocked")})}
 assert(not api.apply("123") and original.Parent==lighting,"Unavailable sky images are reported without overwriting the working sky")
@@ -86,13 +119,15 @@ assert(api.currentAsset()=="123" and api.previewImage()=="Source","Saved cards c
 local custom = lighting:FindFirstChildOfClass("Sky"); assert(custom and custom ~= original and custom.Name == "Source")
 assert(#custom:GetChildren() == 0, "cloned Sky has no untrusted descendants")
 
-local gameReset=sky("Game reset");gameReset.Parent=lighting;custom.Parent=nil;tick()
+local gameReset=sky("Game reset");gameReset.Parent=lighting
+assert(gameReset.Parent==nil,"ChildAdded quarantines a competing sky immediately")
+custom.Parent=nil;tick(1/240)
 assert(custom.Parent==lighting and gameReset.Parent==nil,"Override removes newly inserted game skies and reparents custom sky")
-lighting.ClockTime=0;tick();assert(lighting.ClockTime==14,"Game midnight resets cannot darken the custom sky")
+lighting.ClockTime=0;tick(1/240);assert(lighting.ClockTime==14,"Game midnight resets cannot darken the custom sky")
 api.setDaylight(false);assert(lighting.ClockTime==0,"Daylight off restores the game time")
 tick();assert(lighting.ClockTime==0,"Daylight off stops time enforcement")
 api.setDaylight(true);assert(lighting.ClockTime==14,"Daylight can be enabled again")
-custom.SkyboxBk="game changed it";tick();assert(custom.SkyboxBk=="Source","Game sky texture changes are repaired")
+custom.SkyboxBk="game changed it";tick(1/240);assert(custom.SkyboxBk=="Source","Game sky texture changes are repaired on the next render")
 local report=api.report()
 assert(report:find("Requested asset=123",1,true) and report:find("SkyboxBk=Source",1,true),"Report includes requested model and actual active sky face IDs")
 game.fail = true; assert(not api.apply("rbxassetid://123"), "failed replacement is reported")
@@ -102,12 +137,32 @@ local second = sky("Second"); local secondWrapper = model("SecondWrapper", {seco
 assert(api.apply("https://roblox.com/asset/?id=123")); assert(custom.destroyed and secondWrapper.destroyed)
 assert(api.restore());assert(lighting.ClockTime==0,"Restore returns the exact original time of day");assert(gameReset.Parent==lighting,"Restore returns skies added by the game during override")
 assert(original.Parent == lighting and second.Parent == nil, "restore returns exact original object")
+local restoredSky=sky("After restore immediate");restoredSky.Parent=lighting
+assert(restoredSky.Parent==lighting,"Restore disconnects immediate quarantine hooks")
+tick(1/240);assert(restoredSky.Parent==lighting,"Restore unbinds render repair")
 local late = sky("Late"); local lateWrapper = model("LateWrapper", {late}); game.assets = {lateWrapper}; game.cancel = true
 assert(not api.apply(123), "a replacement cancelled during loading is rejected")
 assert(lateWrapper.destroyed, "cancelled replacement cleans wrappers")
 assert(original.Parent == lighting, "cancelled replacement preserves originals")
-api.destroy();local afterRestore=sky("After restore");afterRestore.Parent=lighting;tick()
+api.destroy();local afterRestore=sky("After destroy");afterRestore.Parent=lighting;tick(1/240)
 assert(afterRestore.Parent==lighting,"Restore and destroy disconnect the active override")
 assert(original.Parent == lighting and api.apply(123) == false, "destroy restores and disables API")
+assert(#bindCalls >= 2 and bindCalls[1][2] == Enum.RenderPriority.Last.Value + 1,"Render repair runs after the last render priority")
+assert(#unbindCalls >= 2,"Restore and destroy unbind render repair")
+
+local fallbackLighting=Instance.new("Lighting");fallbackLighting.ClockTime=3
+local fallbackOriginal=sky("Fallback original");fallbackOriginal.Parent=fallbackLighting
+local fallbackGame={Lighting=fallbackLighting,assets={},provider={PreloadAsync=function(_,assets,callback)callback("valid-image","Success")end}}
+function fallbackGame:GetService(name)if name=="Lighting" then return self.Lighting elseif name=="RunService" then return {Heartbeat=heartbeat}elseif name=="ContentProvider" then return self.provider end end
+function fallbackGame:GetObjects(uri)assert(uri=="rbxassetid://123");return self.assets end
+local fallbackApi=module(fallbackGame)
+local fallbackSource=sky("Fallback source");fallbackGame.assets={model("Fallback wrapper",{fallbackSource})}
+assert(fallbackApi.apply(123),"Heartbeat fallback applies a replacement")
+local fallbackCustom=fallbackLighting:FindFirstChildOfClass("Sky")
+fallbackCustom.SkyboxBk="fallback changed";tick(1/240)
+assert(fallbackCustom.SkyboxBk=="Fallback source","Heartbeat fallback repairs on every frame")
+assert(fallbackApi.restore() and fallbackOriginal.Parent==fallbackLighting,"Heartbeat fallback restores originals")
+local fallbackLate=sky("Fallback late");fallbackLate.Parent=fallbackLighting;tick(1/240)
+assert(fallbackLate.Parent==fallbackLighting,"Heartbeat fallback disconnects on restore")
 
 print("Atmosphere validation, replacement, sanitization, failure, restore, and destroy passed.")
