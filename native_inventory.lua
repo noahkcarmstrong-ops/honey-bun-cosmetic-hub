@@ -561,9 +561,22 @@ return function(playerGui,catalog,onStatus,mode)
                 end
             end
         end)
-        local maxOrder=0
-        for _,o in ipairs(children(tabs)) do local order=read(o,"LayoutOrder");if type(order)=="number" then maxOrder=math.max(maxOrder,order) end end
-        savedTab.LayoutOrder=maxOrder+1;savedTab.Parent=tabs;savedTabParent=tabs
+        -- Layout-driven headers ignore Position: put Saved before Search there too.
+        for index,o in ipairs(nativeTabs) do
+            savedHeader[o]=savedHeader[o] or {}
+            savedHeader[o].LayoutOrder=read(o,"LayoutOrder") or 0
+            o.LayoutOrder=index
+        end
+        local nextOrder=#nativeTabs+2
+        for _,o in ipairs(children(tabs)) do
+            if is(o,"UIListLayout") then
+                savedHeader[o]={SortOrder=o.SortOrder};o.SortOrder=Enum.SortOrder.LayoutOrder
+            elseif is(o,"GuiObject") and not category(o.Name) then
+                savedHeader[o]=savedHeader[o] or {};savedHeader[o].LayoutOrder=read(o,"LayoutOrder") or 0
+                o.LayoutOrder=nextOrder;nextOrder=nextOrder+1
+            end
+        end
+        savedTab.LayoutOrder=#nativeTabs+1;savedTab.Parent=tabs;savedTabParent=tabs
         savedPane.Parent=nativeHost;savedPane.Visible=false
         for _,pane in ipairs(children(nativeHost)) do
             if pane~=savedPane and is(pane,"GuiObject") and category(pane.Name) then
@@ -573,13 +586,19 @@ return function(playerGui,catalog,onStatus,mode)
         local function bindTab(o)
             if is(o,"GuiButton") then
                 connections[#connections+1]=o.Activated:Connect(function() showSavedTab(true) end)
+                local click=read(o,"MouseButton1Click");if click then connections[#connections+1]=click:Connect(function() showSavedTab(true) end) end
             end
         end
         for _,o in ipairs(texts(savedTab)) do bindTab(o) end
         for _,o in ipairs(descendants(tabs)) do
             if not localObject(o) and is(o,"GuiButton") then
                 -- Keep the native game tab behavior; this callback only closes our pane.
-                connections[#connections+1]=o.Activated:Connect(function() showSavedTab(false,category(o.Name) or category(o.Parent and o.Parent.Name) or category(read(o,"Text"))) end)
+                local key=category(o.Name) or category(o.Parent and o.Parent.Name) or category(read(o,"Text"))
+                if key then
+                    local function selectNative() showSavedTab(false,key) end
+                    connections[#connections+1]=o.Activated:Connect(selectNative)
+                    local click=read(o,"MouseButton1Click");if click then connections[#connections+1]=click:Connect(selectNative) end
+                end
             end
         end
         for _,o in ipairs(descendants(inventory)) do
@@ -587,7 +606,7 @@ return function(playerGui,catalog,onStatus,mode)
                 query=lower(o.Text);connections[#connections+1]=o:GetPropertyChangedSignal("Text"):Connect(function() query=lower(o.Text);renderSaved() end);break
             end
         end
-        connections[#connections+1]=savedPane:GetPropertyChangedSignal("Visible"):Connect(function() if enabled and savedPane.Visible~=savedOpen then savedOpen=savedPane.Visible end end)
+        connections[#connections+1]=savedPane:GetPropertyChangedSignal("Visible"):Connect(function() if enabled and savedPane.Visible~=savedOpen then savedPane.Visible=savedOpen end end)
         showSavedTab(false)
         savedTabMode=true
         return true
@@ -982,9 +1001,9 @@ return function(playerGui,catalog,onStatus,mode)
     function api.report()
         if savedOnly then
             local count=0;for _,card in pairs(savedCards) do if alive(card) then count=count+1 end end
-            if savedTabMode then return "Native inventory build: saved weapons V2\n"..lastReport.."\nGenerated="..count.."\nSaved pane: "..(savedGrid and savedGrid:GetFullName() or "none") end
+            if savedTabMode then return "Native inventory build: saved weapons V3\n"..lastReport.."\nGenerated="..count.."\nSaved pane: "..(savedGrid and savedGrid:GetFullName() or "none") end
             local paths={};for _,key in ipairs({"season1","classic","holiday"}) do paths[#paths+1]=key.."="..(savedGrids[key] and savedGrids[key]:GetFullName() or "none") end
-            return "Native inventory build: saved weapons V2\n"..lastReport.."\nGenerated="..count.."\nCategory grids: "..table.concat(paths,"; ")
+            return "Native inventory build: saved weapons V3\n"..lastReport.."\nGenerated="..count.."\nCategory grids: "..table.concat(paths,"; ")
         end
         return "Native inventory build: weapons and effects V9\n"..lastReport.."\nCategory="..season.."\nGrid="..(grid and grid:GetFullName() or "none").."\nRender passes="..renderPasses.."\nGenerated="..#cards.."\nFiltered counts: Season1="..categoryCounts.season1.." Classic="..categoryCounts.classic.." Holiday="..categoryCounts.holiday.." Effects="..tostring(categoryCounts.effects or 0).."\nBound side slots: Knife="..(sideSlots.Knife and sideSlots.Knife:GetFullName() or "none").." Gun="..(sideSlots.Gun and sideSlots.Gun:GetFullName() or "none").." Effect="..(sideSlots.Effect and sideSlots.Effect:GetFullName() or "none").."\nSide candidates: "..table.concat(sideCandidates,"; ").."\nBound tabs: "..table.concat(tabBindings,"; ")..(diagnosticDetails~="" and ("\nInventory diagnostics:\n"..diagnosticDetails) or "")
     end

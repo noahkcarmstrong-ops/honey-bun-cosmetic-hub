@@ -322,10 +322,12 @@ UDim2.new=function(xs,xo,ys,yo)return {X={Scale=xs,Offset=xo},Y={Scale=ys,Offset
 for index,tab in ipairs({tabCurrent,tabClassic,tabHoliday})do
     tab.Position=UDim2.new((index-1)*0.2,0,0,0);tab.Size=UDim2.new(0.2,0,1,0)
 end
-node('UIListLayout','TabLayout',tabsRoot)
+local tabLayout=node('UIListLayout','TabLayout',tabsRoot);tabLayout.SortOrder='Name'
+local headerSearch=node('TextBox','Search',tabsRoot);headerSearch.LayoutOrder=10
+tabCurrent.LayoutOrder=1;tabClassic.LayoutOrder=2;tabHoliday.LayoutOrder=3
 local originalCurrentSize=tabCurrent.Size
 node('LocalScript','NativeTabScript',tabCurrent)
-local nestedSearch=node('TextBox','Search',nestedInventory)
+local nestedSearch=headerSearch
 currentView.Activated:Connect(function()currentBranch.Visible=true;classicBranch.Visible=false;holidayBranch.Visible=false end)
 classicView.Activated:Connect(function()currentBranch.Visible=false;classicBranch.Visible=true;holidayBranch.Visible=false end)
 holidayView.Activated:Connect(function()currentBranch.Visible=false;classicBranch.Visible=false;holidayBranch.Visible=true end)
@@ -348,6 +350,7 @@ local savedGrid=savedPane and descNamed(savedPane,'Scrolling')
 assert(savedPane and savedTab and savedGrid,'Saved mode clones the native pane and Current tab')
 assert(not savedTab:FindFirstChild('NativeTabScript'),'Cloned tab never runs native scripts')
 assert(math.abs(savedTab.Position.X.Scale-0.45)<0.001 and math.abs(savedTab.Size.X.Scale-0.15)<0.001,'Four tabs share the existing tab span without covering Search')
+assert(tabHoliday.LayoutOrder<savedTab.LayoutOrder and savedTab.LayoutOrder<headerSearch.LayoutOrder and tabLayout.SortOrder=='LayoutOrder','Saved Weapons is ordered immediately after Holiday and before Search')
 assert(#savedCardsIn(savedGrid)==2,'All saved weapons share one cloned Saved pane even with a sidebar Weapons decoy')
 assert(#savedCardsIn(holidayGrid)==0 and #savedCardsIn(classicGrid)==0,'Saved weapons do not enter native category grids')
 assert(#savedCardsIn(tabCurrent)==0,'A Tabs.Current button container is never mistaken for a category grid')
@@ -358,6 +361,8 @@ savedTab:FindFirstChild('View',true).Activated:Fire();flush()
 assert(savedPane.Visible and not currentBranch.Visible and not classicBranch.Visible and not holidayBranch.Visible,'Saved tab shows only the owned pane')
 nestedSearch.Text='holiday';flush();assert(#savedCardsIn(savedGrid)==1,'Native search filters the combined Saved pane')
 nestedSearch.Text='';flush();classicView.Activated:Fire();flush();assert(not savedPane.Visible and classicBranch.Visible,'Native category tabs hide Saved and keep game behavior')
+savedPane.Visible=true;flush()
+assert(not savedPane.Visible,'Native inventory updates cannot reveal Saved Weapons while Classic is selected')
 savedTab:Destroy();flush()
 savedTab=descNamed(nestedInventory,'HoneyBunLocal_SavedTab');savedPane=descNamed(nestedInventory,'HoneyBunLocal_SavedPane')
 assert(savedTab and savedPane,'Saved tab is recreated if the game removes it')
@@ -367,6 +372,7 @@ gameTab.Activated:Fire();assert(tabCount==1,'Existing game tab remains usable')
 nestedApi.disable()
 assert(not descNamed(nestedInventory,'HoneyBunLocal_SavedPane') and not descNamed(nestedInventory,'HoneyBunLocal_SavedTab') and holidayGrid.AutomaticCanvasSize=='None','Disable removes only cloned Saved UI and preserves native containers')
 assert(tabCurrent.Size==originalCurrentSize,'Cleanup restores the original tab dimensions')
+assert(headerSearch.LayoutOrder==10 and tabLayout.SortOrder=='Name','Cleanup restores native header ordering')
 assert(nestedApi.enable(),'Saved mode can be enabled again');flush()
 inventory=nestedInventory;nestedInventory:Destroy();flush()
 inventory,host,seasonPane,classicPane,holidayPane,knife,gun,search,buttons,layout,equipped=nativeInventory()
