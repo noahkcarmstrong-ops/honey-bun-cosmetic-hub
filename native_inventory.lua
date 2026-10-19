@@ -850,8 +850,47 @@ return function(playerGui,catalog,onStatus,mode)
                                 end
                                 update(value)
                             end
-                            local rename=option("HoneyBunRenameSaved","Rename",0.32)
-                            local remove=option("HoneyBunDeleteSaved","Delete",0.56)
+                            if not effects and catalog.setHoldingRotation then
+                                local holdingButton=option("HoneyBunAdjustHolding","Adjust holding",0.30)
+                                local controls=Instance.new("Frame");controls.Parent=card
+                                controls.Name="HoneyBunHoldingAdjustment";controls.Visible=false
+                                controls.Position=UDim2.fromScale(0,0.48);controls.Size=UDim2.fromScale(1,0.52)
+                                controls.BackgroundColor3=Color3.fromRGB(25,25,30);controls.ZIndex=click.ZIndex+4
+                                local current=entry.holdingRotation or {X=0,Y=0,Z=0}
+                                local value={X=current.X or 0,Y=current.Y or 0,Z=current.Z or 0}
+                                local function control(name,label,x,width,y)
+                                    local b=Instance.new("TextButton");b.Parent=controls;b.Name=name;b.Text=label;b.TextScaled=true
+                                    b.Position=UDim2.fromScale(x,y);b.Size=UDim2.fromScale(width,0.24)
+                                    b.ZIndex=controls.ZIndex+1;b.TextColor3=Color3.fromRGB(255,255,255);b.BackgroundColor3=Color3.fromRGB(60,60,65);return b
+                                end
+                                local function commit()
+                                    local good,result=pcall(catalog.setHoldingRotation,entry.id,value)
+                                    if good then entry.holdingRotation={X=value.X,Y=value.Y,Z=value.Z} end
+                                    status(good and (result or "Held rotation saved.") or tostring(result))
+                                end
+                                local function adjust(axis,delta)
+                                    value[axis]=math.max(-180,math.min(180,value[axis]+delta));commit()
+                                end
+                                local up=control("HoneyBunHoldingUp","Tilt up",0,0.3,0.03)
+                                local down=control("HoneyBunHoldingDown","Tilt down",0.35,0.3,0.03)
+                                local left=control("HoneyBunHoldingLeft","Turn left",0,0.3,0.29)
+                                local right=control("HoneyBunHoldingRight","Turn right",0.35,0.3,0.29)
+                                local forward=control("HoneyBunHoldingForward","Roll forward",0,0.3,0.55)
+                                local back=control("HoneyBunHoldingBack","Roll back",0.35,0.3,0.55)
+                                bind(up,function()adjust("X",-5)end)
+                                bind(down,function()adjust("X",5)end)
+                                bind(left,function()adjust("Y",-5)end)
+                                bind(right,function()adjust("Y",5)end)
+                                bind(forward,function()adjust("Z",-5)end)
+                                bind(back,function()adjust("Z",5)end)
+                                local reset=control("HoneyBunHoldingReset","Reset",0.02,0.46,0.80)
+                                local done=control("HoneyBunHoldingDone","Done",0.52,0.46,0.80)
+                                bind(reset,function()value={X=0,Y=0,Z=0};commit()end)
+                                bind(done,function()commit();controls.Visible=false;openOptions=nil end)
+                                bind(holdingButton,function()menu.Visible=false;openOptions=controls;controls.Visible=true;local r=entry.holdingRotation or {};value={X=r.X or 0,Y=r.Y or 0,Z=r.Z or 0}end)
+                            end
+                            local rename=option("HoneyBunRenameSaved","Rename",0.48)
+                            local remove=option("HoneyBunDeleteSaved","Delete",0.68)
                             local field=Instance.new("TextBox");field.Name="HoneyBunSavedName";field.Text=entry.name;field.ClearTextOnFocus=false
                             field.Size=UDim2.fromScale(0.9,0.22);field.Position=UDim2.fromScale(0.05,0.28);field.TextScaled=true
                             field.TextColor3=Color3.fromRGB(245,245,250);field.BackgroundColor3=Color3.fromRGB(35,36,40)

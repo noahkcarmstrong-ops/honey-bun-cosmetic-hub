@@ -336,19 +336,25 @@ assert(not pcall(function()previewLibrary.setPreviewOffset(previewId,1.01)end),'
 assert(not pcall(function()previewLibrary.setPreviewOffset(previewId,-1.01)end),'preview offsets below negative one are rejected')
 assert(not pcall(function()previewLibrary.setPreviewOffset(previewId,math.huge)end),'infinite preview offsets are rejected')
 assert(not pcall(function()previewLibrary.setPreviewOffset(previewId,'0.5')end),'non-number preview offsets are rejected')
+local holding=previewLibrary.setHoldingRotation(previewId,{X=15,Y=-20,Z=30})
+assert(holding.X==15 and holding.Y==-20 and holding.Z==30 and previewEntry.holdingRotation.Z==30,'held rotation updates per saved weapon')
+assert(not pcall(function()previewLibrary.setHoldingRotation(previewId,{X=181,Y=0,Z=0})end),'held rotation rejects angles above 180 degrees')
+assert(not pcall(function()previewLibrary.setHoldingRotation(previewId,{X=0,Y=0})end),'held rotation requires all three axes')
 previewLibrary.rename(previewId,'Preview Renamed')
 previewLibrary.setCatalog(previewId,{Id='preview-item',Name='Preview Item',Category='classic'})
 local recaptured=previewLibrary.capture(sourceMesh,'PreviewAgain')
-assert(recaptured.id==previewId and recaptured.previewOffset==0.75,'recapture preserves the ID and preview offset')
+assert(recaptured.id==previewId and recaptured.previewOffset==0.75 and recaptured.holdingRotation.Y==-20,'recapture preserves the ID and saved held rotation')
 local previewRecord=http:JSONDecode(previewGui:GetAttribute('HoneyBunCosmeticGuns')).entries[1]
-assert(previewRecord.previewOffset==0.75 and previewRecord.definition.previewOffset==nil,'preview offset persists at the entry record level')
+assert(previewRecord.previewOffset==0.75 and previewRecord.holdingRotation.Z==30 and previewRecord.definition.previewOffset==nil,'preview and held rotation persist at the entry record level')
 local previewReload=create(game,gui(previewGui:GetAttribute('HoneyBunCosmeticGuns')))
 local reloadedPreview=previewReload.list()[1]
-assert(reloadedPreview.id==previewId and reloadedPreview.previewOffset==0.75,'preview offset survives rejoin')
+assert(reloadedPreview.id==previewId and reloadedPreview.previewOffset==0.75 and reloadedPreview.holdingRotation.X==15,'preview and held rotation survive rejoin')
 local legacyPreviewPayload=http:JSONDecode(previewGui:GetAttribute('HoneyBunCosmeticGuns'))
 legacyPreviewPayload.entries[1].previewOffset=nil
+legacyPreviewPayload.entries[1].holdingRotation=nil
 local legacyPreview=create(game,gui(http:JSONEncode(legacyPreviewPayload)))
 assert(legacyPreview.list()[1].previewOffset==0,'legacy records without preview offset default to zero')
+assert(legacyPreview.list()[1].holdingRotation.X==0,'legacy records without held rotation default to zero')
 
 local bad=gui(http:JSONEncode({version=1,entries={{id="bad",name="bad",definition={PortableGun=true}}}}))
 assert(#create(game,bad).list()==0,"malformed saved definitions are rejected")

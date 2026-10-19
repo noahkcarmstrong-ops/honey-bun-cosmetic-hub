@@ -107,6 +107,7 @@ return function(game, injectedRequire, gunLibrary)
         return {id=e.id,name=e.customName and e.name or (e.catalog and e.catalog.Name or e.name),kind=e.kind,rarity=rarity,
             image=field(def,"Image") or field(def,"ImageId") or field(def,"ImageID"),
             visual=field(e.definition,"PortableGun") and e.definition or nil,previewOffset=e.previewOffset or 0,
+            holdingRotation=e.holdingRotation or {X=0,Y=0,Z=0},
             category=categoryName,year=year,event=event,rarityColor=rarityColor,rarityOrder=rarityOrder,
             season=field(def,"Season"),sortOrder=sortOrder,chroma=chroma==true or (type(chroma)=="string" and lower(chroma)~="" and lower(chroma)~="false")}
     end
@@ -529,7 +530,12 @@ return function(game, injectedRequire, gunLibrary)
         local ok,message=pcall(function()
             overlay.Name=kind=="Gun" and "HoneyBunSavedGun" or "HoneyBunSavedKnife"
             overlay.Size=def.Size or Vector3.new(1,1,1)
-            overlay.CFrame=offset and anchor.CFrame*offset or handle.CFrame
+            local baseCFrame=offset and anchor.CFrame*offset or handle.CFrame
+            local rotation=held and e.holdingRotation
+            if rotation and ((rotation.X or 0)~=0 or (rotation.Y or 0)~=0 or (rotation.Z or 0)~=0) then
+                baseCFrame=baseCFrame*CFrame.Angles(math.rad(rotation.X or 0),math.rad(rotation.Y or 0),math.rad(rotation.Z or 0))
+            end
+            overlay.CFrame=baseCFrame
             overlay.Anchored=false;overlay.Massless=true
             overlay.CanCollide=false;overlay.CanTouch=false;overlay.CanQuery=false
             overlay.Color=def.Color or handle.Color
@@ -841,6 +847,17 @@ return function(game, injectedRequire, gunLibrary)
         assert(alive and gunLibrary,"The saved weapon library is unavailable.")
         gunLibrary.setPreviewOffset(id,value)
         return "Saved weapon preview position."
+    end
+    function api.setSavedHoldingRotation(id,value)
+        assert(alive and gunLibrary,"The saved weapon library is unavailable.")
+        gunLibrary.setHoldingRotation(id,value)
+        for _,entry in ipairs(gunLibrary.list()) do
+            if entry.id==id and equipped[entry.kind]==id then
+                pcall(api.preview,id,entry.kind)
+                break
+            end
+        end
+        return "Saved held rotation."
     end
     function api.renameSavedWeapon(id,name)
         assert(alive and gunLibrary,"The saved weapon library is unavailable.")

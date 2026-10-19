@@ -402,6 +402,9 @@ end
 savedCatalog.setPreviewOffset=function(id,value)
     for _,entry in ipairs(savedDefs)do if entry.id==id then entry.previewOffset=value;return 'Preview saved' end end
 end
+savedCatalog.setHoldingRotation=function(id,value)
+    for _,entry in ipairs(savedDefs)do if entry.id==id then entry.holdingRotation={X=value.X,Y=value.Y,Z=value.Z};return 'Holding saved' end end
+end
 Vector2={new=function(x,y)return {X=x,Y=y}end}
 nestedApi.disable();nestedApi.enable();flush()
 rebuiltPane=descNamed(inventory,'HoneyBunLocal_SavedPane')
@@ -421,6 +424,16 @@ adjustment:FindFirstChild('HoneyBunPreviewReset').Activated:Fire()
 assert(adjustedEntry.previewOffset==0,'Reset restores the original preview position')
 adjustment:FindFirstChild('HoneyBunPreviewDone').Activated:Fire()
 assert(not adjustment.Visible,'Done closes the adjustment controls')
+cog.Activated:Fire()
+options:FindFirstChild('HoneyBunAdjustHolding').Activated:Fire()
+local holdingControls=deleteCard:FindFirstChild('HoneyBunHoldingAdjustment')
+assert(holdingControls.Visible,'Holding controls open from cog')
+holdingControls:FindFirstChild('HoneyBunHoldingUp').Activated:Fire()
+assert(adjustedEntry.holdingRotation.X==-5,'Tilt immediately saves held rotation')
+holdingControls:FindFirstChild('HoneyBunHoldingReset').Activated:Fire()
+assert(adjustedEntry.holdingRotation.X==0,'Holding Reset restores all axes')
+holdingControls:FindFirstChild('HoneyBunHoldingDone').Activated:Fire()
+assert(not holdingControls.Visible,'Done closes holding controls')
 cog.Activated:Fire()
 local deleteButton=options:FindFirstChild('HoneyBunDeleteSaved')
 assert(deleteButton,'Saved inventory cards offer deletion')

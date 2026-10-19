@@ -294,6 +294,16 @@ return function(game,gui)
     local function validPreviewOffset(value)
         return type(value)=="number" and finite(value) and value>=-1 and value<=1
     end
+    local function validHoldingRotation(value)
+        if type(value)~="table" then return false end
+        for _,axis in ipairs({"X","Y","Z"}) do
+            if not finite(value[axis]) or value[axis]<-180 or value[axis]>180 then return false end
+        end
+        return true
+    end
+    local function holdingRotation(value)
+        return validHoldingRotation(value) and {X=value.X,Y=value.Y,Z=value.Z} or {X=0,Y=0,Z=0}
+    end
     local entries,selected,selectedKnife={},nil,nil
     local aliases={}
     local function resolveId(id)
@@ -330,7 +340,7 @@ return function(game,gui)
                             if mountsValid and presentationValid then effective=withMetadata(definition,mounts,presentation) end
                         end
                         local previewOffset=validPreviewOffset(record.previewOffset) and record.previewOffset or 0
-                        entries[#entries+1]={id=record.id,name=record.name,customName=record.customName==true,kind=kind,baseDefinition=definition,definition=effective,revision=0,catalog=catalogInfo(record.catalog),previewOffset=previewOffset}
+                        entries[#entries+1]={id=record.id,name=record.name,customName=record.customName==true,kind=kind,baseDefinition=definition,definition=effective,revision=0,catalog=catalogInfo(record.catalog),previewOffset=previewOffset,holdingRotation=holdingRotation(record.holdingRotation)}
                     end
                 end
             end
@@ -369,7 +379,8 @@ return function(game,gui)
     local function save()
         local records={};for _,entry in ipairs(entries)do
             local base=entry.baseDefinition or entry.definition
-            local record={id=entry.id,name=entry.name,customName=entry.customName==true,definition=pack(base),catalog=entry.catalog,previewOffset=validPreviewOffset(entry.previewOffset) and entry.previewOffset or 0}
+            local rotation=holdingRotation(entry.holdingRotation)
+            local record={id=entry.id,name=entry.name,customName=entry.customName==true,definition=pack(base),catalog=entry.catalog,previewOffset=validPreviewOffset(entry.previewOffset) and entry.previewOffset or 0,holdingRotation=rotation}
             local overrides={}
             if entry.definition.Mounts and canonical(entry.definition.Mounts)~=canonical(base.Mounts) then overrides.Mounts=packMounts(entry.definition.Mounts) end
             if entry.definition.Presentation and canonical(entry.definition.Presentation)~=canonical(base.Presentation) then overrides.Presentation=packPresentation(entry.definition.Presentation) end
@@ -503,7 +514,7 @@ return function(game,gui)
             end
         end
         assert(#entries<MAX_ENTRIES,"Saved gun library is full.")
-        local entry={id=id,name=kind.." from "..playerName,kind=kind,baseDefinition=definition,definition=definition,revision=0,previewOffset=0}
+        local entry={id=id,name=kind.." from "..playerName,kind=kind,baseDefinition=definition,definition=definition,revision=0,previewOffset=0,holdingRotation={X=0,Y=0,Z=0}}
         entries[#entries+1]=entry
         local ok,err=pcall(save);if not ok then table.remove(entries);error(err)end
         return entry
@@ -548,6 +559,20 @@ return function(game,gui)
             local ok,err=pcall(save)
             if not ok then entry.previewOffset=previous;error(err) end
             return value
+        end end
+        error("Saved weapon was not found.")
+    end
+    function api.setHoldingRotation(id,value)
+        assert(validHoldingRotation(value),"Holding rotation must be finite degrees between -180 and 180 on X, Y, and Z.")
+        assert(type(id)=="string" and id~="","Choose a saved weapon.")
+        id=resolveId(id)
+        for _,entry in ipairs(entries) do if entry.id==id then
+            local previous=entry.holdingRotation
+            entry.holdingRotation=holdingRotation(value)
+            entry.revision=(entry.revision or 0)+1
+            local ok,err=pcall(save)
+            if not ok then entry.holdingRotation=previous;entry.revision=entry.revision-1;error(err) end
+            return entry.holdingRotation
         end end
         error("Saved weapon was not found.")
     end
