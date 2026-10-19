@@ -715,6 +715,8 @@ render=function()
                     id=crosshairInput:match("[?&]id=(%d+)") or crosshairInput:match("/asset/(%d+)") or crosshairInput:match("/catalog/(%d+)") or crosshairInput:match("/library/(%d+)")
                 end
                 assert(id and tonumber(id) and tonumber(id)>0,"Enter a Roblox image ID or image link.")
+                local info=game:GetService("MarketplaceService"):GetProductInfo(tonumber(id))
+                assert(info.AssetTypeId==1,"That ID is not an image. Use the image/texture ID for your crosshair, rather than a model or decal ID.")
                 local image="rbxassetid://"..id
                 customCrosshair().set(image)
                 crosshairImage=image;saveUI()

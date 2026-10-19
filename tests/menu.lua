@@ -123,7 +123,8 @@ local tweenService={Create=function(_,object,_,goal)
     end}
     return tween
 end}
-game={GetService=function(_,name)return({Players={LocalPlayer=player},UserInputService=input,HttpService=http,TweenService=tweenService})[name]end}
+local marketplace={GetProductInfo=function(_,id)return{AssetTypeId=id==446366440 and 39 or 1}end}
+game={GetService=function(_,name)return({Players={LocalPlayer=player},UserInputService=input,HttpService=http,TweenService=tweenService,MarketplaceService=marketplace})[name]end}
 function game:HttpGet(url)
     assert(url:find('/larpblox/',1,true),'Only the separate cosmetic repo is contacted')
     if url:find('/commits/main',1,true)then return'revision'end
@@ -352,6 +353,9 @@ assert(not calls.crosshair,'Invalid crosshair input is rejected')
 field('Roblox crosshair image ID').Text='https://www.roblox.com/library/12345/Crosshair';click('Apply crosshair')
 assert(calls.crosshair=='rbxassetid://12345' and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')==calls.crosshair,'Crosshair link applies and saves')
 assert(named(gui(),'CrosshairPreview').Image==calls.crosshair,'Applied crosshair shows a preview')
+local savedCrosshair=calls.crosshair
+field('Roblox crosshair image ID').Text='446366440';click('Apply crosshair')
+assert(calls.crosshair==savedCrosshair and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')==savedCrosshair,'Non-image asset IDs are rejected without replacing the saved crosshair')
 click('Refresh');assert(calls.crosshair=='rbxassetid://12345' and calls.crosshairDestroyed,'Refresh reapplies the saved crosshair and cleans up the old one')
 click('MM2');click('Open MM2 menu');click('Restore default crosshair')
 assert(calls.crosshair=='' and guiRoot:GetAttribute('HoneyBunCosmeticUI_mm2Crosshair')=='','Restore default clears saved crosshair')
