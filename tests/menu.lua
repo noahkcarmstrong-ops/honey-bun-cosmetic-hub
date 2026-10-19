@@ -94,6 +94,7 @@ local function createEditor()
         removeAccessory=function(key)for i,item in ipairs(equipped)do if item.key==key then table.remove(equipped,i);return'Removed'end end end,
         clearAccessories=function()return'Cleared'end,
         removeCurrentAccessories=function()calls.current=calls.current+1;return'Removed current accessories'end,
+        accessoryReport=function()return'Fixture accessory report'end,
         setSkin=function(color,region)calls.skin=calls.skin+1;calls.color=color;calls.region=region;return'Color applied'end,
         restoreSkin=function()calls.skinRestore=true;return'Original skin restored'end,
         applyBody=function(value)calls.body=calls.body+1;calls.package=value;return'Body applied'end,
@@ -169,6 +170,9 @@ click('2. Hat 456  |  Remove')
 assert(find(gui(),'TextButton','1. Hat 123  |  Remove') and find(gui(),'TextButton','2. Hat 789  |  Remove'),'Individual removal preserves other hats')
 click('Add accessories');assert(calls.equip==3,'Empty input does not equip')
 click('Remove current Roblox accessories');assert(calls.current==1,'Original accessory button reaches backend')
+setclipboard=function(value)calls.accessoryReport=value end
+click('Copy accessory report');assert(calls.accessoryReport=='Fixture accessory report','Accessory report is copied for live troubleshooting')
+setclipboard=nil
 click('CLOTHES')
 field('Classic shirt catalog link or ID').Text='https://www.roblox.com/catalog/123/Classic-Shirt';click('Equip shirt')
 field('Classic pants catalog link or ID').Text='456';click('Equip pants')

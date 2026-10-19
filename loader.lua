@@ -552,6 +552,11 @@ render=function()
         end
         button("Remove added accessories",function() action(function(editor) return editor.clearAccessories() end) end)
         button("Remove current Roblox accessories",function() action(function(editor) return editor.removeCurrentAccessories() end) end)
+        button("Copy accessory report",function() action(function(editor)
+            local report=editor.accessoryReport()
+            if type(setclipboard)=="function" then setclipboard(report);return "Accessory report copied. Paste it into chat if hats still stay on." end
+            return report
+        end) end)
         caption("Remove current Roblox accessories hides your original hats and accessories. Restore original appearance brings them back.",48)
     elseif activePage=="Clothes" then
         caption("CLASSIC CLOTHES",24)

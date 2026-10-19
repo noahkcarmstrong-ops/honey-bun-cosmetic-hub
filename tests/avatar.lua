@@ -49,7 +49,7 @@ local mode="normal";local function freshAccessory()local a=node("Accessory","Blu
 local marketplace={assetType=28};function marketplace:GetProductInfoAsync()return{AssetTypeId=self.assetType}end
 game={GetService=function(_,n)return({Players=players,HttpService=http,MarketplaceService=marketplace})[n]end,GetObjects=function(_,id)assert(id=="rbxassetid://123");if mode=="respawn"then local fresh=node("Model","Fresh");player.Character=fresh;player.CharacterAdded:Fire(fresh)end;if mode=="blocked"then return{node("Part","NotWearable")}end;if accessory.destroyed then return{freshAccessory()}end;return{accessory}end,HttpGet=function()return http:GetAsync()end}
 Enum.InfoType={Asset="Asset"}
-local create=dofile("avatar.lua");assert(type(create)=="function","module returns create(player)");local api=create(player)
+local create=dofile(arg and arg[1] or "avatar.lua");assert(type(create)=="function","module returns create(player)");local api=create(player)
 assert(api.equipAccessory(123):match("Equipped"));local candidate=body:FindFirstChild("Blue Hat");assert(injected.destroyed and candidate,"sanitizing removes inserted script and parents cloned accessory");assert(#api.listAccessories()==1)
 api.setSkin(Color3.new(.5,.4,.3),"All");assert(head.Color.r==.5 and body:FindFirstChild("LeftUpperArm").Color.r==.5 and bc.HeadColor3.r==.5,"R15 grouped skin applies");api.restore();assert(head.Color.r==1 and bc.HeadColor3.r==1,"restore returns original colors")
 assert(api.applyBody("https://www.roblox.com/bundles/555"):match("applied"));assert(players.generated and body:FindFirstChild('Head')==head and not head.destroyed,"bundle outfit generates appearance without replacing live parts")
@@ -151,6 +151,8 @@ function players:GetCharacterAppearanceInfoAsync(id)
     return {assets={{id=555,name='Account hair',assetType={id=41}},{id=777,name='Game weapon',assetType={id=19}}}}
 end
 local accountHair=freshAccessory();accountHair.Name='Account hair';accountHair.SourceAssetId=nil;accountHair.Parent=body
+local renamedHat=freshAccessory();renamedHat.Name='Renamed server hat';renamedHat.SourceAssetId=nil;renamedHat.Parent=body
+local renamedAttachment=node('Attachment','HatAttachment');renamedAttachment.CFrame=cf();renamedAttachment.Parent=renamedHat:FindFirstChild('Handle')
 local hairHandle=accountHair:FindFirstChild('Handle');hairHandle.Transparency=0.3
 local hairEffect=node('ParticleEmitter','Hair effect');hairEffect.Enabled=true;hairEffect.Parent=hairHandle
 local liveDescription=node('HumanoidDescription','Live Description');liveDescription.Parent=body:FindFirstChildOfClass('Humanoid')
@@ -174,6 +176,9 @@ assert(not grip.destroyed and grip.Parent==rightHand and not gearScript.destroye
 assert(body:FindFirstChild("RightHand")==rightHand and gear.Parent==body and not gear.destroyed,"cosmetics replaced the live gear-holding hand or equipped tool")
 assert(heldAttachment.CFrame.y==0.25 and body:FindFirstChildOfClass('Humanoid').HipHeight==1.5,'Package applies floor height without moving gear attachment offsets')
 gearApi.removeCurrentAccessories()
+assert(renamedHat:FindFirstChild('Handle').Transparency==1,'Head attachment fallback hides hats with missing asset identity and different server names')
+local accessoryReport=gearApi.accessoryReport()
+assert(accessoryReport:find('Renamed server hat',1,true) and accessoryReport:find('head match=true',1,true),'Accessory report includes the live detection path')
 assert(gameEquipment.Parent==body and gameHandle.Transparency~=1 and not gameWeld.destroyed and not weaponController.destroyed,'Avatar hat hiding leaves game weapons and their welds/controllers alone')
 assert(appliedHat.Parent==body and appliedHat:FindFirstChild('Handle').Transparency==1,'Public applied accessory descriptions identify hats without protected SourceAssetId')
 local originalHandle=appliedHat:FindFirstChild('Handle')
@@ -203,6 +208,7 @@ assert(not grip.destroyed and gear.Parent==body,"restore, replay, and cleanup pr
 assert(storedGear.Parent==backpack and not storedGear.destroyed and not gameWeld.destroyed,'Backpack gear and game weapon joints survive all cosmetic operations')
 assert(appliedHat:FindFirstChild('Handle').Transparency==0,'Cleanup restores hidden avatar visuals without destroying inventory')
 assert(hairHandle.Transparency==0.3 and hairEffect.Enabled,'Cleanup restores original accessory transparency and effects exactly')
+assert(renamedHat:FindFirstChild('Handle').Transparency==0,'Head attachment fallback preserves reversible visibility')
 -- A Part-based R15 head keeps its existing face, joints, and controllers too.
 Enum.MeshType={FileMesh='FileMesh'}
 Vector3={new=function(x,y,z)return{X=x,Y=y,Z=z}end}
