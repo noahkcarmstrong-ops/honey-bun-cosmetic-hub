@@ -57,6 +57,19 @@ return function(game,gui)
             local ok,value=pcall(function()return Enum.Material[a[2]]end);if ok then return value end
         end
     end
+    local function validVisual(v,relative)
+        return type(v)=="table" and type(v.MeshId)=="string" and #v.MeshId>0 and #v.MeshId<=MAX_STRING
+            and type(v.TextureId)=="string" and #v.TextureId<=MAX_STRING
+            and typeof(v.Scale)=="Vector3" and typeof(v.Offset)=="Vector3" and typeof(v.VertexColor)=="Vector3"
+            and typeof(v.Color)=="Color3" and (v.Material==nil or typeof(v.Material)=="EnumItem") and typeof(v.Size)=="Vector3"
+            and (not relative or typeof(v.RelativeCFrame)=="CFrame")
+            and (v.Transparency==nil or finite(v.Transparency) and v.Transparency>=0 and v.Transparency<=1)
+            and (v.Chroma==nil or type(v.Chroma)=="boolean")
+            and (v.SurfaceAppearance==nil or type(v.SurfaceAppearance)=="table")
+            and vector("Vector3",v.Scale)~=nil and vector("Vector3",v.Offset)~=nil and vector("Vector3",v.VertexColor)~=nil
+            and vector("Color3",v.Color)~=nil and vector("Vector3",v.Size)~=nil
+            and v.Size.X>0 and v.Size.Y>0 and v.Size.Z>0
+    end
     local function validDefinition(d)
         return type(d)=="table"and d.PortableGun==true and type(d.MeshId)=="string"and #d.MeshId>0 and #d.MeshId<=MAX_STRING
             and type(d.TextureId)=="string"and #d.TextureId<=MAX_STRING
@@ -65,6 +78,9 @@ return function(game,gui)
             and vector("Vector3",d.Scale)~=nil and vector("Vector3",d.Offset)~=nil and vector("Vector3",d.VertexColor)~=nil
             and vector("Color3",d.Color)~=nil and vector("Vector3",d.Size)~=nil
             and d.Size.X>0 and d.Size.Y>0 and d.Size.Z>0
+            and (d.Transparency==nil or finite(d.Transparency) and d.Transparency>=0 and d.Transparency<=1)
+            and (d.Chroma==nil or type(d.Chroma)=="boolean")
+            and (d.Parts==nil or type(d.Parts)=="table" and #d.Parts<=32 and (function()for _,part in ipairs(d.Parts)do if not validVisual(part,true)then return false end end;return true end)())
     end
     local SURFACE_FIELDS={"ColorMap","MetalnessMap","NormalMap","RoughnessMap"}
     local function packSurface(surface)
@@ -183,6 +199,17 @@ return function(game,gui)
     local function pack(d)
         local out={PortableGun=true,MeshId=d.MeshId,TextureId=d.TextureId,Scale=encode(d.Scale),Offset=encode(d.Offset),
             VertexColor=encode(d.VertexColor),Color=encode(d.Color),Material=encode(d.Material,"Material"),Size=encode(d.Size)}
+        if d.Transparency~=nil then out.Transparency=d.Transparency end
+        if d.Chroma~=nil then out.Chroma=d.Chroma end
+        if d.Parts~=nil then
+            out.Parts={}
+            for i,part in ipairs(d.Parts) do
+                local packed={MeshId=part.MeshId,TextureId=part.TextureId,Scale=encode(part.Scale),Offset=encode(part.Offset),
+                    VertexColor=encode(part.VertexColor),Color=encode(part.Color),Material=encode(part.Material,"Material"),Size=encode(part.Size),
+                    RelativeCFrame=encode(part.RelativeCFrame),SurfaceAppearance=part.SurfaceAppearance,Transparency=part.Transparency,Chroma=part.Chroma}
+                out.Parts[i]=packed
+            end
+        end
         if d.Mounts then out.Mounts=packMounts(d.Mounts)end
         if d.Presentation then out.Presentation=packPresentation(d.Presentation)end
         if d.SurfaceAppearance then out.SurfaceAppearance=packSurface(d.SurfaceAppearance)end
@@ -193,8 +220,24 @@ return function(game,gui)
         local mounts,mountsValid=unpackMounts(d.Mounts);if not mountsValid then return nil end
         local presentation,presentationValid=unpackPresentation(d.Presentation);if not presentationValid then return nil end
         local surface,surfaceValid=unpackSurface(d.SurfaceAppearance);if not surfaceValid then return nil end
+        local parts
+        if d.Parts~=nil then
+            if type(d.Parts)~="table" or #d.Parts>32 then return nil end
+            parts={}
+            for i,part in ipairs(d.Parts) do
+                if type(part)~="table" then return nil end
+                for key in pairs(part) do
+                    if key~="MeshId" and key~="TextureId" and key~="Scale" and key~="Offset" and key~="VertexColor" and key~="Color" and key~="Material" and key~="Size" and key~="RelativeCFrame" and key~="SurfaceAppearance" and key~="Transparency" and key~="Chroma" then return nil end
+                end
+                local partSurface,partSurfaceValid=unpackSurface(part.SurfaceAppearance);if not partSurfaceValid then return nil end
+                parts[i]={MeshId=decode(part.MeshId),TextureId=decode(part.TextureId),Scale=decode(part.Scale),Offset=decode(part.Offset),
+                    VertexColor=decode(part.VertexColor),Color=decode(part.Color),Material=decode(part.Material,"Material"),Size=decode(part.Size),
+                    RelativeCFrame=decode(part.RelativeCFrame),SurfaceAppearance=partSurface,Transparency=part.Transparency,Chroma=part.Chroma}
+            end
+        end
         local result={PortableGun=true,MeshId=decode(d.MeshId),TextureId=decode(d.TextureId),Scale=decode(d.Scale),Offset=decode(d.Offset),
-            VertexColor=decode(d.VertexColor),Color=decode(d.Color),Material=decode(d.Material,"Material"),Size=decode(d.Size),Mounts=mounts,Presentation=presentation,SurfaceAppearance=surface}
+            VertexColor=decode(d.VertexColor),Color=decode(d.Color),Material=decode(d.Material,"Material"),Size=decode(d.Size),
+            Transparency=d.Transparency,Chroma=d.Chroma,Parts=parts,Mounts=mounts,Presentation=presentation,SurfaceAppearance=surface}
         return validDefinition(result)and result or nil
     end
     local function withMetadata(base,mounts,presentation)
@@ -348,6 +391,26 @@ return function(game,gui)
         local noun=kind:lower()
         assert(sourceBasePart and read(sourceBasePart,"IsA") and sourceBasePart:IsA("BasePart"),"Choose a "..noun.." mesh part.")
         assert(type(playerName)=="string"and #playerName>0 and #playerName<=150,"Enter a player name.")
+        local function chromaMarker(part)
+            if string.lower(tostring(read(part,"Name") or "")):find("chroma",1,true) then return true end
+            local getter=read(part,"GetAttribute")
+            if type(getter)=="function" then
+                local ok,value=pcall(getter,part,"Chroma");if ok and value==true then return true end
+            end
+            -- Inspect marker names only within this visual's ownership boundary.
+            local function marked(object)
+                local getChildren=read(object,"GetChildren")
+                if type(getChildren)~="function" then return false end
+                for _,item in ipairs(getChildren(object)) do
+                    local isA=read(item,"IsA")
+                    if not (isA and isA(item,"BasePart")) then
+                        if string.lower(tostring(read(item,"Name") or "")):find("chroma",1,true) or marked(item) then return true end
+                    end
+                end
+                return false
+            end
+            return marked(part)
+        end
         local function snapshot(part)
             local class=read(part,"ClassName")
             local mesh;if class~="MeshPart"then mesh=part:FindFirstChildWhichIsA("SpecialMesh")end
@@ -362,12 +425,38 @@ return function(game,gui)
                 assert(typeof(meshSize)=="Vector3"and meshSize.X~=0 and meshSize.Y~=0 and meshSize.Z~=0,"Gun mesh has no valid mesh size.")
                 scale=Vector3.new(size.X/meshSize.X,size.Y/meshSize.Y,size.Z/meshSize.Z);offset=Vector3.new(0,0,0);vertexColor=Vector3.new(1,1,1);layout="MeshPart"
             else error("Gun source needs a SpecialMesh or MeshPart mesh.")end
-            return {class=class,layout=layout,meshId=meshId,textureId=textureId,scale=scale,offset=offset,vertexColor=vertexColor,size=size,
-                color=read(part,"Color"),material=read(part,"Material"),surface=packSurface(part:FindFirstChildWhichIsA("SurfaceAppearance"))}
+            local chroma=chromaMarker(part)
+            return {class=class,layout=layout,meshId=meshId,textureId=textureId,scale=scale,offset=offset,vertexColor=chroma and Vector3.new(1,1,1) or vertexColor,size=size,
+                color=chroma and Color3.new(1,1,1) or read(part,"Color"),material=read(part,"Material"),surface=packSurface(part:FindFirstChildWhichIsA("SurfaceAppearance")),
+                transparency=read(part,"Transparency") or 0,chroma=chroma}
         end
         local captured=snapshot(sourceBasePart)
         local definition={PortableGun=true,MeshId=captured.meshId,TextureId=captured.textureId,Scale=captured.scale,Offset=captured.offset,VertexColor=captured.vertexColor,
             Color=captured.color,Material=captured.material,Size=captured.size,SurfaceAppearance=captured.surface}
+        if captured.transparency~=0 then definition.Transparency=captured.transparency end
+        if captured.chroma then definition.Chroma=true end
+        local descendants=read(sourceBasePart,"GetDescendants")
+        if type(descendants)=="function" then
+            local ok,list=pcall(descendants,sourceBasePart);if ok and type(list)=="table" then
+                definition.Parts={}
+                for _,part in ipairs(list)do
+                    if #definition.Parts>=32 then break end
+                    local validPart=read(part,"IsA") and part:IsA("BasePart")
+                    if validPart and part~=sourceBasePart then
+                        local partOk,visual=pcall(snapshot,part)
+                        local relative=read(sourceBasePart,"CFrame");local childFrame=read(part,"CFrame")
+                        if partOk and relative and childFrame and type(relative.ToObjectSpace)=="function" then
+                            local frameOk,relativeFrame=pcall(relative.ToObjectSpace,relative,childFrame)
+                            if frameOk then
+                                visual.RelativeCFrame=relativeFrame;definition.Parts[#definition.Parts+1]={MeshId=visual.meshId,TextureId=visual.textureId,Scale=visual.scale,Offset=visual.offset,
+                                    VertexColor=visual.vertexColor,Color=visual.color,Material=visual.material,Size=visual.size,SurfaceAppearance=visual.surface,RelativeCFrame=relativeFrame,Transparency=visual.transparency,Chroma=visual.chroma}
+                            end
+                        end
+                    end
+                end
+                if #definition.Parts==0 then definition.Parts=nil end
+            end
+        end
         local function attribute(part,name)
             local getter=read(part,"GetAttribute")
             if type(getter)~="function"then return nil end

@@ -25,7 +25,11 @@ local function copy(value)if type(value)~="table"then return value end;local out
 local documents,nextDocument={},0
 local http={JSONEncode=function(_,value)nextDocument=nextDocument+1;local key="json"..nextDocument;documents[key]=copy(value);return key end,JSONDecode=function(_,key)return copy(assert(documents[key]))end}
 local function gui(raw)local attrs={HoneyBunCosmeticGuns=raw};return {GetAttribute=function(_,key)return attrs[key]end,SetAttribute=function(_,key,value)attrs[key]=value end}end
-local function signal()return {Connect=function()return {Disconnect=function()end}end}end
+local function signal()
+    local listeners={}
+    return {Connect=function(_,fn)local connection={active=true};function connection:Disconnect()self.active=false end;listeners[#listeners+1]={connection,fn};return connection end,
+        Fire=function(_,...)for _,entry in ipairs(listeners)do if entry[1].active then entry[2](...)end end end}
+end
 local methods={}
 local meta={__index=function(t,k)return methods[k]or t.props[k]end,__newindex=function(t,k,v)
     if k=="Parent"then local old=t.props.Parent;if old then for i,c in ipairs(old.children)do if c==t then table.remove(old.children,i);break end end end;t.props.Parent=v;if v then v.children[#v.children+1]=t end
@@ -55,8 +59,9 @@ source.Size=Vector3.new(0.2,4,2);source.MeshSize=Vector3.new(1,2,3);source.Color
 local surface=node('SurfaceAppearance','SurfaceAppearance',source);surface.ColorMap='rbxassetid://original-color-map'
 local ref=node("ObjectValue","DisplayRefKnife",owner.Character);ref.Value=source
 local players={LocalPlayer=localPlayer,GetPlayers=function()return{localPlayer,owner}end}
-local replicated=node("Folder","ReplicatedStorage");local game={GetService=function(_,name)return({HttpService=http,Players=players,Workspace=workspace,ReplicatedStorage=replicated})[name]end}
-Instance={new=function(class)return node(class)end}
+local heartbeat=signal()
+local replicated=node("Folder","ReplicatedStorage");local game={GetService=function(_,name)return({HttpService=http,Players=players,Workspace=workspace,ReplicatedStorage=replicated,RunService={Heartbeat=heartbeat}})[name]end}
+Instance={new=function(class,parent)return node(class,nil,parent)end}
 local screen=gui();local library=libraryFactory(game,screen)
 local mm2=dofile("mm2.lua")(game,function()return{}end,library)
 assert(mm2.collectPlayerKnife("KnifeOwner"):find("Saved to your knife library",1,true),"knife collection reports a saved knife")
@@ -103,3 +108,52 @@ assert(library.getSelected("Knife")==knifeId,"destroying the preview preserves t
 local afterDestroy=libraryFactory(game,gui(screen:GetAttribute("HoneyBunCosmeticGuns")))
 assert(afterDestroy.getSelected("Knife")==knifeId and #afterDestroy.list("Knife")==1,"destroyed preview selection remains persisted")
 print("Saved knife capture, separate persistence, body-relative overlay, local hiding, and restore passed.")
+
+-- A Chroma detail is a separate visible mesh, not a script to execute.
+Color3.fromHSV=function(h,s,v)return typed("Color3",{R=h,G=s,B=v})end
+local chroma=node("MeshPart","Chroma",source)
+chroma.CFrame=source.CFrame*frame(0,0.25,0)
+chroma.Size=Vector3.new(0.25,3,1);chroma.MeshSize=Vector3.new(1,1,1)
+chroma.MeshId="rbxassetid://chroma-detail";chroma.TextureID="rbxassetid://chroma-mask"
+chroma.Color=Color3.new(0.2,0.8,0.4);chroma.Material=Enum.Material.Metal;chroma.Transparency=0.2
+local chromaScript=node("Script","ChromaScript",chroma)
+local chromaMM2=dofile("mm2.lua")(game,function()return{}end,library)
+chromaMM2.collectPlayerKnife("KnifeOwner")
+local chromaOverlay
+for _,item in ipairs(workspace:GetChildren())do if item.Name=="HoneyBunSavedKnife"then chromaOverlay=item end end
+local copiedDetail=chromaOverlay and chromaOverlay:FindFirstChild("SavedWeaponDetail_1")
+assert(copiedDetail and copiedDetail:FindFirstChildOfClass("SpecialMesh").MeshId==chroma.MeshId,"Chroma copies include their separate visible mesh layer")
+assert(copiedDetail:FindFirstChildOfClass("SpecialMesh").TextureId==chroma.TextureID and copiedDetail.Transparency==0.2,"Chroma detail mask and transparency survive copying")
+assert(copiedDetail:FindFirstChildOfClass("WeldConstraint").Part0==chromaOverlay,"Chroma layer stays attached to the saved weapon")
+assert(not copiedDetail:FindFirstChild("ChromaScript"),"source scripts are never copied or executed")
+local originalBaseColor=chromaOverlay.Color
+local firstTint=copiedDetail.Color
+heartbeat:Fire(0.5)
+assert(copiedDetail.Color~=firstTint and chromaOverlay.Color==originalBaseColor,"only Chroma layers cycle colors while the base stays unchanged")
+local lastTint=copiedDetail.Color
+chromaMM2.restore();heartbeat:Fire(0.5)
+assert(copiedDetail.Color==lastTint and chromaOverlay.destroyed,"restoring a Chroma disconnects its animation")
+assert(chroma.Parent==source and chromaScript.Parent==chroma,"copying preserves the donor's original Chroma instances")
+print("Chroma layer meshes, textures, local animation, attachment, and cleanup passed.")
+
+-- Guns use the same persisted multipart renderer and root Chroma animation.
+local donorGunRef=node("ObjectValue","DisplayRefGun",owner.Character);donorGunRef.Value=source
+local localGun=node("MeshPart","Gun",localPlayer.Character)
+localGun.CFrame=frame(100,0,0);localGun.Color=Color3.new(1,1,1);localGun.Material=Enum.Material.Metal;localGun.LocalTransparencyModifier=0
+local localGunRef=node("ObjectValue","DisplayRefGun",localPlayer.Character);localGunRef.Value=localGun
+node("Script","ChromaScript",source)
+chromaMM2.collectPlayerGun("KnifeOwner")
+local gunOverlay
+for _,item in ipairs(workspace:GetChildren())do if item.Name=="HoneyBunSavedGun"then gunOverlay=item end end
+assert(gunOverlay and gunOverlay:FindFirstChild("SavedWeaponDetail_1"),"Chroma guns copy their complete mesh assembly")
+local gunTint=gunOverlay.Color;heartbeat:Fire(0.5)
+assert(gunOverlay.Color~=gunTint,"a root Chroma gun cycles its tint")
+local persistedChroma=libraryFactory(game,gui(screen:GetAttribute("HoneyBunCosmeticGuns")))
+local savedChroma=persistedChroma.list("Gun")[1]
+assert(savedChroma and savedChroma.definition.Chroma and #savedChroma.definition.Parts==1,"root and layer Chroma flags survive reloading the saved gun")
+local savedGunId=library.getSelected("Gun")
+source.Color=Color3.new(0.9,0.1,0.5);chroma.Color=Color3.new(0.1,0.3,0.9)
+chromaMM2.collectPlayerGun("KnifeOwner")
+assert(library.getSelected("Gun")==savedGunId and #library.list("Gun")==1,"different Chroma color phases do not create duplicate gun saves")
+chromaMM2.destroy()
+print("Chroma gun root animation and multipart persistence passed.")

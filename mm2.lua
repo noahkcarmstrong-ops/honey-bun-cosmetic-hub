@@ -354,6 +354,7 @@ return function(game, injectedRequire, gunLibrary)
         return mesh,texture,color,material,scale,meshType,h
     end
     local function restoreHandle(old)
+        if old.chromaConnection then old.chromaConnection:Disconnect();old.chromaConnection=nil end
         if old.overlay then pcall(function() old.overlay:Destroy() end);old.overlay=nil end
         if old.marker then pcall(function() old.marker:Destroy() end);old.marker=nil end
         old.restoring=true
@@ -485,7 +486,7 @@ return function(game, injectedRequire, gunLibrary)
             overlay.CanCollide=false;overlay.CanTouch=false;overlay.CanQuery=false
             overlay.Color=def.Color or handle.Color
             overlay.Material=def.Material or handle.Material
-            overlay.Transparency=read(handle,"Transparency") or 0
+            overlay.Transparency=def.Transparency or read(handle,"Transparency") or 0
             overlay.LocalTransparencyModifier=read(handle,"LocalTransparencyModifier") or 0
             local mesh=Instance.new("SpecialMesh")
             mesh.MeshType=Enum.MeshType.FileMesh
@@ -499,6 +500,42 @@ return function(game, injectedRequire, gunLibrary)
             weld.Part0=anchor;weld.Part1=overlay;weld.Parent=overlay
             old={handle=handle,kind=kind,mount=mount,color=read(handle,"Color"),material=read(handle,"Material"),size=read(handle,"Size"),localTransparency=read(handle,"LocalTransparencyModifier") or 0,overlay=overlay,overlayId=e.id,overlayRevision=e.revision or 0,hidden={}}
             snapshots[handle]=old
+            local chromaParts={}
+            if def.Chroma then chromaParts[#chromaParts+1]=overlay end
+            for index,visual in ipairs(def.Parts or {}) do
+                local part=Instance.new("Part")
+                -- Parent immediately so failure/restore destroys the entire assembly.
+                part.Name="SavedWeaponDetail_"..index;part.Parent=overlay
+                part.Size=visual.Size;part.Color=visual.Color;part.Material=visual.Material or overlay.Material
+                part.Transparency=visual.Transparency or 0
+                part.LocalTransparencyModifier=overlay.LocalTransparencyModifier
+                part.CFrame=overlay.CFrame*visual.RelativeCFrame
+                part.Anchored=false;part.Massless=true
+                part.CanCollide=false;part.CanTouch=false;part.CanQuery=false
+                local detail=Instance.new("SpecialMesh",part)
+                detail.MeshType=Enum.MeshType.FileMesh;detail.MeshId=visual.MeshId
+                detail.TextureId=(visual.SurfaceAppearance and visual.SurfaceAppearance.ColorMap) or visual.TextureId or ""
+                detail.Scale=visual.Scale;detail.Offset=visual.Offset;detail.VertexColor=visual.VertexColor
+                local joint=Instance.new("WeldConstraint",part)
+                joint.Part0=overlay;joint.Part1=part
+                if visual.Chroma then chromaParts[#chromaParts+1]=part end
+            end
+            if #chromaParts>0 then
+                local phase,elapsed=0,0
+                local function tint()
+                    local color=Color3.fromHSV(phase,1,1)
+                    for _,part in ipairs(chromaParts) do part.Color=color end
+                end
+                tint()
+                local heartbeat=read(service("RunService"),"Heartbeat")
+                if heartbeat and type(read(heartbeat,"Connect"))=="function" then
+                    old.chromaConnection=heartbeat:Connect(function(dt)
+                        if old.restoring or snapshots[handle]~=old then return end
+                        phase=(phase+dt/6)%1;elapsed=elapsed+dt
+                        if elapsed>=1/30 then elapsed=0;tint() end
+                    end)
+                end
+            end
             -- A separate static visual preserves its dimensions without changing game joints or tools.
             overlay.Parent=service("Workspace")
             local marker=Instance.new("ObjectValue")
@@ -512,7 +549,10 @@ return function(game, injectedRequire, gunLibrary)
                 if type(changed)=="function" then connect(changed(part,"LocalTransparencyModifier"),function()
                     if changing or old.restoring or snapshots[handle]~=old then return end
                     -- Camera/game visibility refreshes must not expose the original gun.
-                    if part==handle and old.overlay then old.overlay.LocalTransparencyModifier=part.LocalTransparencyModifier end
+                    if part==handle and old.overlay then
+                        old.overlay.LocalTransparencyModifier=part.LocalTransparencyModifier
+                        for _,detail in ipairs(children(old.overlay)) do if isA(detail,"BasePart") then detail.LocalTransparencyModifier=part.LocalTransparencyModifier end end
+                    end
                     changing=true;part.LocalTransparencyModifier=1;changing=false
                 end) end
                 changing=true;part.LocalTransparencyModifier=1;changing=false
