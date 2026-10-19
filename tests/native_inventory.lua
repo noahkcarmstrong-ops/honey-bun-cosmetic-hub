@@ -287,7 +287,8 @@ print('Unopened inventory guidance and separate diagnostic report passed.')
 local savedDefs={{id='holiday-saved',kind='Gun',name='Saved Holiday Gun',image=987,category='holiday',rarity='Godly'},
     {id='new-capture',kind='Knife',name='New Capture',image=654,category='classic',rarity='Rare'}}
 local savedChoice
-local savedCatalog={list=function(kind)local out={};for _,e in ipairs(savedDefs)do if e.kind==kind then out[#out+1]=e end end;return out end,
+local savedListCalls=0
+local savedCatalog={list=function(kind)savedListCalls=savedListCalls+1;local out={};for _,e in ipairs(savedDefs)do if e.kind==kind then out[#out+1]=e end end;return out end,
     equip=function(id,kind)savedChoice=id..':'..kind;return 'Saved item selected'end,getEquipped=function()return savedChoice and {Gun='holiday-saved'} or {}end}
 local function savedCardsIn(grid)local out={};for _,o in ipairs(grid:GetChildren())do if o.Name:find('HoneyBunLocal_Saved_',1,true)then out[#out+1]=o end end;return out end
 local waitingApi=create(playerGui,savedCatalog,nil,'saved');waitingApi.enable();flush()
@@ -346,6 +347,18 @@ local gameTab=node('TextButton','HolidayTab',nestedInventory);gameTab.Activated:
 local orphanSaved=node('Frame','HoneyBunLocal_Saved_Gun_legacy',holidayBranch)
 local nestedApi=create(playerGui,savedCatalog,nil,'saved')
 assert(nestedApi.enable(),'Nested native weapons structure is detected');flush()
+local callsBeforeCurrency=savedListCalls
+local currencyPickup=node('Frame','CoinPickup',nestedInventory)
+node('TextLabel','Amount',currencyPickup)
+flush()
+assert(savedListCalls==callsBeforeCurrency,'Currency HUD additions under Inventory do not rerender saved weapons')
+currencyPickup:Destroy();flush()
+assert(savedListCalls==callsBeforeCurrency,'Currency HUD removal under Inventory does not rerender saved weapons')
+local inventoryOverlay=node('Frame','InventoryCoinOverlay',playerGui)
+node('TextLabel','Amount',inventoryOverlay)
+flush()
+assert(savedListCalls==callsBeforeCurrency,'Inventory-named HUD additions outside the mount do not rerender saved weapons')
+inventoryOverlay:Destroy()
 assert(orphanSaved.destroyed,'Legacy saved cards are removed from native categories')
 local function descNamed(root,name)for _,o in ipairs(root:GetDescendants())do if o.Name==name then return o end end end
 local savedPane=descNamed(nestedInventory,'HoneyBunLocal_SavedPane')

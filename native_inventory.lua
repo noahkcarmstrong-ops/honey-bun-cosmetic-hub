@@ -1155,9 +1155,32 @@ return function(playerGui,catalog,onStatus,mode)
         return lastReport
     end
     local watchers={}
+    local function within(object,ancestor)
+        while object do
+            if object==ancestor then return true end
+            object=object.Parent
+        end
+        return false
+    end
+    local function relevantSavedObject(object)
+        -- Saved mode only needs to rebuild when its mounted UI or native source
+        -- collection changes. Currency and other HUD updates under Inventory
+        -- must not rerender the saved catalog.
+        if not savedRoot or not alive(savedRoot) then
+            return inventoryAncestor(object)~=nil or lower(object.Name):find("inventory",1,true)~=nil
+        end
+        if object==savedRoot then return true end
+        if savedTabParent and within(object,savedTabParent) then return true end
+        if savedTab and within(object,savedTab) then return true end
+        if savedPane and within(object,savedPane) then return true end
+        for _,grid in pairs(savedGrids) do
+            if within(object,grid) then return true end
+        end
+        return false
+    end
     local function watchSaved()
         local function changed(o)
-            if not localObject(o) and (inventoryAncestor(o) or lower(o.Name):find("inventory",1,true)) then schedule() end
+            if not localObject(o) and relevantSavedObject(o) then schedule() end
         end
         watchers[#watchers+1]=playerGui.DescendantAdded:Connect(changed)
         watchers[#watchers+1]=playerGui.DescendantRemoving:Connect(function(o)
