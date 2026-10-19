@@ -41,23 +41,39 @@ return function(game,onStatus)
         for _,v in ipairs(descendants(source))do if visual(v) and not generated(v) then return true end end
         return false
     end
-    local function identifies(candidate,id)
-        if read(candidate,"Name")==id then return true end
-        local get=read(candidate,"GetAttribute")
-        if type(get)=="function"then
-            for _,key in ipairs({"Effect","EffectId","EffectID","KnifeEffect"})do
-                local ok,value=pcall(get,candidate,key)
-                if ok and type(value)=="string" and value==id then return true end
+    local function indexSources()
+        local index={};local token=generation;local visited=0
+        for _,root in pairs({service("ReplicatedStorage"),service("Workspace")})do
+            for _,candidate in ipairs(descendants(root))do
+                if not generated(candidate)then
+                    local keys={}
+                    local function add(value)
+                        if type(value)=="string" and not keys[value]then
+                            keys[value]=true;index[value]=index[value]or{};table.insert(index[value],candidate)
+                        end
+                    end
+                    add(read(candidate,"Name"))
+                    local get=read(candidate,"GetAttribute")
+                    if type(get)=="function"then
+                        for _,key in ipairs({"Effect","EffectId","EffectID","KnifeEffect"})do
+                            local ok,value=pcall(get,candidate,key);if ok then add(value)end
+                        end
+                    end
+                end
+                visited=visited+1
+                if visited%200==0 and task and task.wait then task.wait()end
+                if not alive or token~=generation then return nil end
             end
         end
-        return false
+        return index
     end
-    local function loadedSource(e,value)
+    local function loadedSource(e,value,index)
+        index=index or indexSources()
+        if not index then return nil end
         local matches,seen={},{}
-        for _,root in ipairs({service("ReplicatedStorage"),service("Workspace")})do
-            for _,candidate in ipairs(descendants(root))do
-                local name=read(candidate,"Name")
-                if (identifies(candidate,e.id) or (type(value)=="string" and name==value)) and not generated(candidate) and supported(candidate) and not seen[candidate] then
+        for _,key in ipairs({e.id,type(value)=="string" and value or e.id})do
+            for _,candidate in ipairs(index[key]or{})do
+                if not seen[candidate] and not generated(candidate) and supported(candidate)then
                     seen[candidate]=true;matches[#matches+1]=candidate
                 end
             end
@@ -66,14 +82,15 @@ return function(game,onStatus)
         if #matches==1 then return matches[1] end
         return nil,#matches>1 and "multiple original templates match this effect" or nil
     end
-    local function sourceFor(e,originalOnly)
+    local function sourceFor(e,originalOnly,index)
         local recreated=sourceNotes[e.id]=="built-in blue flame recreation"
         if sourceCache[e.id] and not (originalOnly and recreated) then return sourceCache[e.id] end
         if sourceErrors[e.id] then return nil end
         local def=e.definition;local value=field(def,"Effect")or field(def,"Model")or field(def,"Template")or field(def,"Instance")or field(def,"Source")
-        local source,reason
+        local source,reason;local lookupToken=generation
         if value and read(value,"ClassName") and supported(value)then source=value end
-        if not source then source,reason=loadedSource(e,value)end
+        if not source then source,reason=loadedSource(e,value,index)end
+        if not alive or lookupToken~=generation then return nil end
         if source then
             sourceNotes[e.id]="original loaded template"
             -- Keep a private template if the other player leaves or their effect unloads.
@@ -232,22 +249,26 @@ return function(game,onStatus)
     function api.equip(id,kind)assert(alive,"The effects preview is closed.");assert(kind=="Effect","Equip category must be Effect.");local e=find(id);assert(e,"Unsupported effect: "..tostring(id));generation=generation+1;local token=generation;selected=e.id;sourceErrors[e.id]=nil;ensureWatchers();clearApplied();local ok,msg=apply();if not alive or token~=generation then ok=false;msg="Effect application was cancelled." end;lastApplyError=ok and "" or msg;if onStatus then pcall(onStatus,msg)end;return ok and msg or "Selected "..e.name.."; unavailable locally: "..msg end
     function api.checkOriginals()
         assert(alive,"The effects preview is closed.")
-        local token=generation;local available,missing=0,{}
+        local token=generation;local available,missing,names=0,{},{}
+        if onStatus then pcall(onStatus,"Checking loaded original effect sources...")end
+        if not alive or token~=generation then return "Original effect check cancelled." end
+        local index=indexSources()
+        if not index then return "Original effect check cancelled." end
         for i,e in ipairs(catalog())do
             if not alive or token~=generation then return "Original effect check cancelled." end
             sourceErrors[e.id]=nil
-            local source=sourceFor(e,true)
+            local source=sourceFor(e,true,index)
             if not alive or token~=generation then return "Original effect check cancelled." end
-            if source then available=available+1 else missing[#missing+1]=e.id end
+            if source then available=available+1;names[#names+1]=e.name.." ("..e.id..")" else missing[#missing+1]=e.id end
             scanSummary="Original sources checked: "..i.."/"..#catalog().."; available="..available
             if onStatus then pcall(onStatus,scanSummary)end
             if task and task.wait then task.wait()end
             if not alive or token~=generation then return "Original effect check cancelled." end
         end
-        scanSummary="Original sources available: "..available.."/"..#catalog()..". Missing: "..table.concat(missing,",")
+        scanSummary="Original sources available: "..available.."/"..#catalog()..". Available: "..table.concat(names,", ")..". Missing: "..table.concat(missing,",")
         -- Checking sources must not remove the user's working recreation or selection.
         if selected then sourceErrors[selected]=nil;refreshEffect()end
-        return "Original sources available: "..available.."/"..#catalog()..". Details are in Copy MM2 report."
+        return "Original sources available: "..available.."/"..#catalog()..". "..table.concat(names,", ")..". Details are in Copy MM2 report."
     end
     function api.getEquipped()return{Effect=selected}end
     function api.restore()generation=generation+1;selected=nil;clearApplied();disconnectAll();lastApplyError="";return"Restored local MM2 effects."end
@@ -267,6 +288,6 @@ return function(game,onStatus)
         end
         return e.id.."{"..table.concat(fields,";").."} loaded effect containers="..table.concat(roots,"|")
     end
-    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=sourceErrors[selected]or sourceNotes[selected]or"resolved" end;return"MM2 Effects build: original knife sources V4\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails().."\n"..scanSummary end
+    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=sourceErrors[selected]or sourceNotes[selected]or"resolved" end;return"MM2 Effects build: indexed original knife sources V5\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails().."\n"..scanSummary end
     return api
 end

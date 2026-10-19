@@ -178,7 +178,13 @@ local allDefinitions=module.Data
 module.Data={WorldEffect={Name='World Effect'},Missing={Name='Missing'},BlueFire={KnifeModule=473588389}}
 game.GetObjects=function()return{}end
 local scanApi=dofile('mm2_effects.lua')(game)
+local rootReads=0
+local realDescendants=methods.GetDescendants
+methods.GetDescendants=function(self)if self==rs or self==world then rootReads=rootReads+1 end;return realDescendants(self)end
 local summary=scanApi.checkOriginals()
+assert(rootReads==2,'Catalog check traverses each loaded game root once, not once per effect')
+methods.GetDescendants=realDescendants
+assert(summary:find('World Effect',1,true),'Finished check names the originals that are available')
 assert(summary:find('1/3',1,true),'Catalog scan counts originals only, not the BlueFire recreation')
 assert(not scanApi.getEquipped().Effect and #replacement:GetChildren()==0,'Checking every source never equips effects')
 assert(scanApi.report():find('Missing: BlueFire,Missing',1,true),'Report lists all inaccessible originals')
