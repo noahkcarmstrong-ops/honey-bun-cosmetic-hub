@@ -14,14 +14,18 @@ local meta={__index=function(t,k)return methods[k] or t.props[k]end,__newindex=f
         local old=t.props.Parent;if old==v then return end
         if old then for i,c in ipairs(old.children)do if c==t then table.remove(old.children,i);break end end end
         t.props.Parent=v
-        if v then v.children[#v.children+1]=t;v.ChildAdded:Fire(t)end
+        if v then
+            v.children[#v.children+1]=t;v.ChildAdded:Fire(t)
+            local ancestor=v
+            while ancestor do ancestor.DescendantAdded:Fire(t);ancestor=ancestor.Parent end
+        end
     else
         local old=t.props[k];t.props[k]=v
         if old~=v and t.propertySignals[k] then t.propertySignals[k]:Fire()end
     end
 end}
 local function node(class,name,parent)
-    local n=setmetatable({props={ClassName=class,Name=name or class,ChildAdded=signal(),CharacterAdded=signal()},children={},propertySignals={}},meta)
+    local n=setmetatable({props={ClassName=class,Name=name or class,ChildAdded=signal(),DescendantAdded=signal(),CharacterAdded=signal()},children={},propertySignals={}},meta)
     n.Parent=parent;return n
 end
 function methods:IsA(c)return c==self.ClassName or (c=='BasePart' and (self.ClassName=='Part' or self.ClassName=='MeshPart')) or (c=='Light' and self.ClassName=='PointLight')end
@@ -32,7 +36,7 @@ function methods:GetPropertyChangedSignal(k)self.propertySignals[k]=self.propert
 function methods:Destroy()for _,v in ipairs(self:GetChildren())do v:Destroy()end;self.Parent=nil;self.destroyed=true end
 function methods:Clone()
     local copy=node(self.ClassName,self.Name)
-    for k,v in pairs(self.props)do if k~='Parent'and k~='ChildAdded'and k~='CharacterAdded'then copy[k]=v end end
+    for k,v in pairs(self.props)do if k~='Parent'and k~='ChildAdded'and k~='DescendantAdded'and k~='CharacterAdded'then copy[k]=v end end
     for _,v in ipairs(self.children)do v:Clone().Parent=copy end
     -- Roblox Clone remaps references between descendants of the cloned root.
     local mapping={}
@@ -198,6 +202,31 @@ local cancelledScan
 cancelledScan=dofile('mm2_effects.lua')(game,function()cancelledScan.restore()end)
 assert(cancelledScan.checkOriginals():find('cancelled',1,true),'Turning effects off cancels an active source scan')
 cancelledScan.destroy();module.Data=allDefinitions
+-- Originals that arrive later are collected without rescanning the whole game.
+module.Data.LateOriginal={Name='Late Original'}
+local deferred={};task={defer=function(fn)deferred[#deferred+1]=fn end}
+local function flushCaptures()local queue=deferred;deferred={};for _,fn in ipairs(queue)do fn()end end
+local automatic=dofile('mm2_effects.lua')(game)
+assert(automatic.equip('LateOriginal','Effect'):find('unavailable locally'))
+local lateOriginal=node('Folder','LateOriginal',world)
+local lateParticles=node('ParticleEmitter','OriginalLateParticle',lateOriginal);lateParticles.Rate=0
+flushCaptures()
+assert(count(replacement,'ParticleEmitter')==1,'A selected original begins on the back knife when its source arrives')
+lateOriginal:Destroy();lateRef.Value=node('Part','StreamedBackKnife')
+assert(count(lateRef.Value,'ParticleEmitter')==1,'Automatically collected original survives unloading')
+assert(automatic.report():find('Automatically collected originals: LateOriginal',1,true),'Report names collected originals')
+automatic.destroy();lateRef.Value=replacement
+local afterDestroy=node('Folder','LateOriginal',world);node('ParticleEmitter','NoCapture',afterDestroy)
+flushCaptures();assert(#replacement:GetChildren()==0,'Closing disconnects collection and cannot revive an effect')
+-- A queued capture cannot reapply after the user turns effects off.
+module.Data.QueuedOriginal={Name='Queued Original'}
+local queuedApi=dofile('mm2_effects.lua')(game)
+queuedApi.equip('QueuedOriginal','Effect')
+local queuedOriginal=node('Folder','QueuedOriginal',world);node('ParticleEmitter','QueuedParticle',queuedOriginal)
+queuedApi.restore();flushCaptures()
+assert(not queuedApi.getEquipped().Effect and #replacement:GetChildren()==0,'Restore invalidates deferred original capture')
+queuedApi.destroy()
+task=nil
 local report=api.report();assert(report:find('defs=')and report:find('targets=')and report:find('source='),'Report includes definition and target diagnostics')
 api.destroy();assert(#replacement:GetChildren()==0 and #lateHandle:GetChildren()==0,'Closing the hub cleans all previews')
 assert(not pcall(api.equip,'Spark','Effect'),'Closed effect service cannot equip')

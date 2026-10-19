@@ -3,6 +3,9 @@ return function(game,onStatus)
     local alive=true;local generation=0
     local selected=nil
     local catalogCache
+    local catalogIds={}
+    local collectedIds={}
+    local capturePending,captureQueued,watchEpoch={},false,0
     local connections,observed,applied={}, {}, {}
     local sourceCache,sourceRoots,sourceNotes={},{},{}
     local sourceErrors,lastApplyError={},""
@@ -17,7 +20,7 @@ return function(game,onStatus)
     local function lower(v)return tostring(v or ""):lower()end
     local function field(v,k)return type(v)=="table" and v[k] or read(v,k) end
     local function connect(signal,fn) local f=read(signal,"Connect");if type(f)=="function"then local ok,c=pcall(f,signal,fn);if ok and c then connections[#connections+1]=c end end end
-    local function disconnectAll()for _,c in ipairs(connections)do pcall(function()c:Disconnect()end)end;connections={};observed={} end
+    local function disconnectAll()for _,c in ipairs(connections)do pcall(function()c:Disconnect()end)end;connections={};observed={};watchEpoch=watchEpoch+1;capturePending={};captureQueued=false end
     local function destroy(o)pcall(function()o:Destroy()end)end
     local function moduleData()
         local rs=service("ReplicatedStorage");local db=rs and rs:FindFirstChild("Database");local sync=db and db:FindFirstChild("Sync");local mod=sync and sync:FindFirstChild("Effects")
@@ -28,7 +31,7 @@ return function(game,onStatus)
         if catalogCache then return catalogCache end
         local data,err=moduleData();assert(type(data)=="table",err or "Effects database is unavailable")
         local out={};for id,def in pairs(data)do if type(def)=="table"then out[#out+1]={id=tostring(id),name=tostring(field(def,"ItemName")or field(def,"Name")or id),kind="Effect",rarity=field(def,"Rarity"),image=field(def,"Image")or field(def,"ImageId")or field(def,"ImageID"),category="effects",definition=def}end end
-        table.sort(out,function(a,b)return lower(a.name)<lower(b.name)end);catalogCache=out;return out
+        table.sort(out,function(a,b)return lower(a.name)<lower(b.name)end);catalogCache=out;for _,e in ipairs(out)do catalogIds[e.id]=e end;return out
     end
     local function find(id)for _,e in ipairs(catalog())do if e.id==tostring(id)then return e end end end
     local visualClasses={ParticleEmitter=true,Trail=true,Beam=true,Fire=true,Smoke=true,Sparkles=true,PointLight=true,SpotLight=true,SurfaceLight=true}
@@ -238,7 +241,58 @@ return function(game,onStatus)
         end)
         for _,x in ipairs(children(container)) do watchTool(x);if character then watchRef(x) end end
     end
+    local function captureArrivingOriginal(object)
+        if not alive or generated(object) then return end
+        catalog()
+        local candidate=object
+        for _=1,10 do
+            if not candidate then break end
+            local e=catalogIds[tostring(read(candidate,"Name"))]
+            local get=read(candidate,"GetAttribute")
+            if not e and type(get)=="function"then
+                for _,key in ipairs({"Effect","EffectId","EffectID","KnifeEffect"})do
+                    local ok,id=pcall(get,candidate,key)
+                    if ok and type(id)=="string" and catalogIds[id]then e=catalogIds[id];break end
+                end
+            end
+            if e then capturePending[candidate]=e;break end
+            candidate=read(candidate,"Parent")
+        end
+        if captureQueued or next(capturePending)==nil then return end
+        captureQueued=true;local epoch=watchEpoch
+        local function collect()
+            if not alive or epoch~=watchEpoch then return end
+            captureQueued=false
+            local pending=capturePending;capturePending={};local reapply=false
+            for source,e in pairs(pending)do
+                local originalCached=sourceCache[e.id] and sourceNotes[e.id]~="built-in blue flame recreation"
+                if not originalCached and read(source,"Parent") and not generated(source) and supported(source)then
+                    local ok,copy=pcall(function()return source:Clone()end)
+                    if ok and copy then
+                        sourceRoots[#sourceRoots+1]=copy;sourceCache[e.id]=copy
+                        sourceNotes[e.id]="original loaded template (automatically collected)"
+                        sourceErrors[e.id]=nil;collectedIds[e.id]=true
+                        if selected==e.id then reapply=true end
+                    end
+                end
+            end
+            if reapply then
+                refreshEffect()
+                if onStatus then pcall(onStatus,lastApplyError~="" and lastApplyError or ("Original effect loaded: "..tostring(selected)))end
+            end
+        end
+        if task and task.defer then task.defer(collect)else collect()end
+    end
+    local function watchOriginals()
+        for _,root in pairs({service("ReplicatedStorage"),service("Workspace")})do
+            if not observed[root]then
+                observed[root]=true
+                connect(read(root,"DescendantAdded"),captureArrivingOriginal)
+            end
+        end
+    end
     local function ensureWatchers()
+        watchOriginals()
         local ps=service("Players");local p=ps and ps.LocalPlayer;if not p then return end
         if not observed[p] then
             observed[p]=true
@@ -255,8 +309,10 @@ return function(game,onStatus)
     local api={}
     function api.list(_,search)local out={};local q=lower(search);for _,e in ipairs(catalog())do if q==""or lower(e.name):find(q,1,true)or lower(e.id):find(q,1,true)then out[#out+1]={id=e.id,name=e.name,kind=e.kind,rarity=e.rarity,image=e.image,category=e.category}end end;return out end
     function api.equip(id,kind)assert(alive,"The effects preview is closed.");assert(kind=="Effect","Equip category must be Effect.");local e=find(id);assert(e,"Unsupported effect: "..tostring(id));generation=generation+1;local token=generation;selected=e.id;sourceErrors[e.id]=nil;ensureWatchers();clearApplied();local ok,msg=apply();if not alive or token~=generation then ok=false;msg="Effect application was cancelled." end;lastApplyError=ok and "" or msg;if onStatus then pcall(onStatus,msg)end;return ok and msg or "Selected "..e.name.."; unavailable locally: "..msg end
+    function api.collectOriginals()assert(alive,"The effects preview is closed.");ensureWatchers()end
     function api.checkOriginals()
         assert(alive,"The effects preview is closed.")
+        ensureWatchers()
         local token=generation;local available,missing,names=0,{},{}
         if onStatus then pcall(onStatus,"Checking loaded original effect sources...")end
         if not alive or token~=generation then return "Original effect check cancelled." end
@@ -326,6 +382,10 @@ return function(game,onStatus)
         if startedDormant then lines[#lines+1]="Playback: started dormant original particles at 2 particles/second."end
         return table.concat(lines,"\n")
     end
-    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=sourceErrors[selected]or sourceNotes[selected]or"resolved" end;return"MM2 Effects build: original particle playback V6\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails().."\n"..scanSummary.."\n"..visualDetails() end
+    local function collectionReport()
+        local ids={};for id in pairs(collectedIds)do ids[#ids+1]=id end;table.sort(ids)
+        return "Automatically collected originals: "..(#ids>0 and table.concat(ids,",")or"none yet")
+    end
+    function api.report()local list=catalog();local names,defs={},{};for i=1,math.min(#list,20)do local e=list[i];names[#names+1]=e.id.."="..e.name;local fields={};for k,v in pairs(e.definition)do if #fields<6 then fields[#fields+1]=tostring(k)..":"..type(v).."="..tostring(v):sub(1,180)end end;defs[#defs+1]=e.id.."{"..table.concat(fields,";").."}" end;local targetCount=#targets();local appliedCount=0;for _,items in pairs(applied)do appliedCount=appliedCount+#items end;local sourceInfo="none";if selected then sourceInfo=sourceErrors[selected]or sourceNotes[selected]or"resolved" end;return"MM2 Effects build: original particle collection V7\nMM2 Effects catalog="..#list.." selected="..tostring(selected).." samples="..table.concat(names,",").." defs="..table.concat(defs,"|").." source="..sourceInfo.." targets="..targetCount.." applied="..appliedCount.." error="..tostring(lastApplyError).."\nselected definition="..selectedDetails().."\n"..scanSummary.."\n"..visualDetails().."\n"..collectionReport() end
     return api
 end
