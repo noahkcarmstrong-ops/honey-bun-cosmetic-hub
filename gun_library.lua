@@ -283,7 +283,7 @@ return function(game,gui)
                             local presentation,presentationValid=unpackPresentation(record.overrides.Presentation)
                             if mountsValid and presentationValid then effective=withMetadata(definition,mounts,presentation) end
                         end
-                        entries[#entries+1]={id=record.id,name=record.name,kind=kind,baseDefinition=definition,definition=effective,revision=0,catalog=catalogInfo(record.catalog)}
+                        entries[#entries+1]={id=record.id,name=record.name,customName=record.customName==true,kind=kind,baseDefinition=definition,definition=effective,revision=0,catalog=catalogInfo(record.catalog)}
                     end
                 end
             end
@@ -322,7 +322,7 @@ return function(game,gui)
     local function save()
         local records={};for _,entry in ipairs(entries)do
             local base=entry.baseDefinition or entry.definition
-            local record={id=entry.id,name=entry.name,definition=pack(base),catalog=entry.catalog}
+            local record={id=entry.id,name=entry.name,customName=entry.customName==true,definition=pack(base),catalog=entry.catalog}
             local overrides={}
             if entry.definition.Mounts and canonical(entry.definition.Mounts)~=canonical(base.Mounts) then overrides.Mounts=packMounts(entry.definition.Mounts) end
             if entry.definition.Presentation and canonical(entry.definition.Presentation)~=canonical(base.Presentation) then overrides.Presentation=packPresentation(entry.definition.Presentation) end
@@ -416,6 +416,25 @@ return function(game,gui)
         return entry
     end
     function api.list(kind)local out={};for _,e in ipairs(entries)do if kind==nil or e.kind==kind then out[#out+1]=e end end;return out end
+    local function cleanName(name)
+        assert(type(name)=="string","Enter a saved weapon name.")
+        name=name:match("^%s*(.-)%s*$")
+        assert(#name>0,"Enter a saved weapon name.")
+        assert(#name<=80,"Saved weapon names must be 80 characters or fewer.")
+        return name
+    end
+    function api.rename(id,name)
+        assert(type(id)=="string" and id~="","Choose a saved weapon.")
+        id=resolveId(id);name=cleanName(name)
+        for _,entry in ipairs(entries) do if entry.id==id then
+            local oldName,oldCustom=entry.name,entry.customName
+            entry.name,entry.customName=name,true
+            local ok,err=pcall(save)
+            if not ok then entry.name,entry.customName=oldName,oldCustom;error(err) end
+            return entry
+        end end
+        error("Saved weapon was not found.")
+    end
     function api.setCatalog(id,value)
         id=resolveId(id)
         local info=catalogInfo(value);assert(info,"Weapon catalog details are incomplete.")

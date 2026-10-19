@@ -223,6 +223,7 @@ return function(game,gui)
                             source:Destroy()
                         else
                             visualKeys[key]=entry.id
+                            entry.customName=entry.customName==true
                             entries[#entries+1]=entry;templates[entry.id]=source
                         end
                     end
@@ -317,8 +318,41 @@ return function(game,gui)
             local image=metadata and metadata.image
             local hasImage=image~=nil and image~=""
             local preview;if not hasImage then preview=particlePreview(entry.records) end
-            out[#out+1]={id=entry.id,name=metadata and metadata.name or entry.name,kind="Effect",rarity=metadata and metadata.rarity,image=image,previewImage=preview and preview.texture,preview=preview,category="effects",definition={Effect=templates[entry.id]}}
+            out[#out+1]={id=entry.id,name=entry.customName and entry.name or (metadata and metadata.name or entry.name),kind="Effect",rarity=metadata and metadata.rarity,image=image,previewImage=preview and preview.texture,preview=preview,category="effects",editable=true,definition={Effect=templates[entry.id]}}
         end;return out
+    end
+    local function cleanName(name)
+        assert(type(name)=="string","Enter a saved effect name.")
+        name=name:match("^%s*(.-)%s*$")
+        assert(#name>0,"Enter a saved effect name.")
+        assert(#name<=80,"Saved effect names must be 80 characters or fewer.")
+        return name
+    end
+    function api.rename(id,name)
+        assert(type(id)=="string" and id~="","Choose a saved effect.")
+        id=aliases[id] or id;name=cleanName(name)
+        for _,entry in ipairs(entries) do if entry.id==id then
+            local oldName,oldCustom=entry.name,entry.customName
+            entry.name,entry.customName=name,true
+            local ok,err=pcall(save)
+            if not ok then entry.name,entry.customName=oldName,oldCustom;error(err) end
+            return entry
+        end end
+        error("Saved effect was not found.")
+    end
+    function api.remove(id)
+        assert(type(id)=="string" and id~="","Choose a saved effect.")
+        id=aliases[id] or id
+        for index,entry in ipairs(entries) do if entry.id==id then
+            table.remove(entries,index);local oldSelected=selected
+            if selected==id then selected=nil end
+            local ok,err=pcall(save)
+            if not ok then table.insert(entries,index,entry);selected=oldSelected;error(err) end
+            local source=templates[id];templates[id]=nil;visualKeys[visualIdentity(entry.records)]=nil
+            if source then source:Destroy() end
+            return entry
+        end end
+        error("Saved effect was not found.")
     end
     function api.report()return"Saved original effect library: "..#entries.."; "..notice end
     function api.destroy()alive=false;for _,source in pairs(templates)do source:Destroy()end;templates={}end

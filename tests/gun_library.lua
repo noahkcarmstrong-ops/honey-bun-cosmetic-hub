@@ -239,7 +239,7 @@ sourceMesh.Name='Handle';sourceMesh.Parent=sourceTool
 local sourceShot=node('Sound','Shoot',sourceMesh);sourceShot.SoundId='rbxassetid://scope-shot';sourceShot.Volume=0.7;sourceShot.PlaybackSpeed=1.2
 realGun.Grip=frame(1,0,0);realGun.TextureId='rbxassetid://pistol-icon'
 local realShot=node('Sound','Shoot',realHandle);realShot.SoundId='rbxassetid://pistol-shot';realShot.Volume=0.4;realShot.PlaybackSpeed=1
-local presentationLibrary=create(mm2Game,gui())
+local presentationGui=gui();local presentationLibrary=create(mm2Game,presentationGui)
 local presentationApi=dofile('mm2.lua')(mm2Game,function()return{}end,presentationLibrary)
 presentationApi.collectPlayerGun('BIearyEyed')
 assert(realGun.TextureId=='rbxassetid://scope-icon','Toolbar icon follows captured Tool even while in Backpack')
@@ -281,6 +281,14 @@ assert(identifiedEntry.id==beforeId and identifiedEntry.catalog.Name=='Not Captu
 local invalidIdentify=pcall(function()catalogApi.identifySavedWeapon('missing-name','Gun')end)
 assert(not invalidIdentify and presentationLibrary.list('Gun')[1].catalog.Name=='Not Captured','Invalid identification preserves saved metadata')
 catalogApi.destroy()
+
+local renamed=presentationLibrary.rename(beforeId,'  Custom Gingerscope  ')
+assert(renamed.name=='Custom Gingerscope' and renamed.customName,'Saved weapon names are trimmed and marked custom')
+assert(not pcall(function()presentationLibrary.rename(beforeId,'   ')end),'Blank saved weapon names are rejected')
+assert(not pcall(function()presentationLibrary.rename(beforeId,string.rep('x',81))end),'Overlong saved weapon names are rejected')
+local renamedReloaded=create(game,gui(presentationGui:GetAttribute('HoneyBunCosmeticGuns')))
+local renamedEntry=renamedReloaded.list('Gun')[1]
+assert(renamedEntry.name=='Custom Gingerscope' and renamedEntry.customName,'Custom weapon names persist across reload')
 
 -- Visual deduplication keeps one stable ID while allowing pose metadata to improve.
 local dedupGui=gui();local dedupLibrary=create(game,dedupGui)

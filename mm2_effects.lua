@@ -332,9 +332,25 @@ return function(game,onStatus,library)
         watchContainer(read(p,"Character"),true);watchContainer(read(p,"Backpack"),false)
     end
     local api={}
-    function api.list(_,search)local out={};local q=lower(search);for _,e in ipairs(catalog())do if q==""or lower(e.name):find(q,1,true)or lower(e.id):find(q,1,true)then out[#out+1]={id=e.id,name=e.name,kind=e.kind,rarity=e.rarity,image=e.image,category=e.category}end end;return out end
+    function api.list(_,search)local out={};local q=lower(search);for _,e in ipairs(catalog())do if q==""or lower(e.name):find(q,1,true)or lower(e.id):find(q,1,true)then out[#out+1]={id=e.id,name=e.name,kind=e.kind,rarity=e.rarity,image=e.image,previewImage=e.previewImage,category=e.category,editable=e.editable}end end;return out end
     function api.equip(id,kind)assert(alive,"The effects preview is closed.");assert(kind=="Effect","Equip category must be Effect.");local e=find(id);assert(e,"Unsupported effect: "..tostring(id));if library and library.select then library.select(e.id) end;generation=generation+1;local token=generation;selected=e.id;sourceErrors[e.id]=nil;ensureWatchers();clearApplied();local ok,msg=apply();if not alive or token~=generation then ok=false;msg="Effect application was cancelled." end;lastApplyError=ok and "" or msg;if onStatus then pcall(onStatus,msg)end;return ok and msg or "Selected "..e.name.."; unavailable locally: "..msg end
     function api.reloadLibrary()catalogCache=nil;catalogIds={};catalog()end
+    function api.rename(id,name)
+        assert(alive and library and library.rename,"The saved effect library is unavailable.")
+        local entry=library.rename(id,name)
+        catalogCache=nil;catalogIds={}
+        return "Renamed saved effect to: "..entry.name
+    end
+    function api.remove(id)
+        assert(alive and library and library.remove,"The saved effect library is unavailable.")
+        local entry=library.remove(id)
+        local wasSelected=selected==entry.id
+        catalogCache=nil;catalogIds={};collectedIds[entry.id]=nil;sourceCache[entry.id]=nil;sourceErrors[entry.id]=nil;sourceNotes[entry.id]=nil
+        if wasSelected then
+            generation=generation+1;selected=nil;clearApplied();disconnectAll();lastApplyError=""
+        end
+        return "Deleted saved effect: "..entry.name
+    end
     function api.collectOriginals()assert(alive,"The effects preview is closed.");ensureWatchers()end
     function api.getEquipped()return{Effect=selected}end
     function api.restore()if alive and library and library.select then library.select(nil) end;generation=generation+1;selected=nil;clearApplied();disconnectAll();lastApplyError="";return"Restored local MM2 effects."end

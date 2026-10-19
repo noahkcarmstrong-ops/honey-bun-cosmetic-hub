@@ -328,6 +328,11 @@ return function(playerGui,catalog,onStatus,mode)
     local function updateSideSlots(equipped)
         for kind,slot in pairs(sideSlots) do
             local id=equipped[kind]
+            if not id then
+                for _,object in ipairs(texts(slot)) do
+                    for key,value in pairs(sideSnapshots[object] or {}) do pcall(function()object[key]=value end) end
+                end
+            end
             local entry
             if id then
                 for _,candidate in ipairs(catalog.list(kind) or {}) do if candidate.id==id then entry=candidate;break end end
@@ -375,7 +380,9 @@ return function(playerGui,catalog,onStatus,mode)
     local savedCardConnections,savedLayouts={},{ }
     local savedGrids={}
     local savedRoot
+    local openOptions
     local function clearSaved()
+        openOptions=nil
         disconnect(savedConnections);savedConnections={}
         for _,connectionsForCard in pairs(savedCardConnections) do disconnect(connectionsForCard) end
         savedCardConnections={}
@@ -463,7 +470,7 @@ return function(playerGui,catalog,onStatus,mode)
         end
     end
     local function savedMetadataFor(entry)
-        return {id=entry.id,kind=entry.kind,category=entryCategory(entry),name=entry.name,image=entry.image,previewImage=entry.previewImage,rarity=entry.rarity,
+        return {id=entry.id,kind=entry.kind,category=entryCategory(entry),name=entry.name,image=entry.image,previewImage=entry.previewImage,editable=entry.editable,rarity=entry.rarity,
             rarityColor=entry.rarityColor,sortOrder=entry.sortOrder,rarityOrder=entry.rarityOrder,chroma=entry.chroma}
     end
     local function sameSavedMetadata(a,b)
@@ -714,23 +721,59 @@ return function(playerGui,catalog,onStatus,mode)
                         end
                         local click=overlay(card)
                         savedCardConnections[id]={click.Activated:Connect(function()
+                            if openOptions then openOptions.Visible=false;openOptions=nil end
                             local good,result=pcall(catalog.equip or catalog.preview,entry.id,entry.kind)
                             status(good and (result or "Local item selected.") or ("Could not equip locally: "..tostring(result)))
                             if good then local selection=catalog.getEquipped and catalog.getEquipped() or {};savedSelection(selection);updateSideSlots(selection) end
                         end)}
-                        if catalog.remove then
-                            local remove=Instance.new("TextButton")
-                            remove.Name="HoneyBunDeleteSaved";remove.Text="Delete"
-                            remove.Size=UDim2.fromScale(0.46,0.19);remove.Position=UDim2.fromScale(0.54,0.62)
-                            remove.ZIndex=click.ZIndex+1;remove.TextScaled=true
-                            remove.BackgroundColor3=Color3.fromRGB(110,30,30);remove.TextColor3=Color3.fromRGB(255,255,255)
-                            remove.Parent=card
-                            savedCardConnections[id][#savedCardConnections[id]+1]=remove.Activated:Connect(function()
-                                if remove.Text~="Confirm?" then remove.Text="Confirm?";return end
-                                local good,result=pcall(catalog.remove,entry.id)
-                                if good then renderSaved() else remove.Text="Delete" end
-                                status(good and (result or "Saved weapon deleted.") or ("Could not delete saved weapon: "..tostring(result)))
+                        if catalog.remove and (not effects or entry.editable) then
+                            local menu=Instance.new("Frame");menu.Name="HoneyBunSavedOptionsMenu";menu.Visible=false;menu.Active=true
+                            menu.Size=UDim2.fromScale(1,1);menu.BackgroundColor3=Color3.fromRGB(16,17,21);menu.BackgroundTransparency=0.12
+                            menu.BorderSizePixel=0;menu.ZIndex=click.ZIndex+1;menu.Parent=card
+                            local function bind(button,callback) savedCardConnections[id][#savedCardConnections[id]+1]=button.Activated:Connect(callback) end
+                            local function option(name,text,y)
+                                local o=Instance.new("TextButton");o.Name=name;o.Text=text;o.TextScaled=true
+                                o.Size=UDim2.fromScale(0.9,0.2);o.Position=UDim2.fromScale(0.05,y);o.BackgroundTransparency=1
+                                o.TextColor3=Color3.fromRGB(245,245,250);o.ZIndex=click.ZIndex+2;o.Parent=menu;return o
+                            end
+                            local rename=option("HoneyBunRenameSaved","Rename",0.32)
+                            local remove=option("HoneyBunDeleteSaved","Delete",0.56)
+                            local field=Instance.new("TextBox");field.Name="HoneyBunSavedName";field.Text=entry.name;field.ClearTextOnFocus=false
+                            field.Size=UDim2.fromScale(0.9,0.22);field.Position=UDim2.fromScale(0.05,0.28);field.TextScaled=true
+                            field.TextColor3=Color3.fromRGB(245,245,250);field.BackgroundColor3=Color3.fromRGB(35,36,40)
+                            field.ZIndex=click.ZIndex+2;field.Visible=false;field.Parent=menu
+                            local save=option("HoneyBunSaveName","Save",0.55)
+                            local cancel=option("HoneyBunCancelSaved","Cancel",0.77)
+                            local function reset()
+                                rename.Visible=catalog.rename~=nil;remove.Visible=true;remove.Text="Delete"
+                                field.Visible=false;save.Visible=false;cancel.Visible=false;field.Text=entry.name
+                            end
+                            bind(rename,function()
+                                rename.Visible=false;remove.Visible=false;field.Visible=true;save.Visible=true;cancel.Visible=true
+                                pcall(function()field:CaptureFocus()end)
                             end)
+                            bind(save,function()
+                                local good,result=pcall(catalog.rename,entry.id,field.Text)
+                                if good then menu.Visible=false;openOptions=nil;renderSaved() end
+                                status(good and (result or "Saved name updated.") or ("Could not rename: "..tostring(result)))
+                            end)
+                            bind(cancel,function()reset();menu.Visible=false;openOptions=nil end)
+                            bind(remove,function()
+                                if remove.Text~="Confirm delete" then remove.Text="Confirm delete";rename.Visible=false;cancel.Visible=true;return end
+                                local good,result=pcall(catalog.remove,entry.id)
+                                if good then openOptions=nil;renderSaved() else reset() end
+                                status(good and (result or "Saved item deleted.") or ("Could not delete: "..tostring(result)))
+                            end)
+                            local cog=Instance.new("TextButton");cog.Name="HoneyBunSavedOptions";cog.Text="\226\154\153"
+                            cog.Size=UDim2.fromOffset(30,30);cog.Position=UDim2.new(1,-31,0,1)
+                            cog.BackgroundTransparency=1;cog.TextColor3=Color3.fromRGB(205,208,218);cog.TextSize=20
+                            pcall(function()cog.Font=Enum.Font.Gotham end)
+                            cog.ZIndex=click.ZIndex+3;cog.Parent=card
+                            bind(cog,function()
+                                local show=not menu.Visible;if openOptions then openOptions.Visible=false end
+                                reset();menu.Visible=show;openOptions=show and menu or nil
+                            end)
+                            reset()
                         end
                         card.Parent=target
                     end

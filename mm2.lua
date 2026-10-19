@@ -104,7 +104,7 @@ return function(game, injectedRequire, gunLibrary)
         categoryName=field(def,"Category") or categoryName
         local rarityColor,rarityOrder=rarityStyle(def)
         local chroma=field(def,"Chroma")
-        return {id=e.id,name=e.catalog and e.catalog.Name or e.name,kind=e.kind,rarity=rarity,
+        return {id=e.id,name=e.customName and e.name or (e.catalog and e.catalog.Name or e.name),kind=e.kind,rarity=rarity,
             image=field(def,"Image") or field(def,"ImageId") or field(def,"ImageID"),
             visual=field(e.definition,"PortableGun") and e.definition or nil,
             category=categoryName,year=year,event=event,rarityColor=rarityColor,rarityOrder=rarityOrder,
@@ -688,6 +688,11 @@ return function(game, injectedRequire, gunLibrary)
     end
     function api.savedWeapons(kind) return gunLibrary and gunLibrary.list(kind) or {} end
     function api.savedGuns() return api.savedWeapons("Gun") end
+    function api.renameSavedWeapon(id,name)
+        assert(alive and gunLibrary,"The saved weapon library is unavailable.")
+        local entry=gunLibrary.rename(id,name)
+        return "Renamed saved "..entry.kind:lower().." to: "..entry.name
+    end
     function api.removeSavedWeapon(id)
         assert(alive and gunLibrary,"The saved weapon library is unavailable.")
         local entry=gunLibrary.remove(id)
@@ -702,7 +707,7 @@ return function(game, injectedRequire, gunLibrary)
         for tool,old in pairs(toolPresentations) do
             if old.id==id then restoreToolPresentation(tool,old);toolPresentations[tool]=nil end
         end
-        return "Deleted saved "..kind:lower()..": "..(entry.catalog and entry.catalog.Name or entry.name)
+        return "Deleted saved "..kind:lower()..": "..(entry.customName and entry.name or (entry.catalog and entry.catalog.Name or entry.name))
     end
     local function captureGunMount(source,character,held)
         if not source then return nil end

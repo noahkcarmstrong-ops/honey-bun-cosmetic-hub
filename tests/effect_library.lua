@@ -131,12 +131,24 @@ local duplicateRaw=http:JSONEncode({version=1,selected='Second',entries={
     {id='First',name='First label',records={{class='ParticleEmitter',name='A',values={Texture='rbxassetid://preview'}}}},
     {id='Second',name='Second label',records={{class='ParticleEmitter',name='B',values={Texture='rbxassetid://preview'}}}}
 }})
-local duplicate=create(game,gui(duplicateRaw));local duplicateEntry=duplicate.list()[1]
+local duplicateGui=gui(duplicateRaw)
+local duplicate=create(game,duplicateGui);local duplicateEntry=duplicate.list()[1]
 assert(#duplicate.list()==1 and duplicateEntry.id=='First','Portable duplicate visuals collapse by exact visual data')
 assert(duplicate.getSelected()=='First','Selection follows the retained duplicate record')
 assert(duplicateEntry.image==nil and duplicateEntry.previewImage=='rbxassetid://preview' and duplicateEntry.preview.label=='Saved particle texture preview','Unknown effect exposes a labeled particle preview instead of an official icon')
+assert(not pcall(duplicate.rename,'First','   '),'Blank effect names are rejected')
+duplicate.rename('First','  My sparks  ')
+local renamedRaw=duplicateGui:GetAttribute('HoneyBunCosmeticEffects')
 duplicate.destroy()
+local renamed=create(game,gui(renamedRaw));assert(renamed.list()[1].name=='My sparks' and renamed.list()[1].editable,'Effect custom names persist after reload');renamed.destroy()
 -- Saved files cannot introduce executable classes.
 local bad=http:JSONEncode({version=1,entries={{id='Bad',name='Bad',records={{class='Script',name='DoNotRun',values={}}}}}})
 local invalid=create(game,gui(bad));assert(#invalid.list()==0,'Invalid executable records are rejected');invalid.destroy()
+local removableRaw=http:JSONEncode({version=1,selected='Removable',entries={{id='Removable',name='Removable',records={{class='ParticleEmitter',name='Saved',values={}}}}}})
+local removable=create(game,gui(removableRaw));local removableSource=removable.list()[1].definition.Effect
+assert(removable.getSelected()=='Removable','Selected effect fixture loads')
+local removed=removable.remove('Removable')
+assert(removed.id=='Removable' and removable.getSelected()==nil and removableSource.destroyed,'Removing selected effect clears selection and destroys its template')
+assert(#removable.list()==0,'Removed effect disappears from the saved library')
+removable.destroy()
 print('Player effect capture, deduplication, original preservation, script exclusion, portable properties, trail references, rejoin and back-knife playback passed.')

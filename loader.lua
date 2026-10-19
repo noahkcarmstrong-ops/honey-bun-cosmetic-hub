@@ -419,7 +419,7 @@ local function savedNativeMM2()
     local backend=mm2()
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-cosmetic-hub/"..moduleRevision.."/native_inventory.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
-    local savedCatalog={list=backend.savedInventory,equip=backend.equip,getEquipped=backend.getEquipped,remove=backend.removeSavedWeapon}
+    local savedCatalog={list=backend.savedInventory,equip=backend.equip,getEquipped=backend.getEquipped,remove=backend.removeSavedWeapon,rename=backend.renameSavedWeapon}
     mm2SavedNativeAPI=chunk()(playerGui,savedCatalog,function(message)
         if alive and statusLabel then statusLabel.Text=message end
     end,"saved")
@@ -512,7 +512,7 @@ render=function()
                 return table.concat(messages,"\n")
             end) end)
             caption("YOUR SAVED WEAPONS",24)
-            caption("Open MM2's Weapons inventory → Saved Weapons. All copied guns and knives stay together there. Click a card to equip, or Delete then Confirm? to remove your saved copy.",64)
+            caption("Open MM2's Weapons inventory → Saved Weapons. All copied guns and knives stay together there. Click a card to equip. Use its cog menu to rename or delete your saved copy.",64)
             button("Refresh saved weapons in MM2 inventory",function() action(function()
                 updateWeapons()
                 return "Open MM2's Weapons inventory and select Saved Weapons. All your copied guns and knives are there."
