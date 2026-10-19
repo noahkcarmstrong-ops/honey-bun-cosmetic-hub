@@ -236,3 +236,50 @@ local closingRoot=node('Folder','ClosingRoot');node('ParticleEmitter','Visual',c
 game.GetObjects=function()closingApi.destroy();return{closingRoot}end
 assert(closingApi.equip('AssetOnly','Effect'):find('cancelled')and closingRoot.destroyed,'Closing the hub during asset loading destroys late results')
 print('MM2 effects catalog, particle and trail cloning, script stripping, source matching, reset, late targets, cancellation and cleanup passed.')
+
+-- Every live catalog entry gets an explicitly labeled fallback if originals are absent.
+Vector2={new=function(x,y)return{X=x,Y=y}end}
+Vector3={new=function(x,y,z)return{X=x,Y=y,Z=z}end}
+NumberRange={new=function(a,b)return{Min=a,Max=b or a}end}
+NumberSequenceKeypoint={new=function(t,v)return{Time=t,Value=v}end}
+NumberSequence={new=function(a,b)return{a,b}end}
+ColorSequenceKeypoint={new=function(t,v)return{Time=t,Value=v}end}
+ColorSequence={new=function(a,b)return{a,b}end}
+local recreate=dofile('effect_recreations.lua')
+local allIds={'Abduction2025','Aquatic2025','Arctic2022','Aurora2021','Aurora2024','Bats','Bats2020','Bats2024','Bitsplosion','Blizzard','Bloom2025','BlueFire','Bokeh2025','Bubbly26','Burn','Candies','CandyCane','CandyEffect2022','CandyEffect2023','Carrots2025','Cats2025','CauldronEffect26','Chilly2022','Coal2025','CommonOrnamentEffect','Confetti2025','Cursed2024','Darkfire','Darkswirl','Darkwave26','Doge','Dual','EasterGlow2023','Electric','Elitify','Ethereal','Fireworks2023','Flameburst26','FlamingoEffect2025','Floral2023','Flowers2024','Flowerwood','Frost2025','FrostbiteEffect','Frostfire2020','GearStorm','Ghostify','Ghostly26','Ghosts2020','Ghosts2023','Ghosts2024','Gifts2024','GingerbreadEffect','Glisten2024','Glowy2023','GreenFire','HallowsBlaze','Heartify','Hearts26','Heatwave2025','IceMagic','Jack26','Jellyfish2024','Jingle2020','Knifeception','Leaves2025','LegendaryOrnamentEffect','Lights2025','Matrix2024','Minty2022','Money','Musical','Nightlife26','Nightsky2025','NorthernLights','Ocean26','Petals','Phantom','PhantomEffect2022','PinkFire','PlasmaEffect','Poison','Pumpkin','Pumpkin2022','Pumpkins26','Radioactive','Rainbow','RainbowEffect','Rainbows2025','RareOrnamentEffect','Retro2025','Smolder2026','Snowballs2025','Snowfall2020','Snowflake2021','Snowflakes','Snowflakes2','Snowstorm2024','Snowstorm2025','Starry2021','Starry2024','Stars2023','StickersX2022','Strawberries26','Sunbeams2024','SweetEffect26','Swirls2023','SynthEffect2025','Toxic2022','Traveler2023','Treats2025','UFOs2025','UncommonOrnamentEffect','Vampire2020','Vampiric2024','VersusEffect2022','VoidRbxEffect','Water2023','Wraith2024','Wraithfire','Wrapper','XenoEffect','XmasGlow2025','Zombie26'}
+local savedDefinitions=module.Data;module.Data={}
+for _,id in ipairs(allIds)do module.Data[id]={Name=id}end
+module.Data.Bats.Effect=attachment
+module.Data.BlueFire.KnifeModule=473588389
+game.GetObjects=function()return{}end
+local complete=dofile('mm2_effects.lua')(game,nil,recreate)
+assert(#complete.list('Effect')==124,'All 124 effects remain in the catalog')
+for _,id in ipairs(allIds)do
+    local message=complete.equip(id,'Effect')
+    assert(message:find('Equipped effect',1,true),'Visual preview must attach for '..id..': '..message)
+    if id=='Bats'then assert(message:find('original visuals',1,true),'Available original always wins')
+    else assert(message:find('local recreation',1,true),'Fallbacks never claim to be originals: '..id)end
+    assert(#lateRef.Value:GetChildren()>0,'Back knife receives each preview: '..id)
+    assert(count(lateRef.Value,'Script')==0 and count(lateRef.Value,'LocalScript')==0,'Recreations execute no scripts')
+    local copy=first(lateRef.Value,'ParticleEmitter');assert(copy and copy.Rate>0 and copy.Enabled,'Every fallback emits while the knife is on the back')
+end
+-- An original that contains an unusable Trail must also fall back, not stay invisible.
+module.Data.BrokenOriginal={Name='Broken Original',Effect=broken}
+local playable=dofile('mm2_effects.lua')(game,nil,recreate)
+assert(playable.equip('BrokenOriginal','Effect'):find('local recreation',1,true),'Unplayable original gets a labeled fallback')
+assert(first(lateRef.Value,'ParticleEmitter'),'Fallback for an incompatible original reaches the back knife')
+playable.destroy()
+assert(complete.report():find('local recreation:',1,true),'Report discloses approximate fallback theme')
+complete.destroy();assert(#lateRef.Value:GetChildren()==0,'All fallback visuals are removed on close')
+-- A newly arriving original replaces the recreation automatically.
+module.Data.FutureOriginal={Name='Future Original'}
+task={defer=function(fn)fn()end}
+local upgraded=dofile('mm2_effects.lua')(game,nil,recreate)
+assert(upgraded.equip('FutureOriginal','Effect'):find('local recreation',1,true))
+local arriving=node('Folder','FutureOriginal');local realParticle=node('ParticleEmitter','RealParticle',arriving);realParticle.Rate=0
+arriving.Parent=world
+assert(upgraded.report():find('original loaded template (automatically collected)',1,true),'Streaming originals replace cached recreations')
+local actual=first(lateRef.Value,'ParticleEmitter');assert(actual and actual.Name=='RealParticle','Original visuals replace the approximate preview')
+upgraded.destroy();task=nil
+module.Data=savedDefinitions
+print('All 124 original-first effect selections, labeled fallback previews and cleanup passed.')
