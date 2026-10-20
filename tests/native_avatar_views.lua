@@ -41,6 +41,18 @@ label.Text="@Original";assert(module.isAvatarImage(peopleThumb,player,{name=""})
 label.Text="@Original";assert(module.isAvatarImage(peopleThumb,player,{name="LocalAlias"}),"real username remains owned while alias rewrite is pending");label.Text="@LocalAlias"
 assert(not module.isAvatarImage(otherPeopleThumb,player,{name="LocalAlias"}),"another People row is excluded")
 assert(not module.isAvatarImage(static,player,{name="LocalAlias"}),"static icons are excluded")
+local profile=add(core,"Frame","Profile");local container=add(profile,"Frame","Container")
+local characterIcon=add(container,"ImageLabel","CharacterIcon");characterIcon.Image="https://tr.rbxcdn.com/bust-thumbnail/image?userId=7446730&width=150"
+local profileName=add(profile,"TextLabel","Name");profileName.Text="Original (You)"
+local otherProfile=add(core,"Frame","Profile");local otherIcon=add(otherProfile,"ImageLabel","CharacterIcon");otherIcon.Image="https://tr.rbxcdn.com/bust-thumbnail/image?userId=999&width=150"
+local otherName=add(otherProfile,"TextLabel","Name");otherName.Text="Nikilis1848960"
+assert(module.isAvatarImage(characterIcon,{Name="Original",DisplayName="Original",UserId=7446730},{name="LocalAlias"}),"own Roblox CDN profile thumbnail is recognized")
+assert(not module.isAvatarImage(otherIcon,{Name="Original",DisplayName="Original",UserId=7446730},{name="LocalAlias"}),"same CDN thumbnail in another profile is excluded")
+local avatarAshx=add(core,"ImageLabel","Avatar");avatarAshx.Image="http://www.roblox.com/Thumbs/Avatar.ashx?userId=7446730&x=1"
+local wrongAshx=add(core,"ImageLabel","Avatar");wrongAshx.Image="http://evil.example.com/Thumbs/Avatar.ashx?userId=7446730&x=1"
+assert(module.isAvatarImage(avatarAshx,{Name="Original",UserId=7446730},{}),"legacy Roblox avatar thumbnail is recognized")
+assert(not module.isAvatarImage(wrongAshx,{Name="Original",UserId=7446730},{}),"untrusted thumbnail host is excluded")
+characterIcon.Image="";otherIcon.Image="";avatarAshx.Image="";wrongAshx.Image=""
 local captures, shows, shownData=0,0,nil
 local api=module.create(player,function() return {capture=function()captures=captures+1;return {live=true,serial=captures}end,show=function(frame,data)shows=shows+1;shownData=data;frame.CurrentCamera={};return true end} end)
 api.update({enabled=true,name="LocalAlias",snapshot=nil})
