@@ -2,6 +2,8 @@
 local HttpService=game:GetService("HttpService")
 local MarketplaceService=game:GetService("MarketplaceService")
 local PORT=38261
+local HTTP_POLL_SECONDS=0.25
+local WEBSOCKET_CHECK_SECONDS=5
 local accessoryTypes={[8]=true,[41]=true,[42]=true,[43]=true,[44]=true,[45]=true,[46]=true,[47]=true,[64]=true,[65]=true,[66]=true,[67]=true,[68]=true,[69]=true,[70]=true,[71]=true,[72]=true,[76]=true,[77]=true}
 local animationTypes={[48]="ClimbAnimation",[50]="FallAnimation",[51]="IdleAnimation",[52]="JumpAnimation",[53]="RunAnimation",[54]="SwimAnimation",[55]="WalkAnimation",[56]="PoseAnimation"}
 local function safeId(v)return type(v)=="number" and v==v and v>0 and v%1==0 and v<9007199254740992 end
@@ -29,6 +31,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local incoming,pumping={},false
     local retryCommand,retryAt=nil,0
     local imageValue,imageAsset,imageUrl,imageSerial=nil,nil,nil,0
+    local appearanceConnections={}
+    local characterConnections={}
+    local instanceConnections={}
+    local snapshotPending=false
+    local snapshotScheduleId=0
     local nextSocketPing=0
     local loadingImageUrl
     local lastDefinition,imageAssetDefinition
@@ -337,6 +344,8 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         return call("POST","/v1/"..(channel=="game" and "game" or channel).."/"..player.UserId,token,value)
     end
     local function publishSnapshot()
+        snapshotScheduleId=snapshotScheduleId+1
+        snapshotPending=false
         local made,value=pcall(snapshot)
         if made then
             if commandSnapshotPending then
@@ -350,6 +359,111 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         end
         updateViews()
     end
+    local scheduleSnapshot
+    local function disconnectAll(connections)
+        for _,connection in ipairs(connections)do pcall(function()connection:Disconnect()end)end
+        table.clear(connections)
+    end
+    local function connectSignal(signal,connections,callback)
+        if not signal then return end
+        local ok,connection=pcall(function()return signal:Connect(callback)end)
+        if ok and connection then connections[#connections+1]=connection end
+    end
+    local function disconnectCharacterWatchers()
+        disconnectAll(characterConnections)
+        for _,connections in pairs(instanceConnections)do disconnectAll(connections)end
+        instanceConnections={}
+    end
+    local function watchProperty(instance,property)
+        local ok,signal=pcall(function()return instance:GetPropertyChangedSignal(property)end)
+        if ok then connectSignal(signal,instanceConnections[instance],scheduleSnapshot)end
+    end
+    scheduleSnapshot=function()
+        if not connected or snapshotPending then return end
+        snapshotPending=true
+        local mine=generation
+        snapshotScheduleId=snapshotScheduleId+1
+        local scheduleId=snapshotScheduleId
+        task.delay(0.15,function()
+            if mine~=generation or scheduleId~=snapshotScheduleId then return end
+            snapshotPending=false
+            if connected then publishSnapshot()end
+        end)
+    end
+    local function watchAppearanceInstance(instance)
+        if instanceConnections[instance]then return end
+        instanceConnections[instance]={}
+        local okHumanoid,isHumanoid=pcall(function()return instance:IsA("Humanoid")end)
+        if okHumanoid and isHumanoid then
+            local ok,signal=pcall(function()return instance.ApplyDescriptionFinished end)
+            if ok then connectSignal(signal,instanceConnections[instance],scheduleSnapshot)end
+        end
+        local okBodyColors,isBodyColors=pcall(function()return instance:IsA("BodyColors")end)
+        if okBodyColors and isBodyColors then
+            for _,property in ipairs({"HeadColor3","TorsoColor3","LeftArmColor3","RightArmColor3","LeftLegColor3","RightLegColor3"})do
+                watchProperty(instance,property)
+            end
+            return
+        end
+        local okPart,isPart=pcall(function()return instance:IsA("BasePart")end)
+        if okPart and isPart then watchProperty(instance,"Color")end
+        local propertyByClass={
+            Shirt={"ShirtTemplate"},Pants={"PantsTemplate"},ShirtGraphic={"Graphic"},
+            MeshPart={"MeshId","TextureID"},SpecialMesh={"MeshId","TextureId","VertexColor"},
+            Decal={"Texture"},CharacterMesh={"MeshId","BaseTextureId","OverlayTextureId"},
+            SurfaceAppearance={"ColorMap"},
+        }
+        for className,properties in pairs(propertyByClass)do
+            local ok,isClass=pcall(function()return instance:IsA(className)end)
+            if ok and isClass then
+                for _,property in ipairs(properties)do watchProperty(instance,property)end
+            end
+        end
+    end
+    local function forgetAppearanceSubtree(root)
+        for instance,connections in pairs(instanceConnections)do
+            local ok,inside=pcall(function()return instance==root or instance:IsDescendantOf(root)end)
+            if ok and inside then
+                disconnectAll(connections)
+                instanceConnections[instance]=nil
+            end
+        end
+    end
+    local function bindCharacter(character)
+        disconnectCharacterWatchers()
+        if not character then return end
+        connectSignal(character.DescendantAdded,characterConnections,function(instance)
+            watchAppearanceInstance(instance)
+            scheduleSnapshot()
+        end)
+        connectSignal(character.DescendantRemoving,characterConnections,function(instance)
+            forgetAppearanceSubtree(instance)
+            scheduleSnapshot()
+        end)
+        for _,instance in ipairs(character:GetDescendants())do watchAppearanceInstance(instance)end
+        scheduleSnapshot()
+    end
+    local function startAppearanceWatchers()
+        disconnectAll(appearanceConnections)
+        disconnectCharacterWatchers()
+        snapshotPending=false
+        snapshotScheduleId=snapshotScheduleId+1
+        local playerGui=player:FindFirstChildOfClass("PlayerGui")
+        if playerGui then
+            connectSignal(playerGui.AttributeChanged,appearanceConnections,function(attribute)
+                if type(attribute)=="string" and attribute:find("CosmeticUI",1,true)then scheduleSnapshot()end
+            end)
+        end
+        connectSignal(player.CharacterAdded,appearanceConnections,bindCharacter)
+        connectSignal(player.CharacterRemoving,appearanceConnections,function()bindCharacter(nil)end)
+        bindCharacter(player.Character)
+    end
+    local function stopAppearanceWatchers()
+        disconnectAll(appearanceConnections)
+        disconnectCharacterWatchers()
+        snapshotPending=false
+        snapshotScheduleId=snapshotScheduleId+1
+    end
     local function pump()
         if pumping then return end
         pumping=true;local mine=generation
@@ -357,6 +471,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             while connected and generation==mine and next(incoming)do
                 local batch=incoming;incoming={}
                 if batch.names then applyNameState(batch.names.value)end
+                local previousRevision=lastRevision
                 if batch.browser and batch.browser.value and batch.browser.value.revision then
                     local command=batch.browser.value
                     applyCommand(command)
@@ -366,7 +481,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                     local value=batch.image.value
                     task.spawn(function()if generation==mine and connected then applyImage(value)end end)
                 end
-                publishSnapshot()
+                if lastRevision~=previousRevision then publishSnapshot()end
             end
         end)
         pumping=false
@@ -392,6 +507,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             if value.type=="ready" then
                 socketReady=true;lastJson=nil;nextSocketPing=0
                 if value.instanceId~=api.instanceId then lastRevision=0;lastNameState=nil;api.instanceId=value.instanceId end
+                scheduleSnapshot()
                 status("Browser connected via WebSocket.")
             elseif value.type=="state" and (value.channel=="browser" or value.channel=="names" or value.channel=="image") then
                 incoming[value.channel]={value=value.value};task.spawn(pump)
@@ -414,6 +530,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 local relay=call("GET","/v1/status",token)
                 if relay and relay.instanceId and relay.instanceId~=api.instanceId then
                     lastRevision=0;lastJson=nil;lastNameState=nil;api.instanceId=relay.instanceId
+                    scheduleSnapshot()
                 end
                 local command=call("GET","/v1/browser/"..player.UserId,token)
                 local names=call("GET","/v1/names/"..player.UserId,token)
@@ -428,10 +545,9 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if generation~=mine or not connected then return end
                 if retryCommand and os.clock()>=retryAt and not incoming.browser then incoming.browser={value=retryCommand};retryCommand=nil end
                 pump()
-                if not pumping then publishSnapshot()end
             end)
             if not ok then status("Browser relay: "..tostring(err):gsub("^.-:%d+:%s*",""))end
-            task.wait(0.25)
+            task.wait(socketReady and WEBSOCKET_CHECK_SECONDS or HTTP_POLL_SECONDS)
         end
     end
     function api.connect(code)
@@ -442,9 +558,10 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         assert(validToken(code),"Open the Larpblox app to connect.")
         local relay=call("GET","/v1/status",code);if relay and relay.instanceId and relay.instanceId~=api.instanceId then lastRevision=0;lastNameState=nil;api.instanceId=relay.instanceId end
         closeSocket();incoming={};retryCommand=nil;generation=generation+1;token=code;connected=true;lastJson=nil;save(code);status("Browser connected.")
+        startAppearanceWatchers()
         task.spawn(loop);return true
     end
-    function api.disconnect()generation=generation+1;closeSocket();incoming={};retryCommand=nil;connected=false;token=nil;lastJson=nil;lastNameState=nil;applyNameState(nil);if getViews then getViews().update({enabled=false})end;status("Browser disconnected.")end
+    function api.disconnect()generation=generation+1;stopAppearanceWatchers();closeSocket();incoming={};retryCommand=nil;connected=false;token=nil;lastJson=nil;lastNameState=nil;applyNameState(nil);if getViews then getViews().update({enabled=false})end;status("Browser disconnected.")end
     function api.isConnected()return connected end
     function api.status()return connected and (socketReady and "Browser connected via WebSocket." or "Browser connected (HTTP fallback).") or "Browser disconnected."end
     function api.publish()assert(connected,"Connect the browser first.");local value=snapshot();local encoded=HttpService:JSONEncode(value);if encoded~=lastJson then send("game",value);lastJson=encoded end;return value end

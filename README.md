@@ -10,6 +10,8 @@ Run this in your executor:
 loadstring(game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/main/launcher.lua", false))()
 ```
 
+For a selectable branch, use `autoexec.lua` and change its first-line `branch` value. The selected GitHub branch is resolved to one commit for the loader and every module. Refresh reloads that branch rather than switching to main.
+
 ## Local names
 
 > [!NOTE]

@@ -1,6 +1,31 @@
 -- Larpblox: standalone cosmetic menu.
+local launchOptions = ...
+if type(launchOptions) ~= "table" then launchOptions = {} end
+local sourceBranch = launchOptions.branch or "main"
+local function resolveRevision()
+    if launchOptions.readSource then return "local" end
+    if launchOptions.revision then return launchOptions.revision end
+    local http = game:GetService("HttpService")
+    local stamp = tostring(DateTime.now().UnixTimestampMillis)
+    local revision = http:JSONDecode(game:HttpGet(
+        "https://api.github.com/repos/noahkcarmstrong-ops/larpblox/commits/" .. http:UrlEncode(sourceBranch) .. "?refresh=" .. stamp, false))
+    local sha = revision and revision.sha
+    assert(type(sha) == "string" and #sha == 40 and sha:match("^%x+$"), "Could not find the selected Larpblox branch.")
+    return sha
+end
+local function readSource(file, revision)
+    if launchOptions.readSource then return launchOptions.readSource(file) end
+    return game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/" .. revision .. "/" .. file, false)
+end
 local Players = game:GetService("Players")
 local Input = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+assert(RunService:IsClient(), "Run Larpblox from the Roblox client.")
+local localPlayer = Players.LocalPlayer
+while not localPlayer do
+    Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    localPlayer = Players.LocalPlayer
+end
 -- Classic Roblox chrome: blue title bar, pale panels, bordered controls.
 local theme={blue=Color3.fromRGB(0,112,192),blueHover=Color3.fromRGB(0,133,220),
     paper=Color3.fromRGB(240,242,245),ink=Color3.fromRGB(42,48,56),muted=Color3.fromRGB(91,100,110),
@@ -55,7 +80,7 @@ local localNamesAPI
 local accessorySoundsAPI
 local mm2Enabled=false
 local mm2EmotesShown=false
-local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+local playerGui = localPlayer:WaitForChild("PlayerGui")
 for _, name in ipairs({"HoneyBunCosmeticHub"}) do
     local old = playerGui:FindFirstChild(name)
     if old then
@@ -70,13 +95,9 @@ end
 local moduleRevision,persistence,persistenceLabel
 local persistenceNotice="Auto-save: session only. Saved-settings support could not load."
 pcall(function()
-    local stamp=tostring(DateTime.now().UnixTimestampMillis)
-    local revision=game:GetService("HttpService"):JSONDecode(game:HttpGet(
-        "https://api.github.com/repos/noahkcarmstrong-ops/larpblox/commits/main?refresh="..stamp,false))
-    local sha=revision and revision.sha
-    assert(type(sha)=="string" and #sha==40 and sha:match("^%x+$"),"Could not find the latest cosmetic update.")
+    local sha=resolveRevision()
     moduleRevision=sha
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..sha.."/storage.lua",false)
+    local source=readSource("storage.lua", sha)
     local chunk,message=loadstring(source);assert(chunk,message)
     persistence=chunk()(playerGui,Players.LocalPlayer.UserId,function(message)
         if persistenceLabel and persistenceLabel.Parent then persistenceLabel.Text=message end
@@ -141,7 +162,7 @@ if type(customAsset)=="function" and type(writefile)=="function" and moduleRevis
     task.spawn(function()
         pcall(function()
             local file = "Larpblox-logo.png"
-            local bytes = game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/assets/larpblox-logo.png", false)
+            local bytes = readSource("assets/larpblox-logo.png", moduleRevision)
             assert(bytes:sub(1,8)=="\137PNG\13\10\26\10", "Invalid logo image")
             writefile(file, bytes)
             local logo = Instance.new("ImageLabel")
@@ -223,16 +244,12 @@ refresh.Activated:Connect(function()
     refreshing = true
     refresh.Text = "Refreshing..."
     local ok, message = pcall(function()
-        local stamp = tostring(DateTime.now().UnixTimestampMillis)
-        local revisionUrl = "https://api.github.com/repos/noahkcarmstrong-ops/larpblox/commits/main?refresh=" .. stamp
-        local revision = game:GetService("HttpService"):JSONDecode(game:HttpGet(revisionUrl, false))
-        local sha = revision and revision.sha
-        assert(type(sha) == "string" and #sha == 40 and sha:match("^%x+$"), "GitHub did not return a valid update revision")
-        local url = "https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/" .. sha .. "/loader.lua"
-        local source = game:HttpGet(url, false)
+        launchOptions.revision = nil
+        local sha = resolveRevision()
+        local source = readSource("loader.lua", sha)
         local chunk, compileError = loadstring(source)
         assert(chunk, compileError)
-        chunk()
+        chunk({branch=sourceBranch, revision=sha, readSource=launchOptions.readSource})
     end)
     if not ok then
         warn("Larpblox: refresh failed", message)
@@ -410,14 +427,10 @@ local function api()
     if avatarAPI then return avatarAPI end
     local sha=moduleRevision
     if not sha then
-        local stamp=tostring(DateTime.now().UnixTimestampMillis)
-        local revision=game:GetService("HttpService"):JSONDecode(game:HttpGet(
-            "https://api.github.com/repos/noahkcarmstrong-ops/larpblox/commits/main?refresh="..stamp,false))
-        sha=revision and revision.sha
+        sha=resolveRevision()
     end
-    assert(type(sha)=="string" and #sha==40 and sha:match("^%x+$"),"Could not find the latest cosmetic update.")
     moduleRevision=sha
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..sha.."/avatar.lua",false)
+    local source=readSource("avatar.lua", sha)
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Avatar editor failed to load.")
     avatarFactory=create
@@ -431,7 +444,7 @@ local function api()
 end
 local function atmosphere()
     if atmosphereAPI then return atmosphereAPI end
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/atmosphere.lua",false)
+    local source=readSource("atmosphere.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     atmosphereAPI=chunk()(game)
     return atmosphereAPI
@@ -439,7 +452,7 @@ end
 local function motion()
     if motionAPI then return motionAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/motion.lua",false)
+    local source=readSource("motion.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     motionAPI=chunk()(Players.LocalPlayer,function(message)
         if not alive then return end
@@ -451,7 +464,7 @@ end
 local function animations()
     if animationAPI then return animationAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/animations.lua",false)
+    local source=readSource("animations.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     animationFactory=chunk()
     animationAPI=animationFactory(Players.LocalPlayer,function(message)
@@ -464,7 +477,7 @@ end
 local function clothes()
     if clothesAPI then return clothesAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/clothes.lua",false)
+    local source=readSource("clothes.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     clothesFactory=chunk()
     clothesAPI=clothesFactory(Players.LocalPlayer,function(message)
@@ -477,7 +490,7 @@ end
 local function browserOutfit()
     if browserOutfitAPI then return browserOutfitAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/browser_outfit.lua",false)
+    local source=readSource("browser_outfit.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     browserOutfitAPI=chunk()(Players.LocalPlayer,function() return api() end,function() return clothes() end,function(message)
         if not alive then return end
@@ -489,7 +502,7 @@ end
 local function localNames()
     if localNamesAPI then return localNamesAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/local_names.lua",false)
+    local source=readSource("local_names.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     nameFactory=chunk()
     localNamesAPI=nameFactory(Players.LocalPlayer,playerGui)
@@ -498,19 +511,19 @@ end
 local gameBrowserSync
 local function presentationFactories()
     if not previewFactory then
-        local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/previews.lua",false)
+        local source=readSource("previews.lua", moduleRevision)
         local chunk,message=loadstring(source);assert(chunk,message);previewFactory=chunk()
     end
     if not portraitFactory then
-        local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_avatar_views.lua",false)
+        local source=readSource("native_avatar_views.lua", moduleRevision)
         local chunk,message=loadstring(source);assert(chunk,message);portraitFactory=chunk()
     end
 end
 local function sharedInspection()
     if inspectionRouter then return inspectionRouter end
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inspection.lua",false)
+    local source=readSource("native_inspection.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message);local inspection=chunk()
-    source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inspection_router.lua",false)
+    source=readSource("native_inspection_router.lua", moduleRevision)
     chunk,message=loadstring(source);assert(chunk,message)
     inspectionRouter=chunk()(Players.LocalPlayer,inspection.create)
     return inspectionRouter
@@ -528,7 +541,7 @@ end
 local function sharedLarp()
     if sharedLarpAPI then return sharedLarpAPI end
     api();clothes();animations();localNames()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/shared_larp.lua",false)
+    local source=readSource("shared_larp.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Shared Larp sync failed to load.")
     sharedLarpAPI=create(Players.LocalPlayer,function()return gameBrowserSync().snapshot()end,function()return localNames().getSettings()end,
@@ -576,7 +589,7 @@ gameBrowserSync=function()
     api();clothes()
     local names=localNames()
     local views=nativeViews()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/game_browser_sync.lua",false)
+    local source=readSource("game_browser_sync.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Game browser sync failed to load.")
     gameBrowserSyncAPI=select(1,create(Players.LocalPlayer,function()return api()end,function()return clothes()end,function()return alive end,function(message)
@@ -640,7 +653,7 @@ end
 local function hatSounds()
     if accessorySoundsAPI then return accessorySoundsAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/accessory_sounds.lua",false)
+    local source=readSource("accessory_sounds.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     accessorySoundsAPI=chunk()(Players.LocalPlayer,playerGui)
     return accessorySoundsAPI
@@ -648,7 +661,7 @@ end
 local function customCrosshair()
     assert(isMM2,"Custom sheriff crosshairs are available in MM2.")
     if crosshairAPI then return crosshairAPI end
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/crosshair.lua",false)
+    local source=readSource("crosshair.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     crosshairAPI=chunk()(game)
     crosshairAPI.setSize(crosshairSize)
@@ -658,10 +671,10 @@ local function mm2()
     assert(isMM2,"This menu is only available in MM2.")
     if mm2API then return mm2API end
     api()
-    local librarySource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/gun_library.lua",false)
+    local librarySource=readSource("gun_library.lua", moduleRevision)
     local libraryChunk,libraryError=loadstring(librarySource);assert(libraryChunk,libraryError)
     mm2GunLibraryAPI=libraryChunk()(game,playerGui)
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/mm2.lua",false)
+    local source=readSource("mm2.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     mm2API=chunk()(game,nil,mm2GunLibraryAPI)
     mm2API.setKnifeSide(knifeSide)
@@ -670,7 +683,7 @@ end
 local function nativeMM2()
     if mm2NativeAPI then return mm2NativeAPI end
     local catalog=mm2()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inventory.lua",false)
+    local source=readSource("native_inventory.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     mm2NativeAPI=chunk()(playerGui,catalog,function(message)
         if not alive then return end
@@ -682,11 +695,11 @@ end
 local function savedNativeMM2()
     if mm2SavedNativeAPI then return mm2SavedNativeAPI end
     local backend=mm2()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inventory.lua",false)
+    local source=readSource("native_inventory.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     local function openWeaponEditor(entry,mode)
         if not mm2WeaponEditorAPI then
-            local editorSource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/weapon_editor.lua",false)
+            local editorSource=readSource("weapon_editor.lua", moduleRevision)
             local editorChunk,editorError=loadstring(editorSource);assert(editorChunk,editorError)
             mm2WeaponEditorAPI=editorChunk()(playerGui,{
                 getEditorScene=backend.getWeaponEditorScene,
@@ -708,9 +721,9 @@ local function effectsMM2()
     assert(isMM2,"This menu is only available in MM2.")
     if mm2EffectsAPI then return mm2EffectsAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/mm2_effects.lua",false)
+    local source=readSource("mm2_effects.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
-    local librarySource=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/effect_library.lua",false)
+    local librarySource=readSource("effect_library.lua", moduleRevision)
     local libraryChunk,libraryError=loadstring(librarySource);assert(libraryChunk,libraryError)
     mm2EffectsLibraryAPI=libraryChunk()(game,playerGui)
     mm2EffectsAPI=chunk()(game,function(message)
@@ -721,7 +734,7 @@ end
 local function nativeEffectsMM2()
     if mm2EffectsNativeAPI then return mm2EffectsNativeAPI end
     local catalog=effectsMM2()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inventory.lua",false)
+    local source=readSource("native_inventory.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     mm2EffectsNativeAPI=chunk()(playerGui,catalog,function(message)
         if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
@@ -730,7 +743,7 @@ local function nativeEffectsMM2()
 end
 local function emoteBarMM2()
     if mm2EmoteBarAPI then return mm2EmoteBarAPI end
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/emote_bar.lua",false)
+    local source=readSource("emote_bar.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     local backend=mm2()
     mm2EmoteBarAPI=chunk()(playerGui,{list=backend.list,preview=backend.preview},function(message)
@@ -740,7 +753,7 @@ local function emoteBarMM2()
 end
 local function nativeEmotesMM2()
     if mm2EmotesNativeAPI then return mm2EmotesNativeAPI end
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inventory.lua",false)
+    local source=readSource("native_inventory.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     local backend=mm2()
     mm2EmotesNativeAPI=chunk()(playerGui,{list=backend.list,preview=backend.preview},function(message)
