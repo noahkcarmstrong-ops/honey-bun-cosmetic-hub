@@ -38,6 +38,7 @@ local hat = Instance.new('Part', character); hat.Name = 'Handle'; hat.Size = Vec
 local mesh = Instance.new('SpecialMesh', hat); mesh.MeshId = 'rbxassetid://1'; mesh.TextureId = 'rbxassetid://2'
 local meshPart = Instance.new('MeshPart', character); meshPart.Name = 'Head'; meshPart.Size = Vector3.new(2, 2, 2); meshPart.CFrame = cframe(0, 4, 0); meshPart.MeshId = 'rbxassetid://mesh'; meshPart.TextureID = 'rbxassetid://texture'
 meshPart.MeshSize=Vector3.new(4,4,4)
+meshPart.LocalTransparencyModifier=1
 local tool = Instance.new('Tool', character); local held = Instance.new('Part', tool); held.Size = Vector3.new(1, 1, 1); held.CFrame = cframe(0, 0, 0)
 local gameplay = Instance.new('Model', character); local gameplayPart = Instance.new('Part', gameplay); gameplayPart.Size = Vector3.new(1, 1, 1); gameplayPart.CFrame = cframe(0, 0, 0)
 Instance.new('Script', character)
@@ -47,6 +48,7 @@ assert(data.records[1].cframe and data.records[1].size, 'captures bounded part g
 local meshRecord
 for _, record in ipairs(data.records) do if record.class == 'MeshPart' then meshRecord = record end end
 assert(meshRecord and meshRecord.meshId == 'rbxassetid://mesh', 'preserves MeshPart mesh ID')
+assert(meshRecord.transparency == 1, 'captures local transparency used to hide live avatar parts')
 local viewport = Instance.new('ViewportFrame')
 assert(api.show(viewport, data), 'renders valid data')
 assert(viewport.CurrentCamera and viewport:FindFirstChild('CharacterPreview'), 'creates static world and camera')
@@ -122,6 +124,23 @@ end}end
 assert(not cancelledAPI.show(cancelledViewport,dressed),'Removed card cancels a yielding preview before parenting loaded parts')
 cancelledAPI.destroy();assert(lateSource.destroyed,'Cancelled native mesh is cleaned with the preview cache')
 game.GetService=created
+-- R6 package mesh IDs are numeric properties, including modern IDs above 1e9.
+Enum.BodyPart={Torso="Torso"}
+local bodyMesh=Instance.new('CharacterMesh',character)
+bodyMesh.BodyPart='Torso';bodyMesh.MeshId=12345678901
+bodyMesh.BaseTextureId=23456789012;bodyMesh.OverlayTextureId=34567890123
+hat.Transparency=0.2;hat.LocalTransparencyModifier=0.5
+local faithful=api.capture();local capturedBody,capturedHandle
+for _,record in ipairs(faithful.records)do
+ if record.class=='CharacterMesh'then capturedBody=record end
+ if record.name=='Handle'then capturedHandle=record end
+end
+assert(capturedBody and capturedBody.meshId=='12345678901','R6 body mesh is captured without losing numeric asset IDs')
+assert(capturedHandle and math.abs(capturedHandle.transparency-0.6)<0.0001,'local and base transparency compose like Roblox rendering')
+local faithfulView=Instance.new('ViewportFrame');assert(api.show(faithfulView,faithful))
+local renderedBody
+for _,object in ipairs(faithfulView:GetDescendants())do if object.ClassName=='CharacterMesh'then renderedBody=object end end
+assert(renderedBody and renderedBody.MeshId==12345678901 and renderedBody.BaseTextureId==23456789012 and renderedBody.OverlayTextureId==34567890123,'R6 body mesh and both texture IDs survive rendering')
 for i=1,110 do local extra=Instance.new('Part',character);extra.Name='Extra'..i;extra.Size=Vector3.new(1,1,1);extra.CFrame=cframe(0,0,0)end
 local crowded=api.capture();local savedShirt,savedPants=false,false
 for _,record in ipairs(crowded.records)do savedShirt=savedShirt or record.class=='Shirt';savedPants=savedPants or record.class=='Pants'end

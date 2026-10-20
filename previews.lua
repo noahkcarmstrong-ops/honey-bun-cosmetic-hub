@@ -6,7 +6,7 @@ return function(player)
         Part = true, MeshPart = true, UnionOperation = true, WedgePart = true,
         CornerWedgePart = true, TrussPart = true, SpecialMesh = true,
         Decal = true, Texture = true, SurfaceAppearance = true,
-        Shirt = true, Pants = true, ShirtGraphic = true,
+        Shirt = true, Pants = true, ShirtGraphic = true, CharacterMesh = true,
     }
     local partClasses = {Part=true, MeshPart=true, UnionOperation=true, WedgePart=true,
         CornerWedgePart=true, TrussPart=true}
@@ -68,13 +68,19 @@ return function(player)
         if topClass == "Accessory" or topClass == "Hat" then return true end
         if partClasses[topClass] then return read(top, "Name") ~= "HumanoidRootPart" end
         if top ~= instance then return false end
-        return topClass == "Shirt" or topClass == "Pants" or topClass == "ShirtGraphic"
+        return topClass == "Shirt" or topClass == "Pants" or topClass == "ShirtGraphic" or topClass == "CharacterMesh"
     end
     local function addCommon(record, instance)
         record.name = stringValue(read(instance, "Name"), 128) or "PreviewPart"
         local class = read(instance, "ClassName")
         if class then record.class = class end
         local transparency = read(instance, "Transparency")
+        local localTransparency = read(instance, "LocalTransparencyModifier")
+        if finite(localTransparency) then
+            local base=math.min(1,math.max(0,transparency or 0))
+            local modifier=math.min(1,math.max(0,localTransparency))
+            transparency=1-(1-base)*(1-modifier)
+        end
         if finite(transparency) then record.transparency = transparency end
         local tint = color(read(instance, "Color3"))
         if tint then record.color = tint end
@@ -128,6 +134,12 @@ return function(player)
             record.normalMap = stringValue(read(instance, "NormalMap"))
             record.roughnessMap = stringValue(read(instance, "RoughnessMap"))
             record.alphaMode = tostring(read(instance, "AlphaMode") or "Overlay")
+        elseif class == "CharacterMesh" then
+            addCommon(record, instance)
+            record.bodyPart = enumName(read(instance, "BodyPart"))
+            record.meshId = tostring(read(instance, "MeshId") or 0)
+            record.baseTextureId = tostring(read(instance, "BaseTextureId") or 0)
+            record.overlayTextureId = tostring(read(instance, "OverlayTextureId") or 0)
         else
             addCommon(record, instance)
             record.template = stringValue(read(instance, "ShirtTemplate") or read(instance, "PantsTemplate") or read(instance, "Graphic"))
@@ -246,7 +258,13 @@ return function(player)
             set(object, "NormalMap", record.normalMap); set(object, "RoughnessMap", record.roughnessMap)
         elseif record.class == "Shirt" then set(object, "ShirtTemplate", record.template)
         elseif record.class == "Pants" then set(object, "PantsTemplate", record.template)
-        elseif record.class == "ShirtGraphic" then set(object, "Graphic", record.template) end
+        elseif record.class == "ShirtGraphic" then set(object, "Graphic", record.template)
+        elseif record.class == "CharacterMesh" then
+            if record.bodyPart and Enum.BodyPart then set(object, "BodyPart", Enum.BodyPart[record.bodyPart]) end
+            set(object, "MeshId", tonumber(record.meshId))
+            set(object, "BaseTextureId", tonumber(record.baseTextureId))
+            set(object, "OverlayTextureId", tonumber(record.overlayTextureId))
+        end
         object.Parent = parent
         if partClasses[record.class] then object.Anchored = true; object.CanCollide = false end
         if meshFallback then

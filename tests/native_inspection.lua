@@ -34,6 +34,10 @@ local gui={InspectPlayerFromHumanoidDescription=function(_,desc,name)
     inspectCalls[#inspectCalls+1]={description=desc,name=name}
 end,InspectPlayerFromUserId=function(_,id)restoreCalls[#restoreCalls+1]=id end}
 local renderStepped=signal()
+local boundGuard,unbound=false,false
+local run={RenderStepped=renderStepped,
+ BindToRenderStep=function(_,name,priority,callback)assert(priority>=2000);boundGuard=callback end,
+ UnbindFromRenderStep=function()unbound=true;boundGuard=false end}
 local core=node("CoreGui","CoreGui")
 local inspect=child(core,"Frame","InspectAndBuy")
 local title=child(inspect,"TextLabel","Title");title.Text="Original's Avatar"
@@ -46,7 +50,7 @@ function renderedHumanoid:GetAppliedDescription()return modelDescription end
 local other=child(core,"Frame","OtherInspectAndBuy");local otherTitle=child(other,"TextLabel","Title");otherTitle.Text="Other's Avatar"
 local hidden=child(core,"Frame","HiddenInspectAndBuy");hidden.Visible=false;local hiddenTitle=child(hidden,"TextLabel","Title");hiddenTitle.Text="Original's Avatar"
 game={GetService=function(_,name)
-    if name=="RunService"then return {RenderStepped=renderStepped} elseif name=="CoreGui"then return core elseif name=="GuiService"then return gui elseif name=="HttpService"then return http end
+    if name=="RunService"then return run elseif name=="CoreGui"then return core elseif name=="GuiService"then return gui elseif name=="HttpService"then return http end
 end}
 local module=dofile("native_inspection.lua")
 local player={Name="Original",UserId=123}
@@ -106,7 +110,12 @@ assert(liveOverlay().Visible and previewGui().Enabled,"a successful retry reveal
 viewport.ClassName="Frame";late.ClassName="Frame"
 api.update({enabled=true,name="LarpAlias",snapshot=changed})
 assert(previewGui().Enabled and liveOverlay().Visible,"inspection without a native ViewportFrame still shows the actual Larp avatar")
-title.Visible=false;renderStepped:Fire()
+-- Late native viewport/model insertion with no DescendantAdded callback is
+-- still masked before it can reach a frame, without hiding our ready preview.
+viewport.ClassName="ViewportFrame";viewport.ImageTransparency=0
+boundGuard()
+assert(viewport.ImageTransparency==1 and previewGui().Enabled,"last-priority guard blocks the native model flash without blanking the ready Larp preview")
+title.Visible=false;boundGuard()
 assert(not previewGui().Enabled,"closing the native menu hides the added preview before the next frame")
 title.Visible=true;api.update({enabled=true,name="LarpAlias",snapshot=changed})
 assert(d.destroyed and not inspectCalls[2].description.destroyed,"new inspection releases the old source and keeps the replacement alive")
@@ -117,5 +126,6 @@ assert(inspectCalls[2].description.destroyed,"mode off releases the retained sou
 local blockedGui={InspectPlayerFromHumanoidDescription=function()error("blocked")end,InspectPlayerFromUserId=function()end}
 game.GetService=function(_,name)if name=="CoreGui"then return core elseif name=="GuiService"then return blockedGui elseif name=="HttpService"then return http end end
 local blocked=module.create(player);title.Text="Original's Avatar";blocked.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(blocked.report():find("blocked",1,true),"blocked native API access is reported")
+api.destroy();assert(unbound,"closing the hub removes the last-priority render guard")
 Instance,Enum,Color3,game,UDim2,Vector2=old.Instance,old.Enum,old.Color3,old.game,old.UDim2,old.Vector2
 print("Native inspection description, redirect adoption, lifecycle and blocked API checks passed.")

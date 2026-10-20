@@ -43,7 +43,8 @@ function M.create(player,getPreviews)
     pcall(function() core=game:GetService("CoreGui");gui=game:GetService("GuiService")end)
     local active=false
     local modeEnabled,currentName=false,player.Name
-    local masked,connections={},{}
+    local masked,connections,knownLabels={},{},{}
+    local unbindGuard
     local changingMask=false
     local currentSnapshot,previewData,previewKey
     local overlayName="LarpbloxInspectPreview"
@@ -62,10 +63,13 @@ function M.create(player,getPreviews)
         end
         return true
     end
-    local function ownTitle(alias)
-        local objects={};pcall(function()objects=core:GetDescendants()end)
+    local function ownTitle(alias,knownOnly)
+        local objects={}
+        if knownOnly then
+            for object in pairs(knownLabels)do objects[#objects+1]=object end
+        else pcall(function()objects=core:GetDescendants()end)end
         for _,object in ipairs(objects)do
-            if object:IsA("TextLabel") and visible(object) then
+            if object.Parent and object:IsA("TextLabel") and visible(object) then
                 local text=object.Text
                 local scoped=false
                 local scopeRoot
@@ -74,6 +78,7 @@ function M.create(player,getPreviews)
                     if ancestor.Name:find("InspectAndBuy",1,true) or ancestor.Name=="AvatarInspectMenu" then scoped=true;scopeRoot=ancestor;break end
                     ancestor=ancestor.Parent
                 end
+                if scoped then knownLabels[object]=true end
                 if scoped and (text==player.Name.."'s Avatar" or (active and (object==lastLabel or adopting) and (text==alias.."'s Avatar" or (lastName and text==lastName.."'s Avatar"))))then
                     return object,text,scopeRoot
                 end
@@ -114,12 +119,13 @@ function M.create(player,getPreviews)
                     if not ok then status="Local inspection preview is loading: "..tostring(err)end
                 end
     end
-    local function maskPreview(allowReady)
-        if fallbackGui then fallbackGui.Enabled=false end
+    local function maskPreview(allowReady,preserveLive)
+        if fallbackGui and not preserveLive then fallbackGui.Enabled=false end
         if not modeEnabled then return end
-        local label,_,root=ownTitle(currentName)
+        local label,_,root=ownTitle(currentName,preserveLive)
         previewLabel=label
         if not label or not root then
+            if fallbackGui then fallbackGui.Enabled=false end
             -- Roblox can reuse the same viewport when inspecting a different player.
             for viewport,entry in pairs(masked)do
                 local ancestor=viewport.Parent
@@ -184,6 +190,7 @@ function M.create(player,getPreviews)
             ancestor=ancestor.Parent
         end
         if scoped and object:IsA("TextLabel")then
+            knownLabels[object]=true
             local wasTitle=object.Text:match("'s Avatar$")~=nil
             pcall(function()connections[#connections+1]=object:GetPropertyChangedSignal("Text"):Connect(function()
                 local isTitle=object.Text:match("'s Avatar$")~=nil
@@ -202,13 +209,22 @@ function M.create(player,getPreviews)
             end)
         end)
     end
-    -- Close the added preview in the same frame as the native menu.
+    -- Native try-on models can be inserted after the item/name callbacks.
+    -- Mask them at the last render priority, before any frame can display them.
     pcall(function()
-        connections[#connections+1]=game:GetService("RunService").RenderStepped:Connect(function()
+        local run=game:GetService("RunService")
+        local function guard()
+            if modeEnabled then maskPreview(false,true)end
             if fallbackGui and fallbackGui.Enabled and (not modeEnabled or not previewLabel or not previewLabel.Parent or not visible(previewLabel))then
                 fallbackGui.Enabled=false
             end
-        end)
+        end
+        if run.BindToRenderStep then
+            local binding="LarpbloxInspectGuard_"..tostring(player.UserId)
+            local priority=Enum.RenderPriority and Enum.RenderPriority.Last.Value or 2000
+            run:BindToRenderStep(binding,priority,guard)
+            unbindGuard=function()run:UnbindFromRenderStep(binding)end
+        else connections[#connections+1]=run.RenderStepped:Connect(guard)end
     end)
     local api={}
     function api.update(options)
@@ -242,6 +258,7 @@ function M.create(player,getPreviews)
     end
     function api.report()return status end
     function api.destroy()
+        if unbindGuard then unbindGuard();unbindGuard=nil end
         previewData=nil;previewKey=nil
         api.update({enabled=false,name=""})
         for _,connection in ipairs(connections)do connection:Disconnect()end
