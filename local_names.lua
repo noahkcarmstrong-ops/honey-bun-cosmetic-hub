@@ -115,7 +115,94 @@ local function resolve(entry)
     end
     return id or nil
 end
+local notificationEntries=setmetatable({}, {__mode="k"})
+local notificationHook
+local notificationSources=setmetatable({}, {__mode="k"})
+local function isNotification(object)
+    local ancestor=object.Parent
+    for _=1,12 do
+        if not ancestor or ancestor==coreGui then break end
+        local name=ancestor.Name:lower()
+        if name:find("notification",1,true) or name:find("toast",1,true) then
+            return coreGui and object:IsDescendantOf(coreGui)
+        end
+        ancestor=ancestor.Parent
+    end
+    return false
+end
+local function notificationText(source,rich)
+    local names={}
+    for id,controller in pairs(controllers) do
+        local identity=identities[id]
+        if identity and controller.settings.enabled then
+            for _,item in ipairs({{identity.username,controller.settings.username,usernames},
+                {identity.display,controller.settings.displayName,displays}}) do
+                if item[1]~="" and item[2]~="" and item[3][item[1]]==id then
+                    names[item[1]]=rich and escape(item[2]) or item[2]
+                end
+            end
+        end
+    end
+    local function segment(text)
+        local matches={}
+        for name,value in pairs(names) do
+            local cursor=1
+            while true do
+                local first,last=text:find("%f[%w_]"..pattern(name).."%f[^%w_]",cursor)
+                if not first then break end
+                matches[#matches+1]={first,last,value};cursor=last+1
+            end
+        end
+        table.sort(matches,function(a,b) return a[1]<b[1] or (a[1]==b[1] and a[2]>b[2]) end)
+        local out,cursor={},1
+        for _,match in ipairs(matches) do
+            if match[1]>=cursor then out[#out+1]=text:sub(cursor,match[1]-1);out[#out+1]=match[3];cursor=match[2]+1 end
+        end
+        out[#out+1]=text:sub(cursor);return table.concat(out)
+    end
+    if not rich then return segment(source) end
+    local out,cursor={},1
+    while true do
+        local first,last=source:find("<[^>]*>",cursor)
+        if not first then out[#out+1]=segment(source:sub(cursor));break end
+        out[#out+1]=segment(source:sub(cursor,first-1));out[#out+1]=source:sub(first,last);cursor=last+1
+    end
+    return table.concat(out)
+end
+local function bindNotifications()
+    if notificationHook or type(hookmetamethod)~="function" or type(getgenv)~="function" then return end
+    local environment=getgenv()
+    local state=rawget(environment,"__LarpbloxNotificationInterceptor")
+    if not state then
+        state={}
+        local original
+        local function intercept(object,key,value)
+            if key=="Text" and type(value)=="string" and state.transform then
+                local ok,result=pcall(state.transform,object,value)
+                if ok then value=result end
+            end
+            return original(object,key,value)
+        end
+        local ok,previous=pcall(hookmetamethod,game,"__newindex",type(newcclosure)=="function" and newcclosure(intercept) or intercept)
+        if not ok or type(previous)~="function" then return end
+        original=previous
+        environment.__LarpbloxNotificationInterceptor=state
+    end
+    local transform=function(object,value)
+        if not isNotification(object) then return value end
+        local entry=entries[object]
+        -- Retain original text for alias changes and disable/restore.
+        if entry and value~=entry.written then entry.source=value
+        elseif not entry then notificationSources[object]=value end
+        local updated=notificationText(value,object.RichText)
+        if entry then entry.written=updated end
+        return updated
+    end
+    state.transform=transform
+    notificationHook={state=state,transform=transform}
+end
 local function replacement(entry, controller)
+    if isNotification(entry.object) then return notificationText(entry.source,entry.object.RichText) end
     if entry.chatSpan then
         local span=entry.chatSpan
         local identity=identities[entry.id]
@@ -258,6 +345,7 @@ local function render(entry)
     pcall(function() entry.object.Text=value end)
 end
 local function bind(entry)
+    notificationEntries[entry]=isNotification(entry.object) or nil
     if entry.id and buckets[entry.id] then buckets[entry.id][entry]=nil end
     entry.id=resolve(entry)
     if entry.id then
@@ -271,11 +359,13 @@ local function unwatch(object)
     if not entry then return end
     if entry.id and buckets[entry.id] then buckets[entry.id][entry]=nil end
     for _,connection in ipairs(entry.connections) do connection:Disconnect() end
+    notificationEntries[entry]=nil
     entries[object]=nil
 end
 local function watch(object)
     if entries[object] or not (object:IsA("TextLabel") or object:IsA("TextButton")) then return end
-    local entry={object=object,source=object.Text,connections={}}
+    local entry={object=object,source=notificationSources[object] or object.Text,connections={}}
+    notificationSources[object]=nil
     entries[object]=entry
     entry.connections[#entry.connections+1]=object:GetPropertyChangedSignal("Text"):Connect(function()
         if object.Text==entry.written then return end
@@ -309,6 +399,7 @@ return function(player, playerGui, gameObject)
     local originalDisplay=identities[id].display
     rebuildIdentities()
     bindChat()
+    bindNotifications()
     if not knownIdentity then
         -- Only a new identity can change existing labels' resolution.
         for _,entry in pairs(entries) do bind(entry) end
@@ -342,6 +433,7 @@ return function(player, playerGui, gameObject)
         local display=settings.enabled and settings.displayName~="" and settings.displayName or originalDisplay
         pcall(function() if player.DisplayName~=display then player.DisplayName=display end end)
         for entry in pairs(buckets[id] or {}) do render(entry) end
+        for entry in pairs(notificationEntries) do render(entry) end
         applyHumanoid(player.Character)
     end
     local api={}
@@ -362,6 +454,8 @@ return function(player, playerGui, gameObject)
         for humanoid,original in pairs(humanoids) do pcall(function() humanoid.DisplayName=original end) end
         if next(controllers)==nil then
             unbindChat()
+            if notificationHook and notificationHook.state.transform==notificationHook.transform then notificationHook.state.transform=nil end
+            notificationHook=nil
             for object in pairs(entries) do unwatch(object) end
             for _,connections in pairs(rootConnections) do for _,connection in ipairs(connections) do connection:Disconnect() end end
             for _,connection in ipairs(rosterConnections) do connection:Disconnect() end

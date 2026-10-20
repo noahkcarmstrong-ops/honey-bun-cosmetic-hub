@@ -121,7 +121,7 @@ local function imageIsAvatar(object, player)
     local image = tostring(read(object, "Image") or "")
     local id = tostring(read(player, "UserId") or "")
     -- AvatarHeadShot thumbnails are unambiguous, even when Roblox changes row names.
-    local thumbType = image:lower():find("type=avatarheadshot", 1, true) or image:lower():find("type=avatarbust", 1, true)
+    local thumbType = image:lower():find("type=avatarheadshot", 1, true) or image:lower():find("type=avatarbust", 1, true) or image:lower():find("type=avatar&", 1, true)
     if image:match("^rbxthumb://") and thumbType
         and (image:match("[?&]id=" .. id .. "[&]") or image:match("[?&]id=" .. id .. "$")) then return true end
     if ownThumbnailUrl(image, player) then return true end
@@ -180,7 +180,7 @@ function M.create(player, getPreviews)
     assert(player, "player is required"); assert(type(getPreviews) == "function", "getPreviews is required")
     local alive, enabled, currentName, currentImage, previewSnapshot, effectiveKey = true, false, "", nil, nil, nil
     local overlays, overlayKeys, hiddenImages, connections, scanCount, renderedCount = {}, {}, {}, {}, 0, 0
-    local transparencyConnections,textConnections={},{}
+    local transparencyConnections,textConnections,geometryConnections={},{},{}
     local pending = {}
     local imageCandidates=setmetatable({}, {__mode="k"})
     local indexed=false
@@ -228,34 +228,52 @@ function M.create(player, getPreviews)
         if overlay then pcall(function() overlay:Destroy() end) end
         if restore ~= false then restoreImage(image) end
     end
-    local function frameCamera(frame, bust)
-        local world = read(frame, "FindFirstChild") and frame:FindFirstChild("CharacterPreview")
-        local model = world and world:FindFirstChild("Avatar")
-        local head = model and model:FindFirstChild("Head", true)
-        local camera = frame and frame.CurrentCamera
-        if not (head and camera) then return end
-        local position, size = head.Position, head.Size
-        if not (position and size and CFrame and CFrame.lookAt) then return end
-        if bust then
-            local torso = model:FindFirstChild("UpperTorso", true) or model:FindFirstChild("Torso", true)
-            local torsoPosition, torsoSize = torso and torso.Position, torso and torso.Size
-            if torsoPosition and torsoSize then
-                position = Vector3.new(position.X, (position.Y * 0.6) + (torsoPosition.Y * 0.4), position.Z)
-                size = Vector3.new(math.max(size.X, torsoSize.X), math.max(size.Y, torsoSize.Y * 2), math.max(size.Z, torsoSize.Z))
+    local bodyParts={Head=true,Torso=true,UpperTorso=true,LowerTorso=true,
+        ["Left Arm"]=true,["Right Arm"]=true,["Left Leg"]=true,["Right Leg"]=true,
+        LeftUpperArm=true,LeftLowerArm=true,LeftHand=true,RightUpperArm=true,RightLowerArm=true,RightHand=true,
+        LeftUpperLeg=true,LeftLowerLeg=true,LeftFoot=true,RightUpperLeg=true,RightLowerLeg=true,RightFoot=true}
+    local function frameCamera(frame, image)
+        local world=frame:FindFirstChild("CharacterPreview")
+        local model=world and world:FindFirstChild("Avatar")
+        local camera=frame.CurrentCamera
+        if not (model and camera) then return end
+        local source=tostring(read(image,"Image") or ""):lower()
+        local full=source:find("type=avatar&",1,true) or source:find("/thumbs/avatar.ashx",1,true)
+        local bust=source:find("avatarbust",1,true) or source:find("bust-thumbnail",1,true)
+            or tostring(read(image,"Name") or ""):lower()=="charactericon"
+        local min,max
+        for _,part in ipairs(model:GetDescendants()) do
+            if part:IsA("BasePart") and bodyParts[part.Name]
+                and (full or part.Name=="Head" or (bust and (part.Name=="Torso" or part.Name=="UpperTorso"))) then
+                -- Fit the body, excluding particle/accessory bounds that can dwarf it.
+                for x=-1,1,2 do for y=-1,1,2 do for z=-1,1,2 do
+                    local point=part.CFrame:PointToWorldSpace(Vector3.new(part.Size.X*x/2,part.Size.Y*y/2,part.Size.Z*z/2))
+                    min=min and Vector3.new(math.min(min.X,point.X),math.min(min.Y,point.Y),math.min(min.Z,point.Z)) or point
+                    max=max and Vector3.new(math.max(max.X,point.X),math.max(max.Y,point.Y),math.max(max.Z,point.Z)) or point
+                end end end
             end
         end
-        local distance = math.max(size.X, size.Y, size.Z, 1) * (bust and 3.8 or 2.5)
-        pcall(function() camera.CFrame = CFrame.lookAt(position + Vector3.new(0, 0, -distance), position) end)
+        if not min then return end
+        local center=(min+max)/2
+        local size=max-min
+        local absolute=read(image,"AbsoluteSize")
+        local aspect=absolute and absolute.Y>0 and math.max(absolute.X/absolute.Y,0.1) or 1
+        camera.FieldOfView=35
+        local distance=math.max(size.Y/2,size.X/(2*aspect),0.5)/math.tan(math.rad(camera.FieldOfView/2))*1.15+size.Z/2
+        camera.CFrame=CFrame.lookAt(center+Vector3.new(0,0,-distance),center)
     end
     local function matchPortraitMask(image,overlay)
-        -- Child previews do not inherit the native portrait's rounded mask.
-        local radius
-        for _,child in ipairs(image:GetDescendants()) do
-            if child.Parent==image and read(child,"ClassName")=="UICorner" then radius=child.CornerRadius;break end
-        end
-        if not radius and uniquePeopleRow(image,player,{name=currentName}) then radius=UDim.new(0.5,0) end
-        if radius then
-            local corner=Instance.new("UICorner");corner.CornerRadius=radius;corner.Parent=overlay
+        local native=image:FindFirstChildOfClass("UICorner")
+        local corner=overlay:FindFirstChildOfClass("UICorner")
+        if native then
+            if not corner then corner=Instance.new("UICorner");corner.Parent=overlay end
+            corner.CornerRadius=native.CornerRadius
+        elseif corner then corner:Destroy() end
+    end
+    local function updateGeometry(image)
+        for _,overlay in pairs({overlays[image],pending[image] and pending[image].overlay}) do
+            matchPortraitMask(image,overlay)
+            if overlay:IsA("ViewportFrame") then frameCamera(overlay,image) end
         end
     end
     local function makeOverlay(image, imageSource)
@@ -275,7 +293,7 @@ function M.create(player, getPreviews)
         local existing=overlays[image]
         if existing and read(existing,"Parent")~=image then
             overlays[image]=nil;overlayKeys[image]=nil;restoreImage(image)
-        elseif existing and overlayKeys[image] == effectiveKey then return end
+        elseif existing and overlayKeys[image] == effectiveKey then updateGeometry(image);return end
         local staged = pending[image]
         if staged and staged.key == effectiveKey then return end
         if staged then
@@ -335,10 +353,7 @@ function M.create(player, getPreviews)
         local shown, result = pcall(function() return previews.show(overlay, snapshot) end)
         if shown and result ~= false and pending[image]==staged then
             matchPortraitMask(image,overlay)
-            local source = tostring(read(image, "Image") or ""):lower()
-            local imageName = tostring(read(image, "Name") or ""):lower()
-            local bust = source:find("avatarbust", 1, true) ~= nil or source:find("bust-thumbnail", 1, true) ~= nil or imageName == "charactericon"
-            frameCamera(overlay, bust)
+            frameCamera(overlay,image)
             commit()
         else discard() end
     end
@@ -369,6 +384,21 @@ function M.create(player, getPreviews)
     watch=function(object)
         if not watchableImage(object) then return end
         imageCandidates[object]=true
+        if not geometryConnections[object] then
+            local group={}
+            geometryConnections[object]=group
+            local function changed() if alive and enabled then updateGeometry(object) end end
+            group[#group+1]=object:GetPropertyChangedSignal("AbsoluteSize"):Connect(changed)
+            local function watchCorner(child)
+                if child:IsA("UICorner") then
+                    group[#group+1]=child:GetPropertyChangedSignal("CornerRadius"):Connect(changed)
+                    changed()
+                end
+            end
+            group[#group+1]=object.ChildAdded:Connect(watchCorner)
+            group[#group+1]=object.ChildRemoved:Connect(function(child) if child:IsA("UICorner") then changed() end end)
+            for _,child in ipairs(object:GetChildren()) do watchCorner(child) end
+        end
         if not connections[object] then
             local ok, signal = pcall(function() return object:GetPropertyChangedSignal("Image") end)
             if ok and signal then
@@ -450,6 +480,10 @@ function M.create(player, getPreviews)
             pcall(function()connections["removed"..index]=root.DescendantRemoving:Connect(function(object)
                 imageCandidates[object]=nil
                 if overlays[object] or hiddenImages[object] or pending[object] then destroyOverlay(object)end
+                if geometryConnections[object] then
+                    for _,connection in ipairs(geometryConnections[object]) do connection:Disconnect() end
+                    geometryConnections[object]=nil
+                end
                 for _,group in ipairs({connections,transparencyConnections,textConnections})do
                     if group[object]then group[object]:Disconnect();group[object]=nil end
                 end
@@ -509,7 +543,8 @@ function M.create(player, getPreviews)
         for _,group in ipairs({transparencyConnections,textConnections})do
             for _,connection in pairs(group)do pcall(function()connection:Disconnect()end)end
         end
-        connections = {};transparencyConnections={};textConnections={}
+        for _,group in pairs(geometryConnections) do for _,connection in ipairs(group) do connection:Disconnect() end end
+        connections = {};transparencyConnections={};textConnections={};geometryConnections={}
         for image in pairs(overlays) do destroyOverlay(image) end
         for image in pairs(pending) do destroyOverlay(image) end
         restoreAllImages()
