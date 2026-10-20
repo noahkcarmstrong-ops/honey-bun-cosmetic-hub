@@ -169,3 +169,19 @@ local beforeRemoval=#bodyCalls
 command.revision=21;command.items={{id=999,name="Head",itemType="Asset",assetType=17},{id=303,name="Torso",itemType="Asset",assetType=27},{id=305,name="RightArm",itemType="Asset",assetType=28},{id=304,name="LeftArm",itemType="Asset",assetType=29},{id=307,name="RightLeg",itemType="Asset",assetType=31}}
 jobs={};bodySync.connect(string.rep("a",32));jobs[1]();assert(#bodyCalls>beforeRemoval and bodyCalls[#bodyCalls][1]=="LeftLeg" and bodyCalls[#bodyCalls][2]=="restore","removed browser body part restores through avatar API");assert(faceCalls[#faceCalls][1]=="restore","removed browser face restores through avatar API")
 bodySync.destroy();print("Game browser body selections apply and restore selectively.")
+
+-- A saved character includes its skin colors, not just clothing and accessories.
+local skinCalls={}
+function avatar.setSkin(value,region)
+    skinCalls[#skinCalls+1]=region
+    body[region.."Color3"]=value
+end
+command.revision=22
+command.definition.bodyColors.headColor="123456"
+local colorSync=create(player,function()return avatar end,function()return clothing end,function()return true end,function()end)
+jobs={};task.wait=function()colorSync.disconnect()end
+colorSync.connect(string.rep("a",32));jobs[1]()
+assert(#skinCalls==1 and skinCalls[1]=="Head","saved outfit applies its changed body color")
+assert(posted.definition.bodyColors.headColor=="123456","game confirms the new outfit color instead of the old one")
+colorSync.destroy()
+print("Saved character body colors replace the previous outfit colors.")

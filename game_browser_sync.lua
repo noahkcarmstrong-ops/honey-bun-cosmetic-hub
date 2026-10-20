@@ -146,6 +146,13 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         local ok,msg=pcall(function()
             local before=snapshot()
             for _,item in ipairs(before.items)do if accessoryTypes[item.assetType] then current[item.id]=true end end
+            for _,entry in ipairs({{"Head","headColor"},{"Torso","torsoColor"},{"LeftArm","leftArmColor"},{"RightArm","rightArmColor"},{"LeftLeg","leftLegColor"},{"RightLeg","rightLegColor"}})do
+                local wanted=value.definition.bodyColors[entry[2]]:lower()
+                if before.definition.bodyColors[entry[2]]~=wanted then
+                    local loaded,reason=pcall(avatar.setSkin,Color3.fromRGB(tonumber(wanted:sub(1,2),16),tonumber(wanted:sub(3,4),16),tonumber(wanted:sub(5,6),16)),entry[1])
+                    if not loaded then loadErrors[#loadErrors+1]=entry[1].." color: "..tostring(reason)end
+                end
+            end
             local currentBody,desiredBody={},{ }
             for _,item in ipairs(before.items)do local region=bodyTypeRegions[item.assetType];if region then currentBody[region]=item.id end end
             for _,item in ipairs(value.items)do local region=bodyTypeRegions[item.assetType];if region then desiredBody[region]=item.id end end
