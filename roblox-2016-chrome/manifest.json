@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Roblox 2016 Classic",
-  "version": "1.18.46",
+  "version": "1.18.47",
   "permissions": [
     "storage"
   ],
@@ -37,6 +37,7 @@
         "classic-home-games.js",
         "classic-quick-play.js",
         "classic-catalog.js",
+        "modern-catalog-sort.js",
         "classic-item.js",
         "classic-groups.js",
         "larpbux-avatar-3d.js",
