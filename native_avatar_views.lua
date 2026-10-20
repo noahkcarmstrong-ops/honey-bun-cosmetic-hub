@@ -156,6 +156,7 @@ function M.create(player, getPreviews)
     local alive, enabled, currentName, currentImage, previewSnapshot, effectiveKey = true, false, "", nil, nil, nil
     local overlays, overlayKeys, originalTransparency, hiddenImages, connections, scanCount, renderedCount = {}, {}, {}, {}, {}, 0, 0
     local transparencyConnections,textConnections={},{}
+    local pending = {}
     local imageCandidates=setmetatable({}, {__mode="k"})
     local indexed=false
     local coreGui, playerGui, roots, available
@@ -175,6 +176,12 @@ function M.create(player, getPreviews)
         for image in pairs(hiddenImages) do restoreImage(image) end
     end
     local function destroyOverlay(image, restore)
+        local staged = pending[image]
+        if staged then
+            pending[image] = nil
+            if staged.connection then staged.connection:Disconnect() end
+            pcall(function() staged.overlay:Destroy() end)
+        end
         local overlay = overlays[image]
         if overlay then pcall(function() overlay:Destroy() end); overlays[image] = nil; overlayKeys[image] = nil end
         if restore ~= false then restoreImage(image) end
@@ -210,45 +217,64 @@ function M.create(player, getPreviews)
         end
     end
     local function makeOverlay(image, imageSource)
-        local overlay = overlays[image]
         local class = imageSource and "ImageLabel" or "ViewportFrame"
-        if overlay and (read(overlay, "Parent") ~= image or read(overlay, "ClassName") ~= class) then
-            pcall(function() overlay:Destroy() end); overlays[image] = nil; overlayKeys[image] = nil; overlay = nil
-        end
-        if overlay then return overlay end
-        overlay = Instance.new(class)
+        local overlay = Instance.new(class)
         overlay.Name = "LarpbloxOwnAvatarPreview"
         overlay.Position = UDim2.fromScale(0, 0); overlay.Size = UDim2.fromScale(1, 1)
         overlay.BackgroundTransparency = 1; overlay.BorderSizePixel = 0
         overlay.Visible = false
         overlay.ZIndex = read(image, "ZIndex") or 1; overlay.Parent = image
         if imageSource then overlay.Image = imageSource end
-        overlays[image] = overlay
         return overlay
     end
     local function render(image)
-        hideImage(image)
         if not previewSnapshot and not currentImage then return end
         if overlays[image] and overlayKeys[image] == effectiveKey then return end
-        if currentImage then
-            local overlay = makeOverlay(image, currentImage)
+        local staged = pending[image]
+        if staged and staged.key == effectiveKey then return end
+        if staged then
+            if staged.connection then staged.connection:Disconnect() end
+            staged.overlay:Destroy()
+        end
+        local imageSource, snapshot = currentImage, previewSnapshot
+        local overlay = makeOverlay(image, imageSource)
+        staged = {key=effectiveKey, overlay=overlay}
+        pending[image] = staged
+        local function discard()
+            if staged.connection then staged.connection:Disconnect(); staged.connection=nil end
+            if pending[image]==staged then pending[image]=nil end
+            pcall(function() overlay:Destroy() end)
+        end
+        local function commit()
+            if pending[image]~=staged or not alive or not enabled or staged.key~=effectiveKey
+                or not isAvatarImage(image,player,{name=currentName}) then discard();return end
+            local previous=overlays[image]
+            pending[image]=nil
+            if staged.connection then staged.connection:Disconnect();staged.connection=nil end
+            overlays[image]=overlay;overlayKeys[image]=staged.key
+            overlay.Visible=true;hideImage(image)
+            if previous then previous:Destroy() end
+            renderedCount=renderedCount+1
+        end
+        if imageSource then
             matchPortraitMask(image,overlay)
-            overlay.Image = currentImage; overlayKeys[image] = effectiveKey; renderedCount = renderedCount + 1
-            pcall(function() overlay.Visible = true end)
+            staged.connection=overlay:GetPropertyChangedSignal("IsLoaded"):Connect(function()
+                if overlay.IsLoaded then commit() end
+            end)
+            if overlay.IsLoaded then commit() end
             return
         end
         local ok, previews = pcall(getPreviews)
-        if not ok or not previews or type(previews.show) ~= "function" then status = "Preview renderer unavailable."; return end
-        local overlay = makeOverlay(image)
-        local shown, result = pcall(function() return previews.show(overlay, previewSnapshot) end)
-        if shown and result ~= false then
+        if not ok or not previews or type(previews.show) ~= "function" then status = "Preview renderer unavailable.";discard();return end
+        local shown, result = pcall(function() return previews.show(overlay, snapshot) end)
+        if shown and result ~= false and pending[image]==staged then
             matchPortraitMask(image,overlay)
             local source = tostring(read(image, "Image") or ""):lower()
             local imageName = tostring(read(image, "Name") or ""):lower()
             local bust = source:find("avatarbust", 1, true) ~= nil or source:find("bust-thumbnail", 1, true) ~= nil or imageName == "charactericon"
-            overlayKeys[image] = effectiveKey; frameCamera(overlay, bust); renderedCount = renderedCount + 1
-            pcall(function() overlay.Visible = true end)
-        else destroyOverlay(image, false) end
+            frameCamera(overlay, bust)
+            commit()
+        else discard() end
     end
     local watch
     local function watchableImage(object)
@@ -277,14 +303,13 @@ function M.create(player, getPreviews)
     watch=function(object)
         if not watchableImage(object) then return end
         imageCandidates[object]=true
-        if enabled and isAvatarImage(object, player, {name = currentName}) then hideImage(object) end
         if not connections[object] then
             local ok, signal = pcall(function() return object:GetPropertyChangedSignal("Image") end)
             if ok and signal then
                 local connection
                 local connected = pcall(function() connection = signal:Connect(function()
                     if not alive or not enabled then return end
-                    if isAvatarImage(object, player, {name = currentName}) then hideImage(object); render(object)
+                    if isAvatarImage(object, player, {name = currentName}) then render(object)
                     else destroyOverlay(object) end
                 end) end)
                 if connected and connection then connections[object] = connection end
@@ -294,7 +319,8 @@ function M.create(player, getPreviews)
                 local transparencyConnection
                 pcall(function() transparencyConnection = transparencySignal:Connect(function()
                     if not alive or not enabled then return end
-                    if isAvatarImage(object, player, {name = currentName}) then hideImage(object)
+                    if isAvatarImage(object, player, {name = currentName}) then
+                        if overlays[object] then hideImage(object) end
                     else destroyOverlay(object) end
                 end) end)
                 if transparencyConnection then transparencyConnections[object] = transparencyConnection end
@@ -347,7 +373,7 @@ function M.create(player, getPreviews)
         for index,root in ipairs(roots)do
             pcall(function()connections["removed"..index]=root.DescendantRemoving:Connect(function(object)
                 imageCandidates[object]=nil
-                if overlays[object] or hiddenImages[object]then destroyOverlay(object)end
+                if overlays[object] or hiddenImages[object] or pending[object] then destroyOverlay(object)end
                 for _,group in ipairs({connections,transparencyConnections,textConnections})do
                     if group[object]then group[object]:Disconnect();group[object]=nil end
                 end
@@ -363,10 +389,6 @@ function M.create(player, getPreviews)
         local effectiveSnapshot = options.snapshot
         local nextKey = signature(effectiveSnapshot) .. "|" .. tostring(character) .. "|" .. tostring(currentImage or "")
         if enabled and wasEnabled and previousName==currentName and nextKey==effectiveKey and (currentImage or previewSnapshot) then return api.report() end
-        if enabled and (nextKey~=effectiveKey or effectiveSnapshot==nil)then
-            previewSnapshot=nil
-            for image,overlay in pairs(overlays)do overlay.Visible=false;hideImage(image)end
-        end
         if enabled and not indexed then
             local preflight = {}
             for _, root in ipairs(roots) do pcall(function()
@@ -376,28 +398,28 @@ function M.create(player, getPreviews)
             indexed=true
         end
         if enabled and effectiveSnapshot ~= nil and not currentImage and (nextKey ~= effectiveKey or previewSnapshot == nil) then
-            previewSnapshot = nil
-            for image, overlay in pairs(overlays) do
-                pcall(function() overlay.Visible = false end)
-                hideImage(image)
-            end
+            local captured
             local okPreview, previews = pcall(getPreviews)
             if okPreview and previews and type(previews.capture) == "function" then
-                local capturedOk, captured = pcall(previews.capture)
-                if capturedOk then previewSnapshot = captured end
+                local capturedOk, result = pcall(previews.capture)
+                if capturedOk then captured = result end
             end
+            -- Transitional captures must not replace the last working portrait.
+            local visiblePart=false
+            for _,record in ipairs(captured and captured.records or {}) do
+                if record.size and (tonumber(record.transparency) or 0)<1 then visiblePart=true;break end
+            end
+            if not visiblePart then status="Waiting for a complete avatar preview.";return api.report() end
+            previewSnapshot=captured
         end
         if enabled and effectiveSnapshot == nil and not currentImage then
-            previewSnapshot = nil
-            for image, overlay in pairs(overlays) do
-                pcall(function() overlay.Visible = false end)
-                hideImage(image)
-            end
+            status="Waiting for avatar data.";return api.report()
         end
         effectiveKey = nextKey
         if not enabled then
             previewSnapshot = nil
             for image in pairs(overlays) do destroyOverlay(image) end
+            for image in pairs(pending) do destroyOverlay(image) end
             restoreAllImages()
             status = "Native avatar thumbnails are disabled."; return api.report()
         end
@@ -413,6 +435,7 @@ function M.create(player, getPreviews)
         end
         connections = {};transparencyConnections={};textConnections={}
         for image in pairs(overlays) do destroyOverlay(image) end
+        for image in pairs(pending) do destroyOverlay(image) end
         restoreAllImages()
     end
     return api
