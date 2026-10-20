@@ -72,3 +72,29 @@ assert(not outdated:FindFirstChildOfClass("Shirt") and not outdated:FindFirstChi
 assert(latest:FindFirstChildOfClass("Shirt").ShirtTemplate=="shirt-new" and latest:FindFirstChildOfClass("Pants").PantsTemplate=="pants-new", "rapid resets restore clothes only to the latest character")
 rapid.destroy()
 print("Reset cancellation and rapid reset clothes checks passed.")
+local removingCharacter=character();player.Character=removingCharacter
+local removableShirt=node("Shirt","Original shirt");removableShirt.ShirtTemplate="original";removableShirt.Parent=removingCharacter
+local removablePants=node("Pants","Original pants");removablePants.PantsTemplate="original";removablePants.Parent=removingCharacter
+local removing=create(player);removing.removeShirt();removing.removePants()
+assert(not removingCharacter:FindFirstChildOfClass("Shirt") and not removingCharacter:FindFirstChildOfClass("Pants"),"browser Remove hides both classic clothing slots")
+assert(removing.getSettings().Shirt==0 and removing.getSettings().Pants==0,"explicit removal is saved independently of restore-original")
+removing.destroy()
+assert(removableShirt.Parent==removingCharacter and removablePants.Parent==removingCharacter,"closing restores the real original clothes")
+local removedReload=create(player);removedReload.reapplySaved()
+assert(not removingCharacter:FindFirstChildOfClass("Shirt") and not removingCharacter:FindFirstChildOfClass("Pants"),"removed clothing stays removed on script rerun")
+removedReload.restoreShirt();removedReload.restorePants();removedReload.destroy()
+print("Browser clothing removal, persistence and original restoration checks passed.")
+
+-- Classic graphic T-shirts use ShirtGraphic.Graphic, independently of shirts/pants.
+local graphicCharacter=character();player.Character=graphicCharacter
+local originalGraphic=node("ShirtGraphic","Original graphic");originalGraphic.Graphic="original-graphic";originalGraphic.Parent=graphicCharacter
+local previousLoader=game.GetObjects
+game.GetObjects=function(self,id)if id=="rbxassetid://789" then local graphic=node("ShirtGraphic","Loaded graphic");graphic.Graphic="new-graphic";return{graphic}end;return previousLoader(self,id)end
+local graphics=create(player);graphics.equipTShirt(789)
+assert(graphicCharacter:FindFirstChildOfClass("ShirtGraphic").Graphic=="new-graphic","classic T-shirt graphic equips")
+assert(graphics.getSettings().ShirtGraphic==789,"classic T-shirt selection is saved")
+graphics.removeTShirt();assert(not graphicCharacter:FindFirstChildOfClass("ShirtGraphic"),"classic T-shirt Remove works")
+graphics.destroy();assert(originalGraphic.Parent==graphicCharacter,"cleanup restores original T-shirt")
+local graphicsReload=create(player);graphicsReload.reapplySaved();assert(not graphicCharacter:FindFirstChildOfClass("ShirtGraphic"),"removed T-shirt survives rerun")
+graphicsReload.restoreTShirt();graphicsReload.destroy()
+print("Classic graphic T-shirt equip, remove, persistence and restore passed.")

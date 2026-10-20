@@ -40,7 +40,16 @@ local names={[48]='climb',[50]='fall',[51]='idle',[52]='jump',[53]='run',[54]='s
 for id in pairs(names)do bundle.items[#bundle.items+1]={type='Asset',assetType=id,id=id}end
 local failBundle,failAsset=false,false
 local roots={}
-local http={JSONDecode=function()return failBundle and {bundleType='BodyParts',items={}} or bundle end}
+local http={
+    JSONEncode=function(_,value)return 'assets:'..value.assets[1].id..':'..value.assets[1].assetType end,
+    JSONDecode=function(_,value)
+        if type(value)=='string' and value:sub(1,7)=='assets:' then
+            local id,assetType=value:match('assets:(%d+):(%d+)')
+            return {assets={{id=tonumber(id),assetType=tonumber(assetType)}}}
+        end
+        return failBundle and {bundleType='BodyParts',items={}} or bundle
+    end
+}
 game={GetService=function(_,name)assert(name=='HttpService');return http end,HttpGet=function(_,url)assert(url:find('/bundles/',1,true));return'fixture'end}
 function game:GetObjects(url)
     if failAsset then error('Unavailable')end
@@ -67,6 +76,7 @@ assert(animate:FindFirstChild('idle'):GetChildren()[2]:FindFirstChild('Weight').
 assert(animate:FindFirstChild('swimidle'):GetChildren()[1].AnimationId=='rbxassetid://541','Swim idle state equipped')
 assert(movement.stopped and not action.stopped and not animate.Disabled,'Restarts locomotion while preserving action tracks')
 assert(attrs.HoneyBunCosmeticAnimationBundle==82,'Equipped bundle saved')
+assert(api.getSettings().assets[1].assetType>=48,'Bundle settings expose component assets')
 for _,root in ipairs(roots)do assert(root.destroyed,'Loaded wrappers disposed')end
 failBundle=true;assert(not pcall(api.equipBundle,'999'),'Body bundle rejected');failBundle=false
 failAsset=true;assert(not pcall(api.equipBundle,'998'),'Unloadable package rejected');failAsset=false
@@ -79,4 +89,14 @@ local refreshed=make(player);refreshed.reapplySaved()
 assert(a2:FindFirstChild('walk'):GetChildren()[1].AnimationId=='rbxassetid://551','Refresh restores saved bundle')
 refreshed.restore();assert(a2:FindFirstChild('walk'):GetChildren()[1].AnimationId=='original-walk' and attrs.HoneyBunCosmeticAnimationBundle==nil,'Restore original animations clears selection')
 refreshed.destroy()
+local components=make(player)
+components.equipAssets({{id=55,assetType=55}})
+assert(type(attrs.HoneyBunCosmeticAnimationBundle)=='string','Components persist as JSON')
+assert(components.getSettings().assets[1].assetType==55,'Component settings expose asset type')
+assert(a2:FindFirstChild('walk'):GetChildren()[1].AnimationId=='rbxassetid://551','Component content is applied')
+components.destroy()
+local restoredComponents=make(player);assert(restoredComponents.getSettings().assets[1].id==55,'Component settings survive reload')
+restoredComponents.reapplySaved();assert(a2:FindFirstChild('walk'):GetChildren()[1].AnimationId=='rbxassetid://551','Saved components reapply')
+restoredComponents.restore();assert(attrs.HoneyBunCosmeticAnimationBundle==nil,'Restoring components clears saved JSON')
+restoredComponents.destroy()
 print('Movement bundle wrappers, idle variants, locomotion, persistence, reset, restore and failed-equip checks passed.')

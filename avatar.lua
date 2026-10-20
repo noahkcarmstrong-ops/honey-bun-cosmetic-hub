@@ -194,7 +194,13 @@ return function(player,onStatus)
     local function attach(accessory,c)
         local handle=accessory:FindFirstChild("Handle")
         assert(handle and handle:IsA("BasePart"),"This accessory has no wearable Handle.")
-        assert(not accessory:FindFirstChildWhichIsA("WrapLayer",true),"Layered clothing needs Roblox's avatar system. Try a rigid hat, mask, or hair accessory.")
+        if accessory:FindFirstChildWhichIsA("WrapLayer",true) then
+            local humanoid=c:FindFirstChildOfClass("Humanoid")
+            assert(humanoid and humanoid.RigType==Enum.HumanoidRigType.R15,"Layered clothing needs an R15 avatar.")
+            humanoid:AddAccessory(accessory)
+            assert(accessory.Parent==c,"Roblox could not attach this layered accessory.")
+            return
+        end
         local target,bodyAttachment,handleAttachment
         for _,a in ipairs(handle:GetChildren()) do
             if a:IsA("Attachment") then

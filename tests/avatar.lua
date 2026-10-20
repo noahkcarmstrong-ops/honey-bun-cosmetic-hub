@@ -247,3 +247,29 @@ headEditor.restoreBody()
 assert(partHead:FindFirstChild('OriginalHeadMesh') and not headJoint.destroyed,'Part head visual restore preserves game joints')
 headEditor.destroy()
 print("Avatar backend fixture and lifecycle tests passed.")
+
+-- Exercise the real rigid accessory attachment path for each supported region.
+player.Character=body;local accessoryEditor=create(player)
+local previousObjects=game.GetObjects;local fixtureAttachment="BodyBackAttachment";local layered=false
+local regions={HatAttachment="Head",HairAttachment="Head",FaceFrontAttachment="Head",NeckAttachment="UpperTorso",LeftCollarAttachment="UpperTorso",BodyFrontAttachment="UpperTorso",BodyBackAttachment="UpperTorso",WaistCenterAttachment="LowerTorso"}
+for name,partName in pairs(regions)do local part=body:FindFirstChild(partName);part.CFrame=cf();local a=part:FindFirstChild(name);if not a then a=node("Attachment",name);a.Parent=part end;a.CFrame=cf()end
+game.GetObjects=function(_,id)
+    local item=node("Accessory","Region accessory");local h=node("Part","Handle");h.CFrame=cf();h.AttachmentPoint=cf();h.Parent=item
+    local a=node("Attachment",fixtureAttachment);a.CFrame=cf();a.Parent=h
+    if layered then node("WrapLayer","WrapLayer").Parent=h end
+    return{item}
+end
+for name,partName in pairs(regions)do
+    fixtureAttachment=name;accessoryEditor.equipAccessory(19399858)
+    local entry=accessoryEditor.listAccessories()[1];local object
+    for _,candidate in ipairs(body:GetChildren())do if candidate.Name=="Region accessory"then object=candidate end end
+    assert(object and object:FindFirstChild("Handle"):FindFirstChild("AccessoryWeld").Part1.Name==partName,"accessory attaches to its correct region: "..name)
+    accessoryEditor.removeAccessory(entry.key)
+end
+layered=true;fixtureAttachment="BodyFrontAttachment";accessoryEditor.equipAccessory(123)
+assert(#accessoryEditor.listAccessories()==1,"R15 layered accessory uses native Humanoid attachment")
+accessoryEditor.clearAccessories();body:FindFirstChildOfClass("Humanoid").RigType=Enum.HumanoidRigType.R6
+assert(not pcall(accessoryEditor.equipAccessory,123),"R6 layered clothing reports unsupported rig")
+body:FindFirstChildOfClass("Humanoid").RigType=Enum.HumanoidRigType.R15
+accessoryEditor.destroy();game.GetObjects=previousObjects
+print("Accessory head, hair, face, neck, shoulder, front, back, waist and R15 layered attachment passed.")

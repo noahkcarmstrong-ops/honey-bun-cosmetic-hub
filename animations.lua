@@ -14,7 +14,29 @@ return function(player,onStatus)
     local gui=player:FindFirstChildOfClass("PlayerGui")
     local attribute="HoneyBunCosmeticAnimationBundle"
     local savedId=gui and gui:GetAttribute(attribute)
+    local savedAssets,savedComponents
+    if type(savedId)=="string" then
+        local ok,value=pcall(function() return Http:JSONDecode(savedId) end)
+        if ok and type(value)=="table" then savedAssets=value.assets;savedId=value.bundleId end
+    end
     if type(savedId)~="number" or savedId<=0 or savedId%1~=0 or savedId>=9007199254740992 then savedId=nil end
+    local function validAssetType(value) return assetStates[tonumber(value)] end
+    local function normalizeAssets(items)
+        assert(type(items)=="table","Animation components must be an array.")
+        local result={}
+        for index,item in ipairs(items) do
+            assert(type(item)=="table","Animation component #"..index.." is invalid.")
+            local id=tonumber(item.id);local assetType=tonumber(item.assetType)
+            assert(id and id>0 and id%1==0 and id<9007199254740992 and validAssetType(assetType),
+                "Animation components need a valid catalog asset ID and supported assetType (48, 50-56).")
+            result[#result+1]={id=id,assetType=assetType}
+        end
+        return result
+    end
+    if type(savedAssets)=="table" then
+        local ok,normalized=pcall(normalizeAssets,savedAssets)
+        savedAssets=ok and normalized or nil
+    end
     local alive,generation=true,0
     local snapshot,cache=nil,{}
     local function context()
@@ -56,6 +78,37 @@ return function(player,onStatus)
             for _,folder in pairs(previous.originals) do folder:Destroy() end
         end
     end
+    local function extractAsset(id,default,ctx)
+        local loaded,roots=pcall(function() return game:GetObjects("rbxassetid://"..string.format("%.0f",id)) end)
+        local extracted={}
+        if loaded and type(roots)=="table" then
+            for _,root in ipairs(roots) do
+                local items=root:GetDescendants();table.insert(items,1,root)
+                for _,node in ipairs(items) do
+                    if node:IsA("Animation") and node.AnimationId~="" then
+                        local parentName=node.Parent and string.lower(node.Parent.Name) or ""
+                        local state=states[parentName] and parentName or default
+                        if string.lower(node.Name):find("swimidle",1,true) then state="swimidle" end
+                        local weight=node:FindFirstChild("Weight")
+                        extracted[state]=extracted[state] or {}
+                        table.insert(extracted[state],{name=node.Name,id=node.AnimationId,weight=weight and weight:IsA("NumberValue") and weight.Value or 1})
+                    end
+                end
+            end
+            for _,root in ipairs(roots) do root:Destroy() end
+        end
+        check(ctx);assert(next(extracted),"Roblox could not load the "..default.." animation component. Your current animations were kept.")
+        return extracted
+    end
+    local function groupsForAssets(items,ctx)
+        local groups={}
+        for _,item in ipairs(items) do
+            local default=assetStates[item.assetType]
+            for state,entries in pairs(extractAsset(item.id,default,ctx)) do groups[state]=entries end
+        end
+        assert(next(groups),"These animation components contain no playable animations.")
+        return groups
+    end
     local function loadBundle(id,ctx)
         if cache[id] then return cache[id] end
         local ok,bundle=pcall(function()
@@ -64,42 +117,22 @@ return function(player,onStatus)
         check(ctx)
         assert(ok and type(bundle)=="table" and type(bundle.items)=="table","Roblox could not read that animation bundle.")
         assert(bundle.bundleType=="AvatarAnimations","That is not an animation bundle. Copy a movement animation bundle link from Roblox.")
-        local groups={}
+        local groups,assets={},{ }
         for _,item in ipairs(bundle.items) do
             local default=assetStates[tonumber(item.assetType)]
             if item.type=="Asset" and default then
-                local loaded,roots=pcall(function() return game:GetObjects("rbxassetid://"..string.format("%.0f",item.id)) end)
-                local extracted={}
-                if loaded and type(roots)=="table" then
-                    for _,root in ipairs(roots) do
-                        local items=root:GetDescendants();table.insert(items,1,root)
-                        for _,node in ipairs(items) do
-                            if node:IsA("Animation") and node.AnimationId~="" then
-                                local parentName=node.Parent and string.lower(node.Parent.Name) or ""
-                                local state=states[parentName] and parentName or default
-                                if string.lower(node.Name):find("swimidle",1,true) then state="swimidle" end
-                                local weight=node:FindFirstChild("Weight")
-                                extracted[state]=extracted[state] or {}
-                                table.insert(extracted[state],{name=node.Name,id=node.AnimationId,weight=weight and weight:IsA("NumberValue") and weight.Value or 1})
-                            end
-                        end
-                    end
-                    for _,root in ipairs(roots) do root:Destroy() end
-                end
-                check(ctx)
-                assert(next(extracted),"Roblox could not load the bundle's "..default.." animations. Your current bundle was kept.")
-                for state,entries in pairs(extracted) do groups[state]=entries end
+                assets[#assets+1]={id=tonumber(item.id),assetType=tonumber(item.assetType)}
+                for state,entries in pairs(extractAsset(item.id,default,ctx)) do groups[state]=entries end
             end
         end
         assert(next(groups),"This bundle has no supported movement animations.")
-        local result={name=bundle.name or "Animation bundle",groups=groups}
+        local result={name=bundle.name or "Animation bundle",groups=groups,assets=assets}
         cache[id]=result;return result
     end
-    local function apply(id)
+    local function applyGroups(groups)
         local ctx=context()
-        local bundle=loadBundle(id,ctx);check(ctx)
         local prepared={}
-        for state,entries in pairs(bundle.groups) do
+        for state,entries in pairs(groups) do
             local folder=Instance.new("Folder");folder.Name=state
             for _,entry in ipairs(entries) do
                 local animation=Instance.new("Animation");animation.Name=entry.name;animation.AnimationId=entry.id;animation.Parent=folder
@@ -119,30 +152,54 @@ return function(player,onStatus)
             restart(ctx)
         end)
         if not ok then pcall(restoreCurrent);error("Could not equip this movement bundle: "..tostring(message)) end
+        return true
+    end
+    local function apply(id)
+        local ctx=context();local bundle=loadBundle(id,ctx);check(ctx)
+        applyGroups(bundle.groups)
         return bundle.name
+    end
+    local function applyAssets(items)
+        local ctx=context();local groups=groupsForAssets(items,ctx);check(ctx)
+        applyGroups(groups)
+        return #items
     end
     local api={}
     function api.equipBundle(value)
         local id=bundleId(value)
         local name=apply(id)
-        savedId=id;if gui then gui:SetAttribute(attribute,id) end
+        savedId=id;savedAssets=nil;savedComponents=cache[id] and cache[id].assets;if gui then gui:SetAttribute(attribute,id) end
         return "Equipped "..name..". Walk or run to try it."
     end
+    function api.equipAssets(items)
+        local normalized=normalizeAssets(items)
+        local count=applyAssets(normalized)
+        savedId=nil;savedAssets=normalized;savedComponents=normalized
+        if gui then gui:SetAttribute(attribute,Http:JSONEncode({assets=normalized})) end
+        return "Equipped "..count.." animation component"..(count==1 and "" or "s")..". Walk or run to try it."
+    end
     function api.restore()
-        restoreCurrent();savedId=nil;if gui then gui:SetAttribute(attribute,nil) end
+        restoreCurrent();savedId=nil;savedAssets=nil;savedComponents=nil;if gui then gui:SetAttribute(attribute,nil) end
         return "Original movement animations restored."
     end
     function api.reapplySaved()
+        if savedAssets then return "Restored "..applyAssets(savedAssets).." animation components." end
         if savedId then return "Restored "..apply(savedId).."." end
         return "No movement animation bundle selected."
+    end
+    function api.getSettings()
+        local source=savedAssets or savedComponents
+        local assets
+        if source then assets={};for i,item in ipairs(source) do assets[i]={id=item.id,assetType=item.assetType} end end
+        return {bundleId=savedId,assets=assets}
     end
     local changed=player.CharacterAdded:Connect(function(character)
         generation=generation+1;local ticket=generation
         restoreCurrent()
-        if not savedId then return end
+        if not savedId and not savedAssets then return end
         task.spawn(function()
             for attempt=1,100 do
-                if not alive or generation~=ticket or player.Character~=character or not savedId then return end
+                if not alive or generation~=ticket or player.Character~=character or (not savedId and not savedAssets) then return end
                 local ready=pcall(context)
                 local ok,appearance=pcall(function() return player:HasAppearanceLoaded() end)
                 if ready and ((ok and appearance) or attempt>=50) then

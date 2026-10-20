@@ -197,7 +197,7 @@ content.Parent = panel
 local layout = Instance.new("UIListLayout", content)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
-local avatarAPI,motionAPI,animationAPI,clothesAPI,charactersAPI,previewsAPI
+local avatarAPI,motionAPI,animationAPI,clothesAPI,charactersAPI,previewsAPI,browserOutfitAPI,gameBrowserSyncAPI
 local refresh = Instance.new("TextButton")
 refresh.Position = UDim2.new(1, -126, 0, 62)
 refresh.Size = UDim2.fromOffset(98, 26)
@@ -282,6 +282,7 @@ if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" an
 local statusText = "Local avatar editor. Saved selections reapply automatically."
 local statusLabel, render,lastRenderedPage
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
+local browserOutfitInput=uiSetting("browserOutfit","")
 local skyboxInput=uiSetting("skybox","")
 local skyboxName=""
 local skyboxMenu,skyboxDelete,skyboxRename
@@ -331,7 +332,7 @@ local regionIndex = uiSetting("region",1)
 if regionIndex<1 or regionIndex>#regions or regionIndex%1~=0 then regionIndex=1 end
 local paletteOpen=uiSetting("palette",false)
 local function saveUI()
-    local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animationBundle=animationInput,emoteSlot=emoteSlot,shirt=shirtInput,pants=pantsInput}
+    local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,browserOutfit=browserOutfitInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animationBundle=animationInput,emoteSlot=emoteSlot,shirt=shirtInput,pants=pantsInput}
     values.skybox=skyboxInput
     values.bodyPartsOpen=bodyPartsOpen
     values.characterName=characterName
@@ -467,6 +468,29 @@ local function clothes()
         if statusLabel then statusLabel.Text=message end
     end)
     return clothesAPI
+end
+local function browserOutfit()
+    if browserOutfitAPI then return browserOutfitAPI end
+    api()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/browser_outfit.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    browserOutfitAPI=chunk()(Players.LocalPlayer,function() return api() end,function() return clothes() end,function(message)
+        if not alive then return end
+        statusText=message
+        if statusLabel then statusLabel.Text=message end
+    end,function()return animations()end)
+    return browserOutfitAPI
+end
+local function gameBrowserSync()
+    if gameBrowserSyncAPI then return gameBrowserSyncAPI end
+    api();clothes()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/game_browser_sync.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    local create=chunk();assert(type(create)=="function","Game browser sync failed to load.")
+    gameBrowserSyncAPI=select(1,create(Players.LocalPlayer,function()return api()end,function()return clothes()end,function()return alive end,function(message)
+        if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
+    end,function()return animations()end))
+    return gameBrowserSyncAPI
 end
 local function characterModules()
     api()
@@ -1068,6 +1092,28 @@ render=function()
         caption(persistence and persistence.status() or persistenceNotice,44)
     elseif activePage=="Accessories" then
         caption("ACCESSORIES",24)
+        caption("BROWSER CONNECTION",24)
+        caption("Connect this local avatar to the Larpblox browser through the loopback relay. Your pairing code stays on this executor and is never stored in Roblox.",56)
+        local pairing=input("32-character browser pairing code","",function()end)
+        button(gameBrowserSyncAPI and gameBrowserSyncAPI.isConnected() and "Disconnect browser" or "Connect browser",function()
+            if busy then return end
+            action(function()
+                local sync=gameBrowserSync()
+                if sync.isConnected() then sync.disconnect();return "Browser disconnected." end
+                local code=pairing.Text:match("^%s*(.-)%s*$")
+                sync.connect(#code>0 and code or nil);return "Browser connected; local avatar sync is running."
+            end)
+        end)
+        caption("Sync publishes your live local avatar, including added accessories, current shirt and pants, skin overrides, and hidden originals. Unsupported game-only items are reported.",48)
+        caption("IMPORT FROM BROWSER",24)
+        caption("Paste the JSON exported by the Larpblox browser extension. This equips supported accessories, classic shirts, and classic pants locally; it does not grant ownership or purchase anything.",64)
+        local browserOutfitBox=input("Paste browser outfit JSON",browserOutfitInput,function(value) browserOutfitInput=value end)
+        browserOutfitBox.MultiLine=true;browserOutfitBox.TextWrapped=true;browserOutfitBox.Size=UDim2.new(1,-8,0,96)
+        button("Import browser outfit",function()
+            if busy then return end
+            browserOutfitInput=browserOutfitBox.Text;saveUI()
+            action(function() return browserOutfit().import(browserOutfitInput) end)
+        end)
         local soundsEnabled=playerGui:GetAttribute("HoneyBunCosmeticUI_HatSounds")~=false
         button(soundsEnabled and "Hat sounds: ON" or "Hat sounds: OFF",function() action(function()
             local sounds=hatSounds();return sounds.setEnabled(not sounds.isEnabled())
@@ -1535,6 +1581,7 @@ gui.Destroying:Connect(function()
     if animationAPI then animationAPI.destroy() end
     if clothesAPI then clothesAPI.destroy() end
     if previewsAPI and previewsAPI.destroy then previewsAPI.destroy() end
+    if gameBrowserSyncAPI then gameBrowserSyncAPI.destroy() end
 end)
 panelScale.Scale=0.975
 panel.GroupTransparency=1
@@ -1547,6 +1594,7 @@ action(function()
     local editor=api()
     local soundsLoaded=pcall(hatSounds)
     local message=reapplyAll(editor)
+    pcall(gameBrowserSync)
     if isMM2 and mm2EmotesShown then
         local ok,err=pcall(enableMM2Emotes)
         if not ok then message=message.." Saved MM2 emotes could not load: "..tostring(err) end

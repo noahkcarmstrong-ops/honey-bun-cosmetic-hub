@@ -27,23 +27,23 @@ end
 return function(player,onStatus)
     local gui=player:FindFirstChildOfClass("PlayerGui")
     local attribute="HoneyBunCosmeticClothes"
-    local settings={Shirt=nil,Pants=nil}
+    local settings={Shirt=nil,Pants=nil,ShirtGraphic=nil}
     local alive,generation=true,0
-    local state={Shirt=nil,Pants=nil}
+    local state={Shirt=nil,Pants=nil,ShirtGraphic=nil}
     local function read()
         if not gui then return end
         local ok,saved=pcall(function() return Http:JSONDecode(gui:GetAttribute(attribute) or "") end)
         if ok and type(saved)=="table" then
-            for _,kind in ipairs({"Shirt","Pants"}) do
+            for _,kind in ipairs({"Shirt","Pants","ShirtGraphic"}) do
                 local value=saved[kind]
-                if type(value)=="number" and value>0 and value%1==0 and value<9007199254740992 then settings[kind]=value end
+                if type(value)=="number" and value>=0 and value%1==0 and value<9007199254740992 then settings[kind]=value end
             end
         end
     end
     read()
     local reapplying=false
     local function save()
-        if gui and not reapplying then gui:SetAttribute(attribute,Http:JSONEncode({Shirt=settings.Shirt,Pants=settings.Pants})) end
+        if gui and not reapplying then gui:SetAttribute(attribute,Http:JSONEncode({Shirt=settings.Shirt,Pants=settings.Pants,ShirtGraphic=settings.ShirtGraphic})) end
     end
     local function context()
         assert(alive,"The cosmetic menu was closed.")
@@ -93,9 +93,10 @@ return function(player,onStatus)
             if source then break end
         end
         if not source then dispose(roots);error("That catalog item is not a classic "..string.lower(kind)..".") end
-        local template=source[kind=="Shirt" and "ShirtTemplate" or "PantsTemplate"]
+        local property=({Shirt="ShirtTemplate",Pants="PantsTemplate",ShirtGraphic="Graphic"})[kind]
+        local template=source[property]
         if type(template)~="string" or template=="" then dispose(roots);error("That classic "..string.lower(kind).." has no usable template.") end
-        local applied=Instance.new(kind);applied.Name="HoneyBun"..kind;applied[kind=="Shirt" and "ShirtTemplate" or "PantsTemplate"]=template
+        local applied=Instance.new(kind);applied.Name="HoneyBun"..kind;applied[property]=template
         dispose(roots)
         if not valid(ctx) then applied:Destroy();check(ctx) end
         local s=capture(ctx,kind);clearApplied(s)
@@ -103,17 +104,27 @@ return function(player,onStatus)
         return "Equipped classic "..string.lower(kind).." (visible to you)."
     end
     local api={}
+    local function remove(kind)
+        local ctx=context();local s=capture(ctx,kind);clearApplied(s)
+        settings[kind]=0;save()
+        return "Removed classic "..string.lower(kind).." locally."
+    end
+    function api.equipTShirt(value)return equip("ShirtGraphic",value) end
+    function api.removeTShirt()return remove("ShirtGraphic") end
+    function api.restoreTShirt()return restoreKind("ShirtGraphic",true) end
     function api.equipShirt(value)return equip("Shirt",value) end
     function api.equipPants(value)return equip("Pants",value) end
+    function api.removeShirt()return remove("Shirt") end
+    function api.removePants()return remove("Pants") end
     function api.restoreShirt()return restoreKind("Shirt",true) end
     function api.restorePants()return restoreKind("Pants",true) end
-    function api.restore() local a=restoreKind("Shirt",false);local b=restoreKind("Pants",false);settings.Shirt=nil;settings.Pants=nil;save();return a.." "..b end
-    function api.getSettings()return {Shirt=settings.Shirt,Pants=settings.Pants} end
+    function api.restore() local a=restoreKind("Shirt",false);local b=restoreKind("Pants",false);local c=restoreKind("ShirtGraphic",false);settings.Shirt=nil;settings.Pants=nil;settings.ShirtGraphic=nil;save();return a.." "..b.." "..c end
+    function api.getSettings()return {Shirt=settings.Shirt,Pants=settings.Pants,ShirtGraphic=settings.ShirtGraphic} end
     function api.reapplySaved()
         local old=reapplying;reapplying=true;local messages,errors={},{}
-        for _,kind in ipairs({"Shirt","Pants"}) do
+        for _,kind in ipairs({"Shirt","Pants","ShirtGraphic"}) do
             if settings[kind] then
-                local ok,message=pcall(function() return equip(kind,settings[kind]) end)
+                local ok,message=pcall(function() if settings[kind]==0 then return remove(kind) end;return equip(kind,settings[kind]) end)
                 if ok then table.insert(messages,string.lower(kind)) else table.insert(errors,string.lower(kind)..": "..tostring(message)) end
             end
         end
@@ -122,7 +133,7 @@ return function(player,onStatus)
         return #messages==0 and "No saved classic clothes selected." or "Reapplied saved classic clothes."
     end
     local changed=player.CharacterAdded:Connect(function(character)
-        generation=generation+1;for _,kind in ipairs({"Shirt","Pants"}) do local s=state[kind];if s then clearApplied(s);for _,item in ipairs(s.originals) do item:Destroy() end;state[kind]=nil end end
+        generation=generation+1;for _,kind in ipairs({"Shirt","Pants","ShirtGraphic"}) do local s=state[kind];if s then clearApplied(s);for _,item in ipairs(s.originals) do item:Destroy() end;state[kind]=nil end end
         local ticket=generation;task.spawn(function()
             for attempt=1,100 do
                 if not alive or ticket~=generation or player.Character~=character then return end
@@ -143,7 +154,7 @@ return function(player,onStatus)
     function api.destroy()
         if not alive then return end
         alive=false;generation=generation+1;changed:Disconnect()
-        for _,kind in ipairs({"Shirt","Pants"}) do
+        for _,kind in ipairs({"Shirt","Pants","ShirtGraphic"}) do
             local s=state[kind]
             if s then
                 clearApplied(s)
