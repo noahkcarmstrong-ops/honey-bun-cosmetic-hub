@@ -168,6 +168,31 @@ local function readCallback(service,member)
     end
     return pcall(function() return service[member] end)
 end
+local function interceptCallback(callback,transform)
+    if type(hookfunction)~="function" or type(getgenv)~="function" then return end
+    local environment=getgenv()
+    local registry=rawget(environment,"__LarpbloxChatInterceptors")
+    if type(registry)~="table" or registry.version~=1 then
+        registry={version=1,entries=setmetatable({}, {__mode="k"})}
+        environment.__LarpbloxChatInterceptors=registry
+    end
+    local state=registry.entries[callback]
+    if not state then
+        state={}
+        local original
+        local installed,trampoline=pcall(hookfunction,callback,function(message)
+            local properties=original(message)
+            local handler=state.transform
+            if handler then return handler(properties,message) end
+            return properties
+        end)
+        if not installed or type(trampoline)~="function" then return end
+        original=trampoline
+        registry.entries[callback]=state
+    end
+    state.transform=transform
+    return state
+end
 local function bindChat()
     if next(chatBindings) then return end
     local ok, service=pcall(function() return game:GetService("TextChatService") end)
@@ -178,8 +203,7 @@ local function bindChat()
         local readable,previous=readCallback(service,member)
         -- Preserve the game's callback and its filtering/status/formatting.
         if readable and (previous==nil or type(previous)=="function") and (member~="OnChatWindowAdded" or config) then
-            local hook=function(message)
-                local properties=previous and previous(message) or nil
+            local transform=function(properties,message)
                 local source=message.TextSource
                 local controller=source and controllers[source.UserId]
                 if not controller or not controller.settings.enabled then return properties end
@@ -194,8 +218,16 @@ local function bindChat()
                 properties.PrefixText=value
                 return properties
             end
-            if pcall(function() service[member]=hook end) then
-                chatBindings[member]={previous=previous,hook=hook}
+            local state=previous and interceptCallback(previous,transform)
+            if state then
+                chatBindings[member]={state=state,transform=transform}
+            else
+                local hook=function(message)
+                    return transform(previous and previous(message) or nil,message)
+                end
+                if pcall(function() service[member]=hook end) then
+                    chatBindings[member]={previous=previous,hook=hook}
+                end
             end
         end
     end
@@ -204,9 +236,16 @@ local function bindChat()
 end
 local function unbindChat()
     for member,binding in pairs(chatBindings) do
-        local readable,current=readCallback(chatService,member)
-        if readable and current==binding.hook then
-            pcall(function() chatService[member]=binding.previous end)
+        if binding.state then
+            -- Keep one pass-through executor hook per callback across refreshes;
+            -- dropping our handler releases this session without stacking hooks
+            -- or undoing hooks another script may have installed afterwards.
+            if binding.state.transform==binding.transform then binding.state.transform=nil end
+        else
+            local readable,current=readCallback(chatService,member)
+            if readable and current==binding.hook then
+                pcall(function() chatService[member]=binding.previous end)
+            end
         end
     end
     chatService=nil;chatBindings={}
