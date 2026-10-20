@@ -435,7 +435,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         end
     end
     function api.connect(code)
-        code=(code and code~="" and code) or readSaved();assert(validToken(code),"Enter the 32-character browser pairing code.")
+        if not code or code=="" then
+            local ok,pair=pcall(call,"GET","/v1/pair","")
+            code=ok and pair and pair.code or readSaved()
+        end
+        assert(validToken(code),"Open the Larpblox app to connect.")
         local relay=call("GET","/v1/status",code);if relay and relay.instanceId and relay.instanceId~=api.instanceId then lastRevision=0;lastNameState=nil;api.instanceId=relay.instanceId end
         closeSocket();incoming={};retryCommand=nil;generation=generation+1;token=code;connected=true;lastJson=nil;save(code);status("Browser connected.")
         task.spawn(loop);return true
@@ -452,12 +456,12 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     end
     function api.destroy()api.disconnect()end
     local saved=readSaved()
-    if saved then
+    do
         local mine=generation
         task.spawn(function()
             while generation==mine and isAlive() do
-                if pcall(api.connect,saved) then return end
-                status("Waiting for the saved browser connection...")
+                if pcall(api.connect) then return end
+                status("Waiting for the Larpblox app...")
                 task.wait(2)
             end
         end)
