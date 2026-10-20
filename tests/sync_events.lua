@@ -44,11 +44,16 @@ function socket:Send(data)
 end
 WebSocket={connect=function()return socket end}
 local avatar={getSettings=function()return {}end,listAccessories=function()return {}end}
+local restoredNames=0
+local names={restore=function()restoredNames=restoredNames+1 end,setEnabled=function()end,
+    set=function(name)assert(name~="","empty name must not be applied")end}
 local create=dofile("game_browser_sync.lua")
-local sync=create(player,function()return avatar end,function()return {getSettings=function()return {}end}end,function()return true end)
+local sync=create(player,function()return avatar end,function()return {getSettings=function()return {}end}end,function()return true end,nil,nil,function()return names end)
 resume(jobs[1]);assert(#jobs==2,"auto-connect starts the transport")
 assert(resume(jobs[2])==5,"ready socket uses the slow maintenance interval")
 flush();assert(snapshots==1,"connection publishes an initial snapshot")
+socket.OnMessage:Fire(http:JSONEncode({type="state",channel="names",value={version=1,userId="7",enabled=true,name=""}}))
+resume(jobs[#jobs]);assert(restoredNames==1,"Larp mode without a custom name restores original names")
 for _=1,3 do resume(jobs[2])end
 assert(snapshots==1,"idle WebSocket does not rebuild snapshots during recovery checks")
 body:GetPropertyChangedSignal("HeadColor3"):Fire()

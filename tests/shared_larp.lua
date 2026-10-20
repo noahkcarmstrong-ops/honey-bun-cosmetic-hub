@@ -38,7 +38,8 @@ end
 local names={restore=function()end,destroy=function()destroyed=destroyed+1 end,set=function(username,displayName)calls[#calls+1]={Method="NAME",Username=username,DisplayName=displayName}end}
 local module=dofile("shared_larp.lua")
 local apiInstance
-apiInstance=module(localPlayer,function()return {version=1,userId="1",definition={assets={},bodyColors={}},items={}}end,function()return {enabled=false,username="",displayName=""}end,
+local nameSettings={enabled=false,username="",displayName=""}
+apiInstance=module(localPlayer,function()return {version=1,userId="1",definition={assets={},bodyColors={}},items={}}end,function()return nameSettings end,
     function()return api()end,function()return clothes()end,function()return animations()end,function()return names end,function()return true end,function()end)
 task.wait=function()apiInstance.setEnabled(false)end
 apiInstance.setEnabled(true)
@@ -52,3 +53,23 @@ assert(called("SKIN") and called("NAME"),"peer colors and Larp name are applied 
 assert(called("DELETE"),"disabling sharing removes the local relay record")
 assert(destroyed==4,"disabling sharing restores and destroys the peer overlay APIs")
 print("Shared Larp opt-in publish, peer rendering, cleanup and relay removal passed.")
+
+for _,fixture in ipairs({
+    {value={enabled=true,username="",displayName=""},enabled=false},
+    {value={enabled=true,username="Valid_Name",displayName=""},enabled=false},
+    {value={enabled=true,username="Invalid Name",displayName="Display"},enabled=false},
+    {value={enabled=true,username="Valid_Name",displayName="Display"},enabled=true},
+})do
+    nameSettings=fixture.value;calls={};jobs={}
+    apiInstance.setEnabled(true);jobs[1]()
+    local published
+    for _,entry in ipairs(calls)do if entry.Method=="PUT"then published=entry.Body end end
+    assert(published and published.snapshot,"avatar still publishes without a custom name")
+    assert(published.name.enabled==fixture.enabled,"only valid custom names are shared")
+    if not fixture.enabled then
+        assert(published.name.username=="" and published.name.displayName=="","disabled name has empty fields")
+    else
+        assert(published.name.username==fixture.value.username,"valid custom name is preserved")
+    end
+end
+print("Empty or invalid custom names do not block avatar sharing.")

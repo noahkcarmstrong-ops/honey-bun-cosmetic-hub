@@ -161,7 +161,14 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     end
     local function publish()
         local snapshot=getSnapshot()
-        local name=getNameSettings and getNameSettings() or {enabled=false,username="",displayName=""}
+        local settings=getNameSettings and getNameSettings() or {}
+        local name={enabled=false,username="",displayName=""}
+        local username,displayName=settings.username,settings.displayName
+        if settings.enabled==true and type(username)=="string" and #username>=3 and #username<=20
+            and username:match("^[A-Za-z0-9_]+$") and type(displayName)=="string"
+            and #displayName>=1 and #displayName<=50 and not displayName:find("[%c]") then
+            name={enabled=true,username=username,displayName=displayName}
+        end
         local record={version=1,userId=tostring(localPlayer.UserId),snapshot=snapshot,name=name}
         if presentation.getImageUrl then
             local url=presentation.getImageUrl()
