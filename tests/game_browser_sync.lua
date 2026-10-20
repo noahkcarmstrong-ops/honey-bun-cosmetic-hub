@@ -170,18 +170,24 @@ command.revision=21;command.items={{id=999,name="Head",itemType="Asset",assetTyp
 jobs={};bodySync.connect(string.rep("a",32));jobs[1]();assert(#bodyCalls>beforeRemoval and bodyCalls[#bodyCalls][1]=="LeftLeg" and bodyCalls[#bodyCalls][2]=="restore","removed browser body part restores through avatar API");assert(faceCalls[#faceCalls][1]=="restore","removed browser face restores through avatar API")
 bodySync.destroy();print("Game browser body selections apply and restore selectively.")
 
--- A saved character includes its skin colors, not just clothing and accessories.
+-- A saved character replaces its skin colors, clothing and accessories in one command,
+-- including the # prefix emitted by the browser preview.
 local skinCalls={}
 function avatar.setSkin(value,region)
     skinCalls[#skinCalls+1]=region
     body[region.."Color3"]=value
 end
+localHats={{key=88,id=88,name="Old Hat"}};clothes.Shirt=111;clothes.Pants=222
+extraTypes[23]=8;extraTypes[333]=11;extraTypes[444]=12
 command.revision=22
-command.definition.bodyColors.headColor="123456"
+command.definition.bodyColors={headColor="#123456",torsoColor="#654321",leftArmColor="#112233",rightArmColor="#aabbcc",leftLegColor="#ddee00",rightLegColor="#00ff11"}
+command.items={{id=23,name="Saved Hat",itemType="Asset",assetType=8},{id=333,name="Saved Shirt",itemType="Asset",assetType=11},{id=444,name="Saved Pants",itemType="Asset",assetType=12}}
 local colorSync=create(player,function()return avatar end,function()return clothing end,function()return true end,function()end)
 jobs={};task.wait=function()colorSync.disconnect()end
 colorSync.connect(string.rep("a",32));jobs[1]()
-assert(#skinCalls==1 and skinCalls[1]=="Head","saved outfit applies its changed body color")
+assert(#skinCalls==6,"saved outfit applies all changed body colors")
+assert(#localHats==1 and localHats[1].id==23,"saved outfit replaces the previous accessory")
+assert(clothes.Shirt==333 and clothes.Pants==444,"saved outfit replaces the previous clothes")
 assert(posted.definition.bodyColors.headColor=="123456","game confirms the new outfit color instead of the old one")
 colorSync.destroy()
 print("Saved character body colors replace the previous outfit colors.")

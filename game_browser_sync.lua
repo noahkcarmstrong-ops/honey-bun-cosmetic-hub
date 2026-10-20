@@ -127,7 +127,10 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         for _,asset in ipairs(value.definition.assets)do assert(type(asset)=="table" and safeId(asset.id),"Browser asset is invalid.")end
         local colors=value.definition.bodyColors;local colorKeys={"headColor","torsoColor","leftArmColor","rightArmColor","leftLegColor","rightLegColor"}
         assert(type(colors)=="table", "Browser body colors are invalid.")
-        for _,key in ipairs(colorKeys)do assert(type(colors[key])=="string" and colors[key]:match("^%x%x%x%x%x%x$"),"Browser body colors are invalid.")end
+        for _,key in ipairs(colorKeys)do
+            assert(type(colors[key])=="string" and colors[key]:match("^#?%x%x%x%x%x%x$"),"Browser body colors are invalid.")
+            colors[key]=colors[key]:gsub("^#",""):lower()
+        end
         local scales=value.definition.scales;assert(type(scales)=="table","Browser scales are invalid.")
         for _,v in pairs(scales)do assert(type(v)=="number" and v==v and v<math.huge and v>=0 and v<=5,"Browser scales are invalid.")end
         local rig=value.definition.playerAvatarType;assert(type(rig)=="table" and (rig.playerAvatarType=="R6" or rig.playerAvatarType=="R15"),"Browser avatar type is invalid.")
