@@ -47,11 +47,17 @@ local posted;local command={version=1,userId="7",revision=1,definition={assets={
 function request(o)if o.Method=="GET" and o.Url:find("status")then return {StatusCode=200,Body={version=1,connected=true}}end;if o.Method=="GET"then return {StatusCode=200,Body=command}end;posted=o.Body;return {StatusCode=200,Body={}}end
 local jobs={};task={spawn=function(f)jobs[#jobs+1]=f end,wait=function()end}
 
+local skinCalls=0
+function avatar.setSkin(value,region)
+ skinCalls=skinCalls+1;body[region.."Color3"]=value
+ settings.colors[region]={value.R,value.G,value.B}
+end
+for key in pairs(command.definition.bodyColors)do command.definition.bodyColors[key]="123456"end
 local now=0;os.clock=function()return now end
 local socket={OnClose={},OnMessage={}}
 function socket.OnClose:Connect(fn)self.fn=fn end
 function socket.OnMessage:Connect(fn)self.fn=fn end
-function socket:Send(raw)if raw.type=="auth"then self.OnMessage.fn({type="ready",instanceId="test"})end end
+function socket:Send(raw)if raw.type=="publish" and raw.channel=="game"then posted=raw.value end;if raw.type=="auth"then self.OnMessage.fn({type="ready",instanceId="test"})end end
 function socket:Close()end
 WebSocket={connect=function()return socket end}
 local reads=0
@@ -71,4 +77,6 @@ end
 jobs[#jobs]()
 assert(reads>0,"a ready socket must recover a missed browser notification without refresh")
 assert(#localHats==1 and localHats[1].id==13,"missed browser outfit reaches the game automatically")
+assert(skinCalls==6,"browser skin colors reach all six body regions")
+assert(posted.definition.bodyColors.headColor=="123456" and posted.definition.bodyColors.rightLegColor=="123456","game acknowledgement keeps the browser skin colors")
 print("Game sync recovers missed WebSocket outfit notifications without reconnecting or refreshing.")

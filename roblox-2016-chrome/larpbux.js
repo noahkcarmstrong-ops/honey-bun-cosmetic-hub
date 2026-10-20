@@ -7,6 +7,11 @@
     if (username && !/^[A-Za-z0-9_]{3,20}$/.test(username)) throw new Error('Use 3–20 letters, numbers, or underscores for the Larp username.');
     return {username};
   }
+  const bodyColorKeys = ['headColor', 'torsoColor', 'leftArmColor', 'rightArmColor', 'leftLegColor', 'rightLegColor'];
+  function localBodyColors(value) {
+    if (!value || typeof value !== 'object' || bodyColorKeys.some(key => !/^#?[0-9a-f]{6}$/i.test(String(value[key] || '')))) return undefined;
+    return Object.fromEntries(bodyColorKeys.map(key => [key, String(value[key])]));
+  }
   function amount(value) {
     const number = Number(value);
     if (!Number.isSafeInteger(number) || number < 0) throw new Error('Enter a whole number from 0 to 9,007,199,254,740,991.');
@@ -159,7 +164,7 @@
     const assets = look.definition.assets.filter(asset =>
       (!managed.has(asset.id) || selectedIds.has(asset.id)) && (!replaceSlots.has(types.get(asset.id)) || selectedIds.has(asset.id)) && !(faceSelected && isHeadless(asset)));
     for (const item of selected) if (!assets.some(asset => asset.id === item.id)) assets.push({id: item.id});
-    return {...look.definition, assets};
+    return {...look.definition, bodyColors: state.bodyColors || look.definition.bodyColors, assets};
   }
   function gameOutfitMatches(snapshot, command) {
     const defaultSlots = [...animationAssetTypes, ...bodyAssetTypes];
@@ -206,7 +211,8 @@
     if (saved?.gameLook && typeof LarpbloxGameBridge !== 'undefined') {
       try { gameLook = LarpbloxGameBridge.validateSnapshot(saved.gameLook, id); } catch (_) {}
     }
-    return {version: 1, names, mode: saved?.mode === true, pendingOutfit: saved?.mode === true && saved?.pendingOutfit === true, balance: Number.isSafeInteger(saved?.balance) && saved.balance >= 0 ? saved.balance : 0, items, equipped: Array.isArray(saved?.equipped) ? saved.equipped.filter(value => items.some(item => keyFor(item) === value)).slice(0, 100) : [], ...(gameLook ? {gameLook} : {})};
+    const bodyColors = localBodyColors(saved?.bodyColors);
+    return {version: 1, names, mode: saved?.mode === true, pendingOutfit: saved?.mode === true && saved?.pendingOutfit === true, balance: Number.isSafeInteger(saved?.balance) && saved.balance >= 0 ? saved.balance : 0, items, equipped: Array.isArray(saved?.equipped) ? saved.equipped.filter(value => items.some(item => keyFor(item) === value)).slice(0, 100) : [], ...(bodyColors ? {bodyColors} : {}), ...(gameLook ? {gameLook} : {})};
   }
   const avatarUrl = () => '/my/avatar';
   async function syncNames() {
@@ -344,6 +350,59 @@
     }
   }
   let browserAvatarBase;
+  let bodyColorSerial = 0;
+  function bodyColorControl(target) {
+    const editor = document.querySelector('#avatar-web-app');
+    for (let control = target; control && control !== editor; control = control.parentElement) {
+      if (!editor?.contains(control) || !control.getAttribute) return null;
+      const explicit = ['data-color', 'data-color-id', 'data-brick-color-id'].some(name => control.hasAttribute(name));
+      const details = [control.className, control.getAttribute('aria-label'), control.getAttribute('data-testid'), control.getAttribute('name')].join(' ');
+      if ((explicit || /(?:body|skin)[^\n]{0,30}color|color[^\n]{0,30}(?:body|skin)|color[-_ ]?(?:picker|swatch|option|tile|item)/i.test(details))
+          && bodyColorValue(control) !== undefined) return control;
+    }
+    return null;
+  }
+  function bodyColorValue(control) {
+    const raw = control.getAttribute('data-color') || control.getAttribute('data-color-id') || control.getAttribute('data-brick-color-id') || control.getAttribute('data-value') || control.value;
+    if (/^#?[0-9a-f]{6}$/i.test(String(raw || ''))) return String(raw);
+    if (/^\d+$/.test(String(raw || ''))) return Number(raw);
+    if (!control.style?.backgroundColor && !/color[-_ ]?(?:picker[-_ ]?item|swatch|option|tile|item)/i.test(String(control.className))) return undefined;
+    const rgb = getComputedStyle(control).backgroundColor.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    if (rgb && !/^rgba\(0,\s*0,\s*0,\s*0\)$/i.test(getComputedStyle(control).backgroundColor)) return `#${rgb.slice(1).map(value => Number(value).toString(16).padStart(2, '0')).join('')}`;
+    return undefined;
+  }
+  function bodyColorRegion(control) {
+    const region = value => {
+      const key = String(value || '').toLowerCase().replace(/[^a-z]/g, '').replace(/color$/, '');
+      return ['head', 'torso', 'leftarm', 'rightarm', 'leftleg', 'rightleg'].includes(key) ? key : undefined;
+    };
+    for (let node = control; node && node.id !== 'avatar-web-app'; node = node.parentElement) {
+      const selected = region(node.getAttribute('data-region') || node.getAttribute('data-body-part') || node.getAttribute('aria-label'));
+      if (selected) return selected;
+    }
+    const selected = document.querySelector('#avatar-web-app [data-region][aria-selected="true"], #avatar-web-app [data-body-part][aria-pressed="true"]');
+    return selected && region(selected.getAttribute('data-region') || selected.getAttribute('data-body-part'));
+  }
+  async function applyBodyColorIntent(control) {
+    const account = userId, value = bodyColorValue(control), region = bodyColorRegion(control), serial = ++bodyColorSerial;
+    if (value === undefined || !editingLarp()) return false;
+    try {
+      let color = value;
+      if (typeof value === 'number') {
+        const rules = await (await fetch('https://avatar.roblox.com/v1/avatar-rules', {credentials: 'include'})).json();
+        color = rules.bodyColorsPalette?.find(entry => entry.brickColorId === value)?.hexColor;
+      }
+      if (!/^#?[0-9a-f]{6}$/i.test(String(color || '')) || account !== userId || !editingLarp() || serial !== bodyColorSerial) return false;
+      const current = read(account);
+      const base = current.bodyColors || current.gameLook?.definition?.bodyColors || (await loadBrowserPreview([], new AbortController().signal)).bodyColors;
+      if (account !== userId || !editingLarp() || serial !== bodyColorSerial) return false;
+      const bodyColors = {...base};
+      for (const key of bodyColorKeys.filter(key => !region || key.toLowerCase().startsWith(region))) bodyColors[key] = color;
+      if (JSON.stringify(base) === JSON.stringify(bodyColors)) return true;
+      save({...current, bodyColors, pendingOutfit: true}, Boolean(current.gameLook));
+      return true;
+    } catch (_) { return false; }
+  }
   async function loadBrowserPreview(selected, signal) {
     const account = userId;
     if (!browserAvatarBase || browserAvatarBase.account !== account || Date.now() > browserAvatarBase.expires) {
@@ -368,7 +427,8 @@
     }
     const {avatar, rules} = await browserAvatarBase.promise;
     if (signal.aborted || account !== userId) throw new Error('Avatar update cancelled.');
-    return previewDefinition(avatar, rules, selected);
+    const definition = previewDefinition(avatar, rules, selected);
+    return state?.bodyColors ? {...definition, bodyColors: state.bodyColors} : definition;
   }
   async function captureCharacter() {
     const account = userId, current = state;
@@ -401,7 +461,9 @@
   function applyCharacter(snapshot) {
     if (!state?.mode) throw new Error('Turn Larp mode on first.');
     LarpbloxGameBridge.validateSnapshot(snapshot, userId);
-    save(mergeGameSnapshot(state, JSON.parse(JSON.stringify(snapshot))), true);
+    const next = mergeGameSnapshot(state, JSON.parse(JSON.stringify(snapshot)));
+    delete next.bodyColors;
+    save(next, true);
   }
   async function applyNativeCharacter(card) {
     const account = userId;
@@ -568,8 +630,9 @@
     const selected = editingLarp() ? state.items.filter(item => state.equipped.includes(keyFor(item)) && supportsOutfit(item)) : [];
     const holder = editor?.querySelector('.avatar-thumbnail');
     const gameLook = editingLarp() && state.gameLook;
-    holder?.classList.toggle('larpbux-local-preview', Boolean(editingLarp() && (selected.length || gameLook)));
-    if (!holder || (!selected.length && !gameLook)) {
+    const localColors = editingLarp() && state.bodyColors;
+    holder?.classList.toggle('larpbux-local-preview', Boolean(editingLarp() && (selected.length || gameLook || localColors)));
+    if (!holder || (!selected.length && !gameLook && !localColors)) {
       clearTimeout(previewRetryTimer); previewRetryKey = undefined;
       previewFeedback(editor, '');
       previewController?.abort(); previewViewer?.dispose(); previewElement?.remove();
@@ -582,8 +645,8 @@
     // Roblox's existing toggle names the mode it will switch to, not the current mode.
     const toggle = editor.querySelector('.toggle-three-dee');
     const threeDimensional = !/^3d$/i.test(toggle?.textContent?.trim() || '');
-    const signature = JSON.stringify([userId, selected.map(item => item.id), threeDimensional, gameLook?.definition, Boolean(state?.mode)]);
-    if (previewSignature === signature && (previewElement?.isConnected || (!selected.length && !gameLook))) return;
+    const signature = JSON.stringify([userId, selected.map(item => item.id), threeDimensional, gameLook?.definition, localColors, Boolean(state?.mode)]);
+    if (previewSignature === signature && (previewElement?.isConnected || (!selected.length && !gameLook && !localColors))) return;
     clearTimeout(previewRetryTimer);
     if (previewRetryKey !== signature) { previewRetryKey = signature; previewRetries = 0; }
     previewController?.abort(); previewController = new AbortController();
@@ -618,7 +681,7 @@
         definition = await loadBrowserPreview(selected, signal);
       }
       if (account !== userId || signature !== previewSignature || signal.aborted) return;
-      if (!selected.length && !gameLook) {
+      if (!selected.length && !gameLook && !localColors) {
         previewViewer?.dispose(); previewElement?.remove();
         previewViewer = undefined; previewElement = undefined; previewController = undefined;
         return;
@@ -1274,6 +1337,13 @@
   function start() {
     update(); let queued = false;
     new MutationObserver(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; update(); }); }).observe(document.body, {childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset', 'sizes', 'data-user-id', 'data-userid']});
+    const refreshBodyColors = event => {
+      const control = bodyColorControl(event.target);
+      if (!control) return;
+      if (bodyColorValue(control) !== undefined && editingLarp()) { event.preventDefault(); event.stopImmediatePropagation(); applyBodyColorIntent(control); }
+    };
+    document.addEventListener('click', refreshBodyColors, true);
+    document.addEventListener('change', refreshBodyColors, true);
     window.addEventListener('storage', event => { if (userId && (event.key === key() || event.key === null)) { closePurchase(); state = read(userId); render(); } });
     if (typeof LarpbloxGameBridge !== 'undefined') {
       const poll = async () => {
