@@ -102,62 +102,98 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         if entry and entry.player==target and entry.character==target.Character
             and sameValue(entry.snapshot,snapshot) and sameValue(entry.name,record.name)
             and entry.imageUrl==record.imageUrl then return end
-        if entry then cleanupPeer(record.userId)end
-        entry=peerApis(target);peers[record.userId]=entry
+        if entry and (entry.player~=target or entry.character~=target.Character)then
+            cleanupPeer(record.userId);entry=nil
+        end
+        local fresh=not entry
+        if fresh then entry=peerApis(target);peers[record.userId]=entry end
         local ok,err=pcall(function()
-            -- Start from the locally captured original so each newer record replaces the previous overlay cleanly.
-            entry.avatar.restore();entry.clothes.restore();entry.animations.restore();entry.names.restore()
+            -- Keep the live overlay and its caches when only part of the outfit changes.
+            local previous=entry.snapshot or {}
+            local oldItems,oldSlots,slots={},{},{}
+            for _,item in ipairs(previous.items or {})do oldItems[tostring(item.assetType)..":"..tostring(item.id)]=true;oldSlots[tonumber(item.assetType) or 0]=true end
+            for _,item in ipairs(snapshot.items)do slots[tonumber(item.assetType) or 0]=true end
+            for _,item in ipairs(previous.items or {})do
+                local kind=tonumber(item.assetType)
+                if not slots[kind]then
+                    if BODY_TYPES[kind]then pcall(entry.avatar.restoreBodyPart,BODY_TYPES[kind])
+                    elseif kind==18 then pcall(entry.avatar.restoreFace)
+                    elseif kind==19 then pcall(entry.avatar.removeGear)end
+                end
+            end
             local wanted={}
             local wantedClothes={}
             local animationAssets={}
             for _,item in ipairs(snapshot.items)do
                 if type(item)=="table" and safeId(item.id) and tonumber(item.assetType) then
                     local assetType=tonumber(item.assetType)
-                    if ACCESSORY_TYPES[assetType] then wanted[#wanted+1]=item
-                    elseif BODY_TYPES[assetType] then pcall(entry.avatar.applyBodyPart,BODY_TYPES[assetType],item.id)
-                    elseif assetType==18 then pcall(entry.avatar.applyFace,item.id)
-                    elseif CLOTHES_TYPES[assetType]=="ShirtGraphic" then wantedClothes.ShirtGraphic=true;pcall(entry.clothes.equipTShirt,item.id)
-                    elseif CLOTHES_TYPES[assetType]=="Shirt" then wantedClothes.Shirt=true;pcall(entry.clothes.equipShirt,item.id)
-                    elseif CLOTHES_TYPES[assetType]=="Pants" then wantedClothes.Pants=true;pcall(entry.clothes.equipPants,item.id)
-                    elseif assetType==19 then pcall(entry.avatar.equipGear,item.id)
+                    local changed=not oldItems[tostring(item.assetType)..":"..tostring(item.id)]
+                    if ACCESSORY_TYPES[assetType] then wanted[item.id]=item
+                    elseif BODY_TYPES[assetType] then if changed then pcall(entry.avatar.applyBodyPart,BODY_TYPES[assetType],item.id)end
+                    elseif assetType==18 then if changed then pcall(entry.avatar.applyFace,item.id)end
+                    elseif CLOTHES_TYPES[assetType]=="ShirtGraphic" then wantedClothes.ShirtGraphic=true;if changed then pcall(entry.clothes.equipTShirt,item.id)end
+                    elseif CLOTHES_TYPES[assetType]=="Shirt" then wantedClothes.Shirt=true;if changed then pcall(entry.clothes.equipShirt,item.id)end
+                    elseif CLOTHES_TYPES[assetType]=="Pants" then wantedClothes.Pants=true;if changed then pcall(entry.clothes.equipPants,item.id)end
+                    elseif assetType==19 then if changed then pcall(entry.avatar.equipGear,item.id)end
                     elseif ANIMATION_TYPES[assetType] then animationAssets[#animationAssets+1]={id=item.id,assetType=assetType}
                     end
                 end
             end
-            entry.avatar.removeCurrentAccessories()
-            for _,item in ipairs(wanted)do pcall(entry.avatar.equipAccessory,item.id)end
-            if not wantedClothes.ShirtGraphic then pcall(entry.clothes.removeTShirt)end
-            if not wantedClothes.Shirt then pcall(entry.clothes.removeShirt)end
-            if not wantedClothes.Pants then pcall(entry.clothes.removePants)end
+            if fresh then entry.avatar.removeCurrentAccessories()end
+            local equipped={}
+            for _,item in ipairs(entry.avatar.listAccessories())do equipped[item.id]=true end
+            -- Load additions first so existing accessories remain visible while assets load.
+            for id in pairs(wanted)do if not equipped[id]then pcall(entry.avatar.equipAccessory,id)end end
+            for _,item in ipairs(entry.avatar.listAccessories())do if not wanted[item.id]then pcall(entry.avatar.removeAccessory,item.key)end end
+            if not wantedClothes.ShirtGraphic and (fresh or oldSlots[2])then pcall(entry.clothes.removeTShirt)end
+            if not wantedClothes.Shirt and (fresh or oldSlots[11])then pcall(entry.clothes.removeShirt)end
+            if not wantedClothes.Pants and (fresh or oldSlots[12])then pcall(entry.clothes.removePants)end
             local colors=snapshot.definition.bodyColors or {}
             for _,pair in ipairs(COLOR_REGIONS)do
                 local value=colors[pair[2]]
-                if type(value)=="string" and value:match("^#?%x%x%x%x%x%x$")then
+                local oldColors=previous.definition and previous.definition.bodyColors or {}
+                if value~=oldColors[pair[2]] and type(value)=="string" and value:match("^#?%x%x%x%x%x%x$")then
                     value=value:gsub("^#","")
                     entry.avatar.setSkin(Color3.fromRGB(tonumber(value:sub(1,2),16),tonumber(value:sub(3,4),16),tonumber(value:sub(5,6),16)),pair[1])
                 end
             end
-            if #animationAssets>0 then pcall(entry.animations.equipAssets,animationAssets)end
+            table.sort(animationAssets,function(a,b)return a.assetType==b.assetType and a.id<b.id or a.assetType<b.assetType end)
+            if not sameValue(entry.animationAssets,animationAssets)then
+                if #animationAssets>0 then pcall(entry.animations.equipAssets,animationAssets)
+                elseif entry.animationAssets and #entry.animationAssets>0 then pcall(entry.animations.restore)end
+                entry.animationAssets=animationAssets
+            end
             local name=record.name
-            if type(name)=="table" and name.enabled then pcall(entry.names.set,name.username,name.displayName)end
+            if not sameValue(entry.name,name)then
+                if type(name)=="table" and name.enabled then pcall(entry.names.set,name.username,name.displayName)
+                else pcall(entry.names.restore)end
+            end
             if presentation.createViews and peers[record.userId]==entry and sharing and isAlive() then
-                entry.views=presentation.createViews(target)
-                local options={enabled=true,name=name and name.enabled and name.username or "",snapshot=snapshot}
+                if not entry.views then entry.views=presentation.createViews(target)end
+                local options={enabled=true,name=name and name.enabled and name.username or "",snapshot=snapshot,image=entry.image}
+                entry.viewOptions=options
                 entry.views.update(options)
                 local custom=getcustomasset or getsynasset
-                if record.imageUrl and type(custom)=="function" and type(writefile)=="function" then
+                if record.imageUrl~=entry.imageUrl then
+                    entry.imageGeneration=(entry.imageGeneration or 0)+1
+                    entry.image=nil;options.image=nil;entry.views.update(options)
+                end
+                if record.imageUrl and record.imageUrl~=entry.imageUrl and type(custom)=="function" and type(writefile)=="function" then
+                    local imageGeneration=entry.imageGeneration
                     task.spawn(function()
                         local loaded,reason=pcall(function()
                             local bytes=game:HttpGet(record.imageUrl,false)
                             assert(type(bytes)=="string" and #bytes<=4*1024*1024 and bytes:sub(1,8)=="\137PNG\r\n\26\n","Invalid shared avatar image.")
-                            if peers[record.userId]~=entry or not sharing or not isAlive() then return end
+                            if peers[record.userId]~=entry or entry.imageGeneration~=imageGeneration or not sharing or not isAlive() then return end
                             imageSerial=imageSerial+1
                             local path="larpblox-shared-avatar-"..record.userId.."-"..imageSerial..".png"
+                            local previousPath=entry.imagePath
                             entry.imagePath=path
                             writefile(path,bytes)
                             local image=custom(path)
-                            if peers[record.userId]~=entry or not sharing or not isAlive() then return end
-                            options.image=image;entry.views.update(options)
+                            if peers[record.userId]~=entry or entry.imageGeneration~=imageGeneration or not sharing or not isAlive() then return end
+                            entry.image=image;entry.viewOptions.image=image;entry.views.update(entry.viewOptions)
+                            if previousPath and type(delfile)=="function"then pcall(delfile,previousPath)end
                         end)
                         if not loaded and peers[record.userId]==entry then status("Shared avatar image: "..tostring(reason))end
                     end)
