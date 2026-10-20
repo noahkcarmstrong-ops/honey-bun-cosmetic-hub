@@ -194,6 +194,7 @@ return function(player)
     end
     local function rememberMesh(id,source)
         if not meshSources[id] then meshOrder[#meshOrder+1]=id end
+        if meshSources[id] and meshSources[id]~=source then meshSources[id]:Destroy() end
         meshSources[id]=source
         if #meshOrder>MAX_RECORDS then
             local oldest=table.remove(meshOrder,1)
@@ -283,8 +284,7 @@ return function(player)
         return object
     end
     local api = {}
-    function api.capture()
-        local character = player and read(player, "Character")
+    local function captureCharacter(character)
         assert(character, "Wait for your avatar to finish spawning")
         local root = (character.FindFirstChild and character:FindFirstChild("HumanoidRootPart")) or read(character, "PrimaryPart")
         assert(root, "Wait for your avatar to finish spawning")
@@ -316,6 +316,26 @@ return function(player)
         assert(hasPart, "Wait for your avatar to finish spawning")
         local humanoid=character:FindFirstChildOfClass("Humanoid")
         return {version = 1, records = records,rigType=humanoid and enumName(humanoid.RigType) or nil}
+    end
+    function api.capture()
+        return captureCharacter(player and read(player,"Character"))
+    end
+    function api.captureDescription(description,rigType)
+        assert(alive,"Preview renderer was closed.")
+        local model=game:GetService("Players"):CreateHumanoidModelFromDescriptionAsync(description,rigType)
+        local ok,result=pcall(function()
+            assert(alive,"Preview renderer was closed.")
+            for _,part in ipairs(model:GetDescendants()) do
+                if part:IsA("MeshPart") and part.MeshId~="" then
+                    local copy=cleanMesh(part)
+                    if copy then rememberMesh(part.MeshId,copy) end
+                end
+            end
+            return captureCharacter(model)
+        end)
+        model:Destroy()
+        if not ok then error(result) end
+        return result
     end
     function api.show(viewportFrame, data)
         local records = safeRecords(data)
@@ -404,19 +424,23 @@ return function(player)
         frame.LightColor=Color3.new(0.85,0.85,0.85)
         frame.LightDirection=Vector3.new(-1,-1,-2)
     end
-    function api.frameThumbnail(frame)
+    function api.frameThumbnail(frame,options)
         local model=frame:FindFirstChild("Avatar",true)
         local camera=frame.CurrentCamera
         if not (model and camera) then return end
+        options=options or {}
         local min,max
+        local points={}
         local bodyParts={Head=true,Torso=true,UpperTorso=true,LowerTorso=true,
             ["Left Arm"]=true,["Right Arm"]=true,["Left Leg"]=true,["Right Leg"]=true,
             LeftUpperArm=true,LeftLowerArm=true,LeftHand=true,RightUpperArm=true,RightLowerArm=true,RightHand=true,
             LeftUpperLeg=true,LeftLowerLeg=true,LeftFoot=true,RightUpperLeg=true,RightLowerLeg=true,RightFoot=true}
-        for _,part in ipairs(model:GetChildren()) do
-            if part:IsA("BasePart") and bodyParts[part.Name] then
+        for _,part in ipairs(model:GetDescendants()) do
+            if part:IsA("BasePart") and (bodyParts[part.Name] or
+                (options.includeAccessories and part.Name~="HumanoidRootPart" and part.Transparency<1)) then
                 for x=-1,1,2 do for y=-1,1,2 do for z=-1,1,2 do
                     local point=part.CFrame:PointToWorldSpace(Vector3.new(part.Size.X*x/2,part.Size.Y*y/2,part.Size.Z*z/2))
+                    points[#points+1]=point
                     min=min and Vector3.new(math.min(min.X,point.X),math.min(min.Y,point.Y),math.min(min.Z,point.Z)) or point
                     max=max and Vector3.new(math.max(max.X,point.X),math.max(max.Y,point.Y),math.max(max.Z,point.Z)) or point
                 end end end
@@ -424,12 +448,17 @@ return function(player)
         end
         if not min then return end
         local center=(min+max)/2
-        local size=max-min
         local absolute=frame.AbsoluteSize
         local aspect=absolute.Y>0 and math.max(absolute.X/absolute.Y,0.1) or 1
         camera.FieldOfView=35
-        local distance=math.max(size.Y/2,size.X/(2*aspect),0.5)/math.tan(math.rad(camera.FieldOfView/2))*1.15+size.Z/2
+        local tangent=math.tan(math.rad(camera.FieldOfView/2))
         local direction=Vector3.new(math.sin(math.rad(18)),0.06,-math.cos(math.rad(18))).Unit
+        local basis=CFrame.lookAt(center,center-direction)
+        local distance=1
+        for _,point in ipairs(points) do
+            local relative=basis:PointToObjectSpace(point)
+            distance=math.max(distance,relative.Z+math.max(math.abs(relative.X)/(tangent*aspect),math.abs(relative.Y)/tangent)*(options.padding or 1.15))
+        end
         camera.CFrame=CFrame.lookAt(center+direction*distance,center)
     end
     function api.destroy()

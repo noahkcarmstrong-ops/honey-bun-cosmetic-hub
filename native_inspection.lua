@@ -51,6 +51,7 @@ function M.create(player,getPreviews)
     local unbindGuard
     local changingMask=false
     local currentSnapshot,currentImage,previewData,previewKey,previewCharacter
+    local previewBuild
     local warmedItems,refreshQueued=nil,false
     local quarantineUnknownPanels,maskPreview
     local overlayName="LarpbloxInspectPreview"
@@ -231,13 +232,25 @@ function M.create(player,getPreviews)
         masked={}
     end
     local function renderPreview(entry,parent)
-        if entry.overlay then entry.overlay.Visible=false end
         if (currentSnapshot or currentImage) then
-                    local key=(currentSnapshot and game:GetService("HttpService"):JSONEncode(currentSnapshot) or "")..tostring(player.Character).."|"..tostring(currentImage or "")
+                    local key=(currentSnapshot and game:GetService("HttpService"):JSONEncode(currentSnapshot) or "").."|"..tostring(currentImage or "")
                     local ok,err=pcall(function()
                         local previews=getPreviews and getPreviews() or nil
-                        if not currentImage and (key~=previewKey or not previewData or previewCharacter~=player.Character) then
-                            previewData=previews.capture();previewKey=key;previewCharacter=player.Character
+                        if not currentImage and (key~=previewKey or not previewData) then
+                            if previewBuild and previewBuild.key==key then return end
+                            local ticket={key=key};previewBuild=ticket
+                            local snapshot=currentSnapshot
+                            local desc=description(snapshot)
+                            local avatarType=snapshot.definition.playerAvatarType
+                            if type(avatarType)=="table" then avatarType=avatarType.playerAvatarType end
+                            local rigType=avatarType=="R6" and Enum.HumanoidRigType.R6 or Enum.HumanoidRigType.R15
+                            local captured,data=pcall(previews.captureDescription,desc,rigType)
+                            desc:Destroy()
+                            if previewBuild~=ticket then return end
+                            previewBuild=nil
+                            if not captured then error(data) end
+                            if not modeEnabled or not currentSnapshot or (game:GetService("HttpService"):JSONEncode(currentSnapshot).."|"..tostring(currentImage or ""))~=key then return end
+                            previewData=data;previewKey=key
                         end
                         local overlayClass=currentImage and "ImageLabel" or "ViewportFrame"
                         if entry.overlay and not entry.overlay.Parent then entry.overlay=nil;entry.key=nil end
@@ -252,7 +265,7 @@ function M.create(player,getPreviews)
                             entry.overlay=overlay;overlay.Parent=parent
                             overlay:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
                                 if modeEnabled and overlay.Parent and overlay:IsA("ViewportFrame") and previews.frameThumbnail then
-                                    previews.frameThumbnail(overlay)
+                                    previews.frameThumbnail(overlay,{includeAccessories=true,padding=1.25})
                                 end
                             end)
                         end
@@ -262,7 +275,7 @@ function M.create(player,getPreviews)
                             else
                                 assert(previews and previews.show(entry.overlay,previewData)~=false,"Local avatar preview could not render.")
                                 if previews.poseThumbnail then previews.poseThumbnail(entry.overlay) end
-                                if previews.frameThumbnail then previews.frameThumbnail(entry.overlay) end
+                                if previews.frameThumbnail then previews.frameThumbnail(entry.overlay,{includeAccessories=true,padding=1.25}) end
                             end
                             entry.key=key
                         end
