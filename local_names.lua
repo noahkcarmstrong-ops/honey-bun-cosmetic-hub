@@ -43,6 +43,7 @@ end
 return function(player, playerGui, gameObject)
     local settings = {enabled = false, username = "", displayName = ""}
     local originals, watchedObjects, connections, roots = {}, {}, {}, {}
+    local writtenText = setmetatable({}, {__mode="k"})
     local alive, applying, builtInAvailable = true, false, false
     local coreGuiRoot, coreGuiChanges = nil, 0
     local originalUsername = tostring(player.Name or "")
@@ -141,6 +142,7 @@ return function(player, playerGui, gameObject)
             if object.RichText then replacement=escapeRich(replacement) end
         else replacement=replaceText(original,object.RichText==true) end
         if replacement==object.Text then return end
+        writtenText[object]=replacement
         applying=true
         local ok=pcall(function() object.Text=replacement end)
         applying=false
@@ -157,15 +159,14 @@ return function(player, playerGui, gameObject)
         if candidate(object) then originals[object]=object.Text end
         local changed
         pcall(function() changed=object:GetPropertyChangedSignal("Text"):Connect(function()
-            if not alive or applying then return end
+            if not alive or applying or not settings.enabled then return end
+            -- Property events may be deferred until after our write guard resets.
+            if object.Text==writtenText[object] then return end
+            writtenText[object]=nil
             if not candidate(object) then originals[object]=nil;return end
             originals[object]=object.Text
             if settings.enabled then
                 applyText(object)
-                local row=object.Parent and object.Parent.Parent
-                if row then walk(row,function(item)
-                    if isTextObject(item) and not originals[item] and candidate(item)then originals[item]=item.Text;applyText(item)end
-                end)end
             end
         end) end)
         if changed then connections[#connections+1]=changed end

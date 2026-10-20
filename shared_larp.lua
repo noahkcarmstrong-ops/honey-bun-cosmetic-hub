@@ -19,6 +19,14 @@ local function safeImageUrl(value)
         (value:match("^https://tr%.rbxcdn%.com/[%w%-%._~/]+$") or value:match("^https://t%d%.rbxcdn%.com/[%w%-%._~/]+$"))~=nil
 end
 
+local function sameValue(a,b)
+    if type(a)~=type(b) then return false end
+    if type(a)~="table" then return a==b end
+    for key,value in pairs(a)do if not sameValue(value,b[key])then return false end end
+    for key in pairs(b)do if a[key]==nil then return false end end
+    return true
+end
+
 return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createClothes,createAnimations,createNames,isAlive,onStatus,presentation)
     presentation=presentation or {}
     local sharing=false
@@ -90,9 +98,10 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local target=Players:GetPlayerByUserId(tonumber(record.userId))
         if not target or target==localPlayer then return end
         local snapshot=record.snapshot
-        local fingerprint=HttpService:JSONEncode({snapshot=snapshot,name=record.name,imageUrl=record.imageUrl})
         local entry=peers[record.userId]
-        if entry and entry.player==target and entry.character==target.Character and entry.fingerprint==fingerprint then return end
+        if entry and entry.player==target and entry.character==target.Character
+            and sameValue(entry.snapshot,snapshot) and sameValue(entry.name,record.name)
+            and entry.imageUrl==record.imageUrl then return end
         if entry then cleanupPeer(record.userId)end
         entry=peerApis(target);peers[record.userId]=entry
         local ok,err=pcall(function()
@@ -155,7 +164,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                 end
             end
         end)
-        if ok then entry.fingerprint=fingerprint else
+        if ok then entry.snapshot=snapshot;entry.name=record.name;entry.imageUrl=record.imageUrl else
             cleanupPeer(record.userId)
             status("Could not apply a shared appearance: "..tostring(err))
         end
