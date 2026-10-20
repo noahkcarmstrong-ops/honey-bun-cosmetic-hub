@@ -102,6 +102,13 @@ assert(d.HeadColor.R==17/255 and d.HeadColor.G==34/255 and d.HeadColor.B==51/255
 title.Text="LarpAlias's Avatar";itemLabel.Text="Larp Shirt";api.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(#inspectCalls==1,"adopting the redirected title does not reopen in a loop")
 assert(inspect.Visible==true,"the panel reveals only after its Larp title and local preview are ready")
 assert(title.Visible and itemContent.Visible,"the redirected title and refreshed item content appear only after adoption")
+-- React can replace the heading instance without changing the inspected player.
+local oldTitle=title;oldTitle.Parent=nil;oldTitle.Visible=false
+for i,v in ipairs(inspect.children)do if v==oldTitle then table.remove(inspect.children,i);break end end
+title=child(inspect,"TextLabel","HeaderText");title.Text="LarpAlias's Avatar";core.DescendantAdded:Fire(title)
+api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
+assert(liveOverlay() and liveOverlay().Visible and previewGui().Enabled,"a remounted alias heading must keep the own avatar rendering")
+
 assert(liveOverlay().Position[1]==111 and liveOverlay().Position[2]==222 and liveOverlay().Size[1]==200 and liveOverlay().Size[2]==250,"live preview follows the native viewport bounds")
 itemLabel.Text="Original item";boundGuard()
 assert(not itemContent.Visible,"a stale original item cannot be revealed by the new Larp title")

@@ -84,7 +84,7 @@ function M.create(player,getPreviews)
                     ancestor=ancestor.Parent
                 end
                 if scoped then knownLabels[object]=true end
-                if scoped and (text==player.Name.."'s Avatar" or (not active and text==alias.."'s Avatar") or (active and (object==lastLabel or adopting) and (text==alias.."'s Avatar" or (lastName and text==lastName.."'s Avatar"))))then
+                if scoped and (text==player.Name.."'s Avatar" or text==alias.."'s Avatar" or (active and (object==lastLabel or adopting) and (text==alias.."'s Avatar" or (lastName and text==lastName.."'s Avatar"))))then
                     return object,text,scopeRoot
                 end
             end
@@ -387,8 +387,7 @@ function M.create(player,getPreviews)
         maskPreview(false)
         if not options.snapshot then status="Waiting for the local outfit.";return end
         local signature=game:GetService("HttpService"):JSONEncode(options.snapshot)..name
-        if active and lastSignature==signature and adopting then lastLabel=label;adopting=false;maskPreview(true);return end
-        if active and lastLabel==label and lastSignature==signature then maskPreview(true);return end
+        if active and lastSignature==signature then lastLabel=label;adopting=false;maskPreview(true);return end
         local desc=description(options.snapshot)
         local ok,err=pcall(function()gui:InspectPlayerFromHumanoidDescription(desc,name)end)
         -- Roblox loads preview models and AccessoryDescription children asynchronously.
