@@ -31,6 +31,8 @@
     return {...state, balance: state.balance - price, items};
   }
   const bodyAssetTypes = [17, 18, 27, 28, 29, 30, 31, 79];
+  const headlessIds = new Set([15093053680, 134082579]);
+  const isHeadless = item => headlessIds.has(Number(item?.id)) || /headless(?:horseman)?head/i.test(String(item?.name || '').replace(/[^a-z]/gi, ''));
   const wearableAssetTypes = [17, 18, 27, 28, 29, 30, 31, 79, 2, 8, 11, 12, 19, 41, 42, 43, 44, 45, 46, 47, 48, 50, 51, 52, 53, 54, 55, 56, 64, 65, 66, 67, 68, 69, 70, 71, 72, 76, 77];
   const animationAssetTypes = [48, 50, 51, 52, 53, 54, 55, 56];
   const isWearableAsset = item => item?.itemType === 'Asset' && wearableAssetTypes.includes(Number(item.assetType));
@@ -55,7 +57,7 @@
       name = name.replace(/^recent/, '');
     }
     if (/hair/.test(name)) return item.assetType === 41;
-    if (/body/.test(name) || /^(head|heads|face|faces|torso|leftarm|rightarm|leftleg|rightleg)$/.test(name)) {
+    if (/body/.test(name) || /^(?:body|classic)faces?$/.test(name) || /^(head|heads|face|faces|torso|leftarm|rightarm|leftleg|rightleg)$/.test(name)) {
       for (const [label, types] of [['leftarm',[29]],['rightarm',[28]],['leftleg',[30]],['rightleg',[31]],['torso',[27]],['head',[17,79]],['face',[18]]]) if (name.includes(label)) return types.includes(Number(item.assetType));
       return false;
     }
@@ -65,7 +67,7 @@
     if (/hats?$/.test(name)) return item.assetType === 8;
     if (name === 'clothing') return [2, 11, 12, 64, 65, 66, 67, 68, 69, 70, 71, 72].includes(item.assetType);
     if (/layered/.test(name)) return [64, 65, 66, 67, 68, 69, 70, 71, 72].includes(item.assetType);
-    if (/^(head|face|neck|shoulder|front|back|waist)$/.test(name)) return {head: 8, face: 42, neck: 43, shoulder: 44, front: 45, back: 46, waist: 47}[name] === item.assetType;
+    if (/^(head|face|neck|shoulder|front|back|waist)$/.test(name)) return {head: 8, face: 18, neck: 43, shoulder: 44, front: 45, back: 46, waist: 47}[name] === item.assetType;
     if (/accessor/.test(name)) {
       for (const [label, type] of [['head', 8], ['face', 42], ['neck', 43], ['shoulder', 44], ['front', 45], ['back', 46], ['waist', 47]]) {
         if (name.includes(label)) return item.assetType === type;
@@ -95,6 +97,7 @@
       const other = state.items.find(candidate => keyFor(candidate) === value);
       return !expandOutfitItem(other).some(asset => asset.assetType === item.assetType || [17,79].includes(asset.assetType) && [17,79].includes(item.assetType));
     });
+    if (Number(item.assetType) === 18) equipped = equipped.filter(value => !isHeadless(state.items.find(candidate => keyFor(candidate) === value)));
     if (equipped.length >= 20) throw new Error('Equip at most 20 cosmetic items.');
     return {...state, equipped: [...equipped, key]};
   }
@@ -106,7 +109,7 @@
     const slots = new Set(items.filter(item => [17, 18, 27, 28, 29, 30, 31, 79, 2, 11, 12, 19, 48, 50, 51, 52, 53, 54, 55, 56, 64, 65, 66, 67, 68, 69, 70, 71, 72].includes(item.assetType)).map(item => item.assetType));
     if (slots.has(17) || slots.has(79)) { slots.add(17); slots.add(79); }
     const renderAsset = asset => asset.meta === undefined ? {id: asset.id} : {id: asset.id, meta: asset.meta};
-    const assets = (avatar.assets || []).filter(asset => !slots.has(asset.assetType?.id)).map(renderAsset);
+    let assets = (avatar.assets || []).filter(asset => !slots.has(asset.assetType?.id) && !(slots.has(18) && isHeadless(asset))).map(renderAsset);
     for (const item of items) if (!assets.some(asset => asset.id === item.id)) assets.push(renderAsset(item));
     const bodyColors = {};
     for (const [part, color] of Object.entries(avatar.bodyColor3s || avatar.bodyColors || {})) {
@@ -152,8 +155,9 @@
     const replaceSlots = new Set(selected.filter(item => [17, 18, 27, 28, 29, 30, 31, 79, 2, 11, 12, 19, 48, 50, 51, 52, 53, 54, 55, 56, 64, 65, 66, 67, 68, 69, 70, 71, 72].includes(item.assetType)).map(item => item.assetType));
     if (replaceSlots.has(17) || replaceSlots.has(79)) { replaceSlots.add(17); replaceSlots.add(79); }
     const types = new Map(look.items.map(item => [item.id, item.assetType]));
+    const faceSelected = selected.some(item => Number(item.assetType) === 18);
     const assets = look.definition.assets.filter(asset =>
-      (!managed.has(asset.id) || selectedIds.has(asset.id)) && (!replaceSlots.has(types.get(asset.id)) || selectedIds.has(asset.id)));
+      (!managed.has(asset.id) || selectedIds.has(asset.id)) && (!replaceSlots.has(types.get(asset.id)) || selectedIds.has(asset.id)) && !(faceSelected && isHeadless(asset)));
     for (const item of selected) if (!assets.some(asset => asset.id === item.id)) assets.push({id: item.id});
     return {...look.definition, assets};
   }
@@ -730,10 +734,12 @@
   }
   // Recover older purchases whose category had not loaded when they were bought.
   const typeRepairs = new Map();
+  const knownFaceMisclassification = item => Number(item?.assetType) === 42 && /^epic\s*face$/i.test(String(item?.name || '').trim());
+  const knownHeadlessMisclassification = item => headlessIds.has(Number(item?.id)) && ![17, 79].includes(Number(item?.assetType));
   function repairPurchasedTypes() {
     if (!state?.mode || !userId) return;
     const account = userId;
-    for (const item of state.items.filter(item => (item.itemType === 'Asset' && (!item.assetTypeVerified || !item.limitedVerified)) || (item.itemType === 'Bundle' && (!item.bundleType || !Array.isArray(item.assets))))) {
+    for (const item of state.items.filter(item => (item.itemType === 'Asset' && (!item.assetTypeVerified || !item.limitedVerified || knownFaceMisclassification(item) || knownHeadlessMisclassification(item))) || (item.itemType === 'Bundle' && (!item.bundleType || !Array.isArray(item.assets))))) {
       const repairKey = `${account}:${item.id}`;
       if ((typeRepairs.get(repairKey) || 0) > Date.now()) continue;
       if ([...typeRepairs.values()].filter(value => value === Infinity).length >= 4) break;
@@ -749,8 +755,10 @@
           if (item.itemType === 'Bundle' && !['AvatarAnimations','BodyParts','DynamicHead'].includes(data.bundleType)) throw new Error('Item type unavailable');
           if (userId !== account) return;
           const latest = read(account);
-          if (!latest.items.some(owned => keyFor(owned) === keyFor(item) && (item.itemType === 'Bundle' || (!owned.assetTypeVerified || !owned.limitedVerified)))) return;
-          save({...latest, items: latest.items.map(owned => keyFor(owned) === keyFor(item) ? {...owned, ...(item.itemType === 'Bundle' ? {bundleType: data.bundleType, assets} : {assetType: owned.assetTypeVerified ? owned.assetType : data.AssetTypeId, assetTypeVerified:true, limitedVerified:true, isLimited:data.IsLimited === true, isLimitedUnique:data.IsLimitedUnique === true})} : owned)});
+          if (!latest.items.some(owned => keyFor(owned) === keyFor(item) && (item.itemType === 'Bundle' || (!owned.assetTypeVerified || !owned.limitedVerified || knownFaceMisclassification(owned) || knownHeadlessMisclassification(owned))))) return;
+          const repaired = latest.items.map(owned => keyFor(owned) === keyFor(item) ? {...owned, ...(item.itemType === 'Bundle' ? {bundleType: data.bundleType, assets} : {assetType: knownFaceMisclassification(owned) || knownHeadlessMisclassification(owned) ? data.AssetTypeId : (owned.assetTypeVerified ? owned.assetType : data.AssetTypeId), assetTypeVerified:true, limitedVerified:true, isLimited:data.IsLimited === true, isLimitedUnique:data.IsLimitedUnique === true})} : owned);
+          const clearHeadless = repaired.some(owned => Number(owned.assetType) === 18 && latest.equipped.includes(keyFor(owned)));
+          save({...latest, items: repaired, equipped: clearHeadless ? latest.equipped.filter(value => !isHeadless(repaired.find(owned => keyFor(owned) === value))) : latest.equipped});
         })
         .catch(() => {})
         .finally(() => { clearTimeout(timer); typeRepairs.set(repairKey, Date.now() + 60000); });
@@ -890,6 +898,8 @@
       if (/gear/.test(name)) return 19;
       if (/eyebrow/.test(name)) return 76;
       if (/eyelash/.test(name)) return 77;
+      if (/faceaccessor/.test(name)) return 42;
+      if (/^(?:body|classic)?faces?$/.test(name)) return 18;
       if (/face/.test(name)) return 42;
       if (/neck/.test(name)) return 43;
       if (/shoulder/.test(name)) return 44;
@@ -1078,7 +1088,7 @@
       faceaccessory: 42, faceaccessories: 42, neckaccessory: 43, neckaccessories: 43,
       shoulderaccessory: 44, shoulderaccessories: 44, frontaccessory: 45, frontaccessories: 45,
       backaccessory: 46, backaccessories: 46, waistaccessory: 47, waistaccessories: 47,
-      face: 42, neck: 43, shoulder: 44, front: 45, back: 46, waist: 47,
+      head: 17, heads: 17, dynamichead: 79, dynamicheads: 79, face: 18, faces: 18, bodyfaces: 18, classicfaces: 18, neck: 43, shoulder: 44, front: 45, back: 46, waist: 47,
       shirt: 11, shirts: 11, classicshirt: 11, classicshirts: 11,
       pants: 12, classicpants: 12, tshirt: 2, tshirts: 2, classictshirt: 2, classictshirts: 2,
       tshirtaccessory:64, tshirtaccessories:64, shirtaccessory:65, shirtaccessories:65,
@@ -1091,7 +1101,7 @@
       runanimation:53, swimanimation:54, walkanimation:55, poseanimation:56,
       gear:19, gears:19,
       gear:19, gears:19,
-    }[normalizedType] || {head:8,hair:41,face:42,neck:43,shoulder:44,front:45,back:46,waist:47,eyebrow:76,eyelash:77}[normalizedType.replace(/accessor(?:y|ies)/g, '')] || 0;
+    }[normalizedType] || {head:17,heads:17,dynamichead:79,dynamicheads:79,hair:41,face:18,faces:18,bodyfaces:18,classicfaces:18,neck:43,shoulder:44,front:45,back:46,waist:47,eyebrow:76,eyelash:77}[normalizedType.replace(/accessor(?:y|ies)/g, '')] || 0;
     const image = document.querySelector('#item-thumbnail-container-frontend img');
     return {id: Number(match[2]), itemType: match[1] === 'bundles' ? 'Bundle' : 'Asset', assetType, name: name.slice(0, 128), price, thumbnail: image?.currentSrc || image?.src || undefined};
   }

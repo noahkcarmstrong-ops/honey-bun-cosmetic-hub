@@ -786,6 +786,10 @@ return function(player,onStatus)
             assert(type(texture)=="string" and texture~="","That catalog item is not a classic face.")
             faceTemplates[id]=texture
         end
+        if settings.bodyParts.Head then
+            local ok,headId=pcall(idFrom,settings.bodyParts.Head,"catalog")
+            if ok and (headId==134082579 or headId==15093053680) then api.restoreBodyPart("Head") end
+        end
         local head=ctx.character:FindFirstChild("Head");assert(head,"This avatar has no head.")
         capture(ctx)
         if not snapshot.face then

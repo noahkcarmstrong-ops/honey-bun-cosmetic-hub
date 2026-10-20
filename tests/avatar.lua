@@ -316,5 +316,13 @@ assert(faceEditor.getSettings().face==900,"face selection persists")
 faceEditor.restoreFace();assert(faceHead:FindFirstChildOfClass("Decal").Texture=="original-face","face restoration preserves original")
 faceEditor.applyFace(900);assert(faceReads==1,"face re-equip reuses validated texture")
 faceEditor.destroy();assert(faceHead:FindFirstChildOfClass("Decal").Texture=="original-face","cleanup restores original face")
+marketplace.assetType=17
+local headlessFaceEditor=create(player)
+headlessFaceEditor.applyBodyPart("Head",134082579)
+assert(headlessFaceEditor.getSettings().bodyParts.Head==134082579)
+headlessFaceEditor.applyFace(900)
+assert(headlessFaceEditor.getSettings().bodyParts.Head==nil,"classic face removes the active Headless override")
+assert(faceHead:FindFirstChildOfClass("Decal").Texture=="new-face","face is applied after restoring the visible head")
+headlessFaceEditor.destroy()
 game.GetObjects=previousObjects
 print("Classic face equip, cache, persistence and restore passed.")
