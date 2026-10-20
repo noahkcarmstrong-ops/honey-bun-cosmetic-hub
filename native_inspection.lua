@@ -42,6 +42,10 @@ function M.create(player)
     local core,gui
     pcall(function() core=game:GetService("CoreGui");gui=game:GetService("GuiService")end)
     local active=false
+    local activeDescription
+    local function releaseDescription()
+        if activeDescription then activeDescription:Destroy();activeDescription=nil end
+    end
     local lastSignature,lastLabel,adopting,lastName,status=nil,nil,false,nil,"Inspector is waiting."
     local function visible(object)
         local current=object
@@ -77,6 +81,7 @@ function M.create(player)
         local label,title=ownTitle(name)
         if not enabled then
             if active and label then pcall(function()gui:InspectPlayerFromUserId(player.UserId)end)end
+            releaseDescription()
             active=false;lastLabel=nil;lastSignature=nil;adopting=false;lastName=nil
             return
         end
@@ -87,9 +92,10 @@ function M.create(player)
         if active and lastLabel==label and lastSignature==signature then return end
         local desc=description(options.snapshot)
         local ok,err=pcall(function()gui:InspectPlayerFromHumanoidDescription(desc,name)end)
-        desc:Destroy()
-        if ok then active=true;lastLabel=label;lastSignature=signature;adopting=true;lastName=name;status="Native local outfit inspection requested."
-        else status="Roblox blocked the local avatar inspector: "..tostring(err)end
+        -- Roblox loads preview models and AccessoryDescription children asynchronously.
+        -- Keep the source alive until Larp mode stops or a newer inspection replaces it.
+        if ok then releaseDescription();activeDescription=desc;active=true;lastLabel=label;lastSignature=signature;adopting=true;lastName=name;status="Native local outfit inspection requested."
+        else desc:Destroy();status="Roblox blocked the local avatar inspector: "..tostring(err)end
     end
     function api.report()return status end
     function api.destroy()api.update({enabled=false,name=""})end

@@ -20,7 +20,7 @@ Instance={new=function(class)
     function x:Destroy()self.destroyed=true end
     return x
 end}
-Enum={AccessoryType={Hat="Hat",Hair="Hair",Back="Back",Jacket="Jacket"}}
+Enum={AccessoryType={Hat="Hat",Hair="Hair",Back="Back",Jacket="Jacket",Face="Face"}}
 Color3={fromRGB=function(r,g,b)return {R=r/255,G=g/255,B=b/255}end}
 local http={JSONEncode=function(_,v)return v.version..":"..(v.items[1] and v.items[1].id or "")end}
 local gui={InspectPlayerFromHumanoidDescription=function(_,desc,name)
@@ -37,17 +37,23 @@ end}
 local module=dofile("native_inspection.lua")
 local player={Name="Original",UserId=123}
 local api=module.create(player)
-local snapshot={version=1,definition={assets={{id=100,meta=nil},{id=200,meta={order=3,puffiness=0.35}}},scales={height=1.1,width=0.9,depth=1.05,head=1.2,proportion=0.4,bodyType=0.7},bodyColors={headColor="#112233",torsoColor="445566"}},items={{id=100,assetType=11},{id=200,assetType=67}}}
+local snapshot={version=1,definition={assets={{id=100,meta=nil},{id=200,meta={order=3,puffiness=0.35}}},scales={height=1.1,width=0.9,depth=1.05,head=1.2,proportion=0.4,bodyType=0.7},bodyColors={headColor="#112233",torsoColor="445566"}},items={{id=100,assetType=11},{id=200,assetType=67},{id=301,assetType=8},{id=302,assetType=41},{id=303,assetType=42},{id=304,assetType=79},{id=305,assetType=12},{id=306,assetType=8}}}
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
 assert(#inspectCalls==1 and inspectCalls[1].name=="LarpAlias","local native inspection is requested with the alias")
 local d=inspectCalls[1].description
+assert(not d.destroyed,"native inspector must retain the description while asynchronous avatar and item loading use it")
+assert(d.Head==304 and d.Pants==305 and #d.accessories==5,"head, pants and every equipped accessory reach the native description")
+local nativeIds={};for _,item in ipairs(d.accessories)do nativeIds[item.AssetId]=true end
+assert(nativeIds[200] and nativeIds[301] and nativeIds[302] and nativeIds[303] and nativeIds[306],"the full Larp accessory set survives native conversion")
 assert(d.Shirt==100 and d.accessories[1].AssetId==200 and d.accessories[1].IsLayered and d.accessories[1].Order==3 and d.accessories[1].Puffiness==0.35,"clothing and layered accessory metadata are preserved")
 assert(d.HeightScale==1.1 and d.WidthScale==0.9 and d.DepthScale==1.05 and d.HeadScale==1.2 and d.ProportionScale==0.4 and d.BodyTypeScale==0.7,"body scales are preserved")
 assert(d.HeadColor.R==17/255 and d.HeadColor.G==34/255 and d.HeadColor.B==51/255,"body colors are converted")
 title.Text="LarpAlias's Avatar";api.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(#inspectCalls==1,"adopting the redirected title does not reopen in a loop")
 local changed={version=2,definition=snapshot.definition,items={{id=100,assetType=11},{id=201,assetType=67}}};api.update({enabled=true,name="LarpAlias",snapshot=changed});assert(#inspectCalls==2,"an outfit change requests a fresh native inspection")
+assert(d.destroyed and not inspectCalls[2].description.destroyed,"new inspection releases the old source and keeps the replacement alive")
 assert(otherTitle.Text=="Other's Avatar" and hiddenTitle.Text=="Original's Avatar","other and hidden inspect screens are untouched")
 api.update({enabled=false,name="LarpAlias"});assert(#restoreCalls==1 and restoreCalls[1]==123,"turning Larp mode off restores the platform avatar even while the redirected alias title is visible")
+assert(inspectCalls[2].description.destroyed,"mode off releases the retained source")
 local blockedGui={InspectPlayerFromHumanoidDescription=function()error("blocked")end,InspectPlayerFromUserId=function()end}
 game.GetService=function(_,name)if name=="CoreGui"then return core elseif name=="GuiService"then return blockedGui elseif name=="HttpService"then return http end end
 local blocked=module.create(player);title.Text="Original's Avatar";blocked.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(blocked.report():find("blocked",1,true),"blocked native API access is reported")
