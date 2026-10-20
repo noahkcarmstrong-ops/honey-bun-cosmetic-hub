@@ -41,8 +41,11 @@ joinedGui:SetAttribute('HoneyBunCosmeticAnimationBundle','82')
 assert(not pcall(joined.save,'Invalid') and joinedGui:GetAttribute('HoneyBunCosmeticCharacters')==before,'Invalid attribute type cannot overwrite library')
 joinedGui:SetAttribute('HoneyBunCosmeticAnimationBundle',nil)
 assert(not pcall(joined.save,'   ') and #joined.list()==1,'Blank names leave library unchanged')
-for i=2,12 do joined.save('Look '..i) end
-assert(not pcall(joined.save,'Thirteenth') and #joined.list()==12,'Library limit preserves existing characters')
+for i=2,50 do joined.save('Look '..i) end
+local fullDocument=joinedGui:GetAttribute('HoneyBunCosmeticCharacters')
+assert(not pcall(joined.save,'Fifty-first') and #joined.list()==50 and joinedGui:GetAttribute('HoneyBunCosmeticCharacters')==fullDocument,'50-outfit limit rejects an extra save without changing existing characters')
+local fullReload=makeCharacters(joinedGui)
+assert(#fullReload.list()==50 and fullReload.get(second.id).values.HoneyBunCosmeticSettings=='second-look','All 50 outfits reload and existing outfit data stays intact')
 joinedStorage:destroy()
 local function reject(doc)
     local fixture=characterRejoin(912)
