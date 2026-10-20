@@ -33,9 +33,18 @@ local shared=node("TextLabel","PlayerName");shared.Text="Original Display";share
 local list=node("Frame","PlayerList");list.Parent=core
 local title=node("Frame","TitlePlayer");title.Parent=list
 local titleName=node("TextLabel","PlayerName");titleName.Text="Mobile Combined Name";titleName.Parent=title
+local people=node("Frame","People");people.Parent=core
+local menuRow=node("Frame","UnidentifiedReactRow");menuRow.Parent=people
+local menuDisplay=node("TextLabel","Text");menuDisplay.Text="Original Display";menuDisplay.Parent=menuRow
+local menuUser=node("TextLabel","Text");menuUser.Text="@OriginalUser";menuUser.Parent=menuRow
+local otherRow=node("Frame","OtherReactRow");otherRow.Parent=people
+local otherDisplay=node("TextLabel","Text");otherDisplay.Text="Original Display";otherDisplay.Parent=otherRow
+local otherUser=node("TextLabel","Text");otherUser.Text="@OtherUser";otherUser.Parent=otherRow
 local api=make(player,gui)
 api.set("Local_User","Local Display")
 assert(label.Text=="Local_User" and otherLabel.Text=="OriginalUser","only the local player's native row changes")
+assert(menuDisplay.Text=="Local Display" and menuUser.Text=="@Local_User","People menu own display and username update without row ID")
+assert(otherDisplay.Text=="Original Display" and otherUser.Text=="@OtherUser","People menu shared display name stays untouched")
 assert(humanoid.DisplayName=="Local Display","humanoid display name changes locally")
 assert(titleName.Text=="Local Display","native local mobile title row changes")
 assert(native.Text=="Local Display" and shared.Text=="Original Display","native combined name changes only in own user-ID row")
@@ -52,6 +61,7 @@ api.set("Local_User","Local Display")
 label.Text="<font color=\"#fff\">OriginalUser</font>";label:GetPropertyChangedSignal("Text"):Fire()
 assert(label.Text=="<font color=\"#fff\">Local_User</font>","RichText tags remain intact")
 api.setEnabled(false)
+assert(menuDisplay.Text=="Original Display" and menuUser.Text=="@OriginalUser","People menu restores original name")
 assert(native.Text=="Refreshed Service Name","disable restores latest native service name")
 assert(label.Text=="<font color=\"#fff\">OriginalUser</font>" and humanoid.DisplayName=="Original Display","disable restores originals")
 api.setEnabled(true);assert(label.Text=="<font color=\"#fff\">Local_User</font>","enable reapplies after an update")

@@ -279,7 +279,7 @@ if crosshairSize~=crosshairSize or crosshairSize<8 or crosshairSize>200 then cro
 local crosshairInput=crosshairImage
 local alive, busy, activePage = true, false, uiSetting("page","Accessories")
 local actionRunning=false
-if activePage~="Names" and activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" and activePage~="Characters" and activePage~="Atmosphere" and not (isMM2 and activePage=="MM2") then activePage="Accessories" end
+if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" and activePage~="Characters" and activePage~="Atmosphere" and not (isMM2 and activePage=="MM2") then activePage="Accessories" end
 local statusText = "Local avatar editor. Saved selections reapply automatically."
 local statusLabel, render,lastRenderedPage
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
@@ -314,7 +314,6 @@ local function storeSkies(entries)
 end
 local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animationBundle","")
 local shirtInput,pantsInput=uiSetting("shirt",""),uiSetting("pants","")
-local nameUsername,nameDisplayName=uiSetting("nameUsername",""),uiSetting("nameDisplayName","")
 local characterName=uiSetting("characterName","")
 local deleteCharacter,characterMenu,characterDialog
 local characterMenuAction=0
@@ -483,17 +482,6 @@ local function browserOutfit()
     end,function()return animations()end)
     return browserOutfitAPI
 end
-local function gameBrowserSync()
-    if gameBrowserSyncAPI then return gameBrowserSyncAPI end
-    api();clothes()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/game_browser_sync.lua",false)
-    local chunk,message=loadstring(source);assert(chunk,message)
-    local create=chunk();assert(type(create)=="function","Game browser sync failed to load.")
-    gameBrowserSyncAPI=select(1,create(Players.LocalPlayer,function()return api()end,function()return clothes()end,function()return alive end,function(message)
-        if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
-    end,function()return animations()end))
-    return gameBrowserSyncAPI
-end
 local function localNames()
     if localNamesAPI then return localNamesAPI end
     api()
@@ -501,6 +489,18 @@ local function localNames()
     local chunk,message=loadstring(source);assert(chunk,message)
     localNamesAPI=chunk()(Players.LocalPlayer,playerGui)
     return localNamesAPI
+end
+local function gameBrowserSync()
+    if gameBrowserSyncAPI then return gameBrowserSyncAPI end
+    api();clothes()
+    local names=localNames()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/game_browser_sync.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    local create=chunk();assert(type(create)=="function","Game browser sync failed to load.")
+    gameBrowserSyncAPI=select(1,create(Players.LocalPlayer,function()return api()end,function()return clothes()end,function()return alive end,function(message)
+        if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
+    end,function()return animations()end,function()return names end))
+    return gameBrowserSyncAPI
 end
 local function characterModules()
     api()
@@ -1173,23 +1173,6 @@ render=function()
             return report
         end) end)
         caption("Remove current Roblox accessories hides your original hats and accessories. Restore original appearance brings them back.",48)
-    elseif activePage=="Names" then
-        caption("LOCAL NAMES",24)
-        caption("Choose the names you see on your avatar and supported player lists, including Roblox's built-in leaderboard. Only you see these changes.",64)
-        local username=input("Larp username (3–20 letters, numbers, underscores)",nameUsername,function(value)nameUsername=value end)
-        local display=input("Larp display name",nameDisplayName,function(value)nameDisplayName=value end)
-        button("Apply Larp names",function() action(function()
-            nameUsername,nameDisplayName=username.Text,display.Text
-            return localNames().set(nameUsername,nameDisplayName)
-        end) end)
-        button("Restore real names",function() action(function()return localNames().setEnabled(false)end)end)
-        button("Copy name report",function() action(function()
-            local report=localNames().report()
-            if type(setclipboard)=="function" then setclipboard(report);return "Name report copied." end
-            return report
-        end) end)
-        caption("Leave a field blank to keep its real name. Settings save when file auto-save is on. Some games use custom labels, and protected player lists may block local changes.",72)
-        if localNamesAPI then caption(localNamesAPI.report(),72) end
     elseif activePage=="Clothes" then
         caption("CLASSIC CLOTHES",24)
         caption("Paste classic 2D shirt and pants catalog links. Equip each separately; your other cosmetics stay on. Layered 3D clothing is not supported.",64)
@@ -1551,7 +1534,7 @@ render=function()
         button("Restore original body",function() action(function(editor) return editor.restoreBody() end) end)
         caption("R6 and R15 use different body parts. Unsupported packages show a message instead of changing your avatar rig.",48)
     end
-    if activePage~="Names" and activePage~="Characters" and activePage~="MM2" and activePage~="Atmosphere" then
+    if activePage~="Characters" and activePage~="MM2" and activePage~="Atmosphere" then
     button("Reapply saved cosmetics",function() action(reapplyAll) end)
     button("Restore original appearance",function() action(function(editor)
         if motionAPI then motionAPI.restore() end
@@ -1562,7 +1545,7 @@ render=function()
     end
     if savedScroll then content.CanvasPosition=savedScroll end
 end
-local pages={"Accessories", "Clothes", "Skin", "Body", "Emotes", "Animations", "Characters", "Atmosphere", "Names"}
+local pages={"Accessories", "Clothes", "Skin", "Body", "Emotes", "Animations", "Characters", "Atmosphere"}
 if isMM2 then table.insert(pages,"MM2") end
 for index,name in ipairs(pages) do
     local page=name
@@ -1602,6 +1585,7 @@ gui.Destroying:Connect(function()
     if mm2API then mm2API.destroy() end
     if crosshairAPI then crosshairAPI.destroy() end
     if accessorySoundsAPI then accessorySoundsAPI.destroy() end
+    if gameBrowserSyncAPI then gameBrowserSyncAPI.destroy() end
     if localNamesAPI then localNamesAPI.destroy() end
     if persistence then persistence.destroy() end
     if avatarAPI then avatarAPI.destroy() end
@@ -1609,7 +1593,6 @@ gui.Destroying:Connect(function()
     if animationAPI then animationAPI.destroy() end
     if clothesAPI then clothesAPI.destroy() end
     if previewsAPI and previewsAPI.destroy then previewsAPI.destroy() end
-    if gameBrowserSyncAPI then gameBrowserSyncAPI.destroy() end
 end)
 panelScale.Scale=0.975
 panel.GroupTransparency=1
@@ -1622,10 +1605,6 @@ action(function()
     local editor=api()
     local soundsLoaded=pcall(hatSounds)
     local message=reapplyAll(editor)
-    if uiSetting("nameEnabled",false) then
-        local namesOK,namesError=pcall(localNames)
-        if not namesOK then message=message.." Saved names could not load: "..tostring(namesError) end
-    end
     pcall(gameBrowserSync)
     if isMM2 and mm2EmotesShown then
         local ok,err=pcall(enableMM2Emotes)

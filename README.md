@@ -12,11 +12,9 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/l
 
 ## Local names
 
-1. Open **NAMES**.
-2. Enter a Larp username and display name, then click **Apply Larp names**. A blank field keeps its real name.
-3. Use **Restore real names** to turn the override off.
+Set your single **Larp name** in the browser's **Robux** dropdown and enable **Larp mode**. A paired browser connection sends it to the game automatically. There is no Names tab in the in-game menu. Disabling Larp mode or restoring the browser name restores the real in-game names when connected.
 
-Names affect your local overhead label and identified name labels in accessible player lists, including the built-in Roblox player list. Your Roblox account identity and other players' views stay unchanged. Settings follow the existing per-account file auto-save. Protected CoreGui or custom game interfaces may prevent replacement; **Copy name report** reports detected access and labels. Native leaderboard behavior still needs live executor verification.
+Names affect local overhead labels and accessible own-player rows, including the built-in player list and the People menu's display name and @username. Other players see your real identity. Protected CoreGui or custom game interfaces may prevent replacement; live executor verification is still needed.
 
 ## Accessories
 

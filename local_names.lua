@@ -1,7 +1,4 @@
 -- Local-only username/display-name cosmetic. It never changes Roblox identity.
-local USER_ATTRIBUTE = "HoneyBunCosmeticUI_nameUsername"
-local DISPLAY_ATTRIBUTE = "HoneyBunCosmeticUI_nameDisplayName"
-local ENABLED_ATTRIBUTE = "HoneyBunCosmeticUI_nameEnabled"
 local function trim(value) return tostring(value or ""):match("^%s*(.-)%s*$") end
 local function validUsername(value)
     return value == "" or (#value >= 3 and #value <= 20 and value:match("^[A-Za-z0-9_]+$"))
@@ -23,7 +20,7 @@ local function hasOwnId(object, player)
     if id == "" then return false end
     for _, item in ipairs(ancestors(object)) do
         local name = tostring(item.Name or "")
-        if name == id or name == "PlayerEntry_" .. id or name == "p_" .. id then return true end
+        if name == id or name == "PlayerEntry_" .. id or name == "p_" .. id or name=="PlayerLabel"..player.Name then return true end
         for _, key in ipairs({"UserId", "UserID", "PlayerId", "playerId"}) do
             local ok, value = pcall(function() return item:GetAttribute(key) end)
             if ok and tostring(value or "") == id then return true end
@@ -53,18 +50,7 @@ return function(player, playerGui, gameObject)
     local characterChanged, watchedRoots = nil, {}
     local status = "Names are local only."
 
-    local function decode()
-        if not playerGui then return end
-        local username, displayName, enabled
-        pcall(function() username = playerGui:GetAttribute(USER_ATTRIBUTE); displayName = playerGui:GetAttribute(DISPLAY_ATTRIBUTE); enabled = playerGui:GetAttribute(ENABLED_ATTRIBUTE) end)
-        if type(enabled) == "boolean" then settings.enabled = enabled end
-        if type(username) == "string" and validUsername(username) then settings.username = trim(username) end
-        if type(displayName) == "string" and validDisplay(displayName) then settings.displayName = trim(displayName) end
-    end
-    local function save()
-        if not playerGui then return end
-        pcall(function() playerGui:SetAttribute(USER_ATTRIBUTE, settings.username); playerGui:SetAttribute(DISPLAY_ATTRIBUTE, settings.displayName); playerGui:SetAttribute(ENABLED_ATTRIBUTE, settings.enabled) end)
-    end
+    -- Browser relay is the only source of name settings. Ignore older menu saves.
     local function targetUsername() return settings.username ~= "" and settings.username or originalUsername end
     local function targetDisplay() return settings.displayName ~= "" and settings.displayName or originalDisplay end
     local function visibleText(text) return tostring(text or ""):gsub("<[^>]->", "") end
@@ -73,6 +59,7 @@ return function(player, playerGui, gameObject)
         if type(text) ~= "string" then return text end
         local username, display = targetUsername(), targetDisplay()
         if rich then username, display = escapeRich(username), escapeRich(display) end
+        if text == "@"..originalUsername then return "@"..username end
         if text == originalUsername then return username end
         if text == originalDisplay then return display end
         if visibleText(text) ~= originalUsername and visibleText(text) ~= originalDisplay then return text end
@@ -107,8 +94,29 @@ return function(player, playerGui, gameObject)
         end
         return title and list
     end
+    local function ownMenuRow(object)
+        if not inCore(object) then return false end
+        local current=object.Parent
+        for depth=1,5 do
+            if not current then break end
+            local ok,children=pcall(function()return current:GetDescendants()end)
+            if not ok or #children>120 then break end
+            local own,other,texts=false,false,0
+            for _,child in ipairs(children)do
+                if isTextObject(child)then
+                    texts=texts+1
+                    local text=originals[child] or child.Text
+                    if text=="@"..originalUsername then own=true
+                    elseif type(text)=="string" and text:match("^@[%w_]+$")then other=true end
+                end
+            end
+            if own and not other and texts<=8 then return true end
+            current=current.Parent
+        end
+        return false
+    end
     local function owned(object)
-        if hasOwnId(object,player) or nativeName(object) then return true end
+        if hasOwnId(object,player) or nativeName(object) or ownMenuRow(object) then return true end
         for _,item in ipairs(ancestors(object)) do
             if item==player.Character or item.Name==originalUsername then return true end
         end
@@ -118,7 +126,7 @@ return function(player, playerGui, gameObject)
         if not isTextObject(object) or isHubOwned(object) or not owned(object) then return false end
         if nativeName(object) then return true end
         local plain=visibleText(object.Text)
-        return plain==originalUsername or plain==originalDisplay
+        return plain==originalUsername or plain=="@"..originalUsername or plain==originalDisplay
     end
     local function applyText(object)
         local original=originals[object]
@@ -135,7 +143,12 @@ return function(player, playerGui, gameObject)
         if ok and inCore(object) then coreGuiChanges=coreGuiChanges+1 end
     end
     local function watch(object)
-        if not isTextObject(object) or isHubOwned(object) or watchedObjects[object] then return end
+        if not isTextObject(object) or isHubOwned(object) then return end
+        if watchedObjects[object] then
+            if not originals[object] and candidate(object) then originals[object]=object.Text end
+            if settings.enabled then applyText(object) end
+            return
+        end
         watchedObjects[object]=true
         if candidate(object) then originals[object]=object.Text end
         local changed
@@ -143,7 +156,13 @@ return function(player, playerGui, gameObject)
             if not alive or applying then return end
             if not candidate(object) then originals[object]=nil;return end
             originals[object]=object.Text
-            if settings.enabled then applyText(object) end
+            if settings.enabled then
+                applyText(object)
+                local row=object.Parent and object.Parent.Parent
+                if row then walk(row,function(item)
+                    if isTextObject(item) and not originals[item] and candidate(item)then originals[item]=item.Text;applyText(item)end
+                end)end
+            end
         end) end)
         if changed then connections[#connections+1]=changed end
         if settings.enabled then applyText(object) end
@@ -171,7 +190,6 @@ return function(player, playerGui, gameObject)
             pcall(function() connections[#connections + 1] = root.DescendantAdded:Connect(watch) end)
         end
     end
-    decode()
     local ok = pcall(function() coreGuiRoot = game:GetService("CoreGui") end)
     if ok and coreGuiRoot then
         builtInAvailable=pcall(function() coreGuiRoot:GetDescendants() end)
@@ -192,12 +210,12 @@ return function(player, playerGui, gameObject)
         username, displayName = trim(username), trim(displayName)
         assert(validUsername(username), "Username must be 3-20 ASCII letters, numbers, or underscores.")
         assert(validDisplay(displayName), "Display name must be 1-50 characters without control characters.")
-        settings.username, settings.displayName = username, displayName; settings.enabled = true; save(); refresh()
+        settings.username, settings.displayName = username, displayName; settings.enabled = true; refresh()
         return api.report()
     end
-    function api.setEnabled(value) settings.enabled = value == true; save(); refresh(); return api.report() end
+    function api.setEnabled(value) settings.enabled = value == true; refresh(); return api.report() end
     function api.getSettings() return {enabled=settings.enabled, username=settings.username, displayName=settings.displayName} end
-    function api.restore() settings.username, settings.displayName = "", ""; settings.enabled = false; save(); refresh(); return "Original names restored locally." end
+    function api.restore() settings.username, settings.displayName = "", ""; settings.enabled = false; refresh(); return "Original names restored locally." end
     function api.report() return status .. (settings.enabled and " Override enabled locally; Roblox interface text changes: " .. tostring(coreGuiChanges) .. "." or " Override disabled.") end
     function api.destroy()
         if not alive then return end

@@ -20,9 +20,10 @@ local function call(method,path,token,body)
     assert(tonumber(code)==200,"Browser relay returned HTTP "..tostring(code or "unknown"))
     return result.Body and HttpService:JSONDecode(result.Body) or {}
 end
-return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations)
+return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNames)
     local api,token,connected,lastJson,lastRevision={},nil,false,nil,0
     local generation=0
+    local lastNameState=nil
     local file="larpblox-browser-pair-"..tostring(player.UserId)..".txt"
     local cache,assetTypes,bodyCache={},{},{}
     local function status(message)if onStatus and isAlive() then onStatus(message)end end
@@ -182,17 +183,40 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations)
         if ok then lastRevision=revision end
         if not ok then status("Browser outfit failed: "..tostring(msg)) elseif #failed>0 then status("Browser outfit applied; unsupported items: "..table.concat(failed,", ")) else status("Browser outfit applied locally.") end
     end
+    local function applyNameState(value)
+        local state="disabled"
+        local name=""
+        if value then
+            -- Older relays may return an outfit-shaped payload for unknown paths.
+            if value.enabled==nil and value.name==nil then return end
+            assert(type(value)=="table" and value.version==1 and tostring(value.userId)==tostring(player.UserId) and type(value.enabled)=="boolean" and type(value.name)=="string","Browser name is invalid.")
+            if value.enabled then
+                assert(value.name:match("^[A-Za-z0-9_]+$") and #value.name>=3 and #value.name<=20,"Browser name is invalid.")
+                state="enabled:"..value.name;name=value.name
+            end
+        end
+        if state==lastNameState then return end
+        if getNames then
+            local names=getNames()
+            if state=="disabled" then names.setEnabled(false) else names.set(name,name) end
+        end
+        lastNameState=state
+    end
     local function loop()
         local mine=generation
         while connected and generation==mine and isAlive() do
             local ok,err=pcall(function()
                 local relay=call("GET","/v1/status",token)
                 if relay and relay.instanceId and relay.instanceId~=api.instanceId then
-                    lastRevision=0;lastJson=nil;api.instanceId=relay.instanceId
+                    lastRevision=0;lastJson=nil;lastNameState=nil;api.instanceId=relay.instanceId
                 end
+                applyNameState(call("GET","/v1/names/"..player.UserId,token))
                 local command=call("GET","/v1/browser/"..player.UserId,token);if generation==mine and connected and command and command.revision then applyCommand(command)end
-                local value=snapshot();local encoded=HttpService:JSONEncode(value)
-                if encoded~=lastJson then call("POST","/v1/game/"..player.UserId,token,value);lastJson=encoded end
+                local made,value=pcall(snapshot)
+                if made then
+                    local encoded=HttpService:JSONEncode(value)
+                    if encoded~=lastJson then call("POST","/v1/game/"..player.UserId,token,value);lastJson=encoded end
+                end
             end)
             if not ok then status("Browser relay: "..tostring(err):gsub("^.-:%d+:%s*",""))end
             task.wait(0.75)
@@ -200,11 +224,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations)
     end
     function api.connect(code)
         code=(code and code~="" and code) or readSaved();assert(validToken(code),"Enter the 32-character browser pairing code.")
-        local relay=call("GET","/v1/status",code);if relay and relay.instanceId and relay.instanceId~=api.instanceId then lastRevision=0;api.instanceId=relay.instanceId end
+        local relay=call("GET","/v1/status",code);if relay and relay.instanceId and relay.instanceId~=api.instanceId then lastRevision=0;lastNameState=nil;api.instanceId=relay.instanceId end
         generation=generation+1;token=code;connected=true;lastJson=nil;save(code);status("Browser connected.")
         task.spawn(loop);return true
     end
-    function api.disconnect()generation=generation+1;connected=false;token=nil;lastJson=nil;status("Browser disconnected.")end
+    function api.disconnect()generation=generation+1;connected=false;token=nil;lastJson=nil;lastNameState=nil;applyNameState(nil);status("Browser disconnected.")end
     function api.isConnected()return connected end
     function api.status()return connected and "Browser connected." or "Browser disconnected."end
     function api.publish()assert(connected,"Connect the browser first.");local value=snapshot();local encoded=HttpService:JSONEncode(value);if encoded~=lastJson then call("POST","/v1/game/"..player.UserId,token,value);lastJson=encoded end;return value end

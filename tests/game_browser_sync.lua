@@ -103,3 +103,29 @@ command.revision=11;command.items={};jobs={};fullSync.connect(string.rep("a",32)
 assert(#localHats==0 and clothes.Shirt==0 and clothes.Pants==0 and clothes.ShirtGraphic==0 and not movementSettings.assets,"Remove clears accessories, all classic clothes and movement components")
 fullSync.destroy()
 print("Game relay all accessory regions, layered clothes, classic T-shirts, shirts/pants and animation component dispatch passed.")
+
+-- Browser names sync independently of avatar snapshots, including retries and disconnect restore.
+local nameState={version=1,userId="7",enabled=true,name="Alpha_7"}
+local nameEvents={}
+local oldRequest=request
+request=function(o)
+    if o.Url:find("/v1/names/") then return {StatusCode=200,Body=nameState} end
+    if o.Url:find("status") then return {StatusCode=200,Body={version=1,connected=true,instanceId="names"}} end
+    return {StatusCode=404,Body={}}
+end
+local nameApi={
+    set=function(username,displayName)nameEvents[#nameEvents+1]={"set",username,displayName}end,
+    setEnabled=function(enabled)nameEvents[#nameEvents+1]={"enabled",enabled}end,
+}
+local function makeNameSync()
+    return create(player,function()return avatar end,function()return clothing end,function()return true end,function()end,nil,function()return nameApi end)
+end
+local savedCharacter=player.Character;player.Character=nil
+local nameSync=makeNameSync();jobs={};task.wait=function()nameSync.disconnect()end
+nameSync.connect(string.rep("a",32));jobs[1]();assert(#nameEvents==2 and nameEvents[1][1]=="set" and nameEvents[1][2]=="Alpha_7","browser name applies without avatar snapshot")
+nameState={version=1,userId="7",enabled=true,name="Beta_7"};nameEvents={};nameSync=makeNameSync();jobs={};nameSync.connect(string.rep("a",32));jobs[1]();assert(#nameEvents==2 and nameEvents[1][2]=="Beta_7","browser name changes are applied")
+nameState={version=1,userId="7",enabled=false,name=""};nameEvents={};nameSync=makeNameSync();jobs={};nameSync.connect(string.rep("a",32));jobs[1]();assert(nameEvents[#nameEvents][1]=="enabled" and nameEvents[#nameEvents][2]==false,"disabled browser name restores locally")
+nameEvents={};nameSync.disconnect();assert(nameEvents[#nameEvents][1]=="enabled" and nameEvents[#nameEvents][2]==false,"disconnect restores local name")
+request=oldRequest
+player.Character=savedCharacter
+print("Game browser name sync applies, changes, disables and restores without avatar snapshots.")
