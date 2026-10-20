@@ -1,0 +1,72 @@
+/* Keep native React controls in their original DOM; only change their layout. */
+html.rbx2016 #item-details-container.rbx2016-item-page { max-width: 1110px; margin: 20px auto; color: #333; }
+html.rbx2016 .rbx2016-item-page .rbx2016-item-layout {
+  position: relative; display: grid !important;
+  grid-template-columns: minmax(260px, 42%) minmax(200px, 1fr) 220px;
+  gap: 8px 20px; align-items: start; padding: 16px;
+  background: #fff !important; border-radius: 12px;
+}
+html.rbx2016 .rbx2016-item-layout::before,
+html.rbx2016 .rbx2016-item-layout::after { display: none !important; }
+html.rbx2016 .rbx2016-item-layout :is(#item-info-container-frontend, .item-details-info-content, .item-details-info-header, .item-details-info-header > .left, #item-details) { display: contents !important; }
+html.rbx2016 .rbx2016-item-layout .item-details-name-row { grid-column: 1 / -1; grid-row: 1; padding-right: 45px; }
+html.rbx2016 .rbx2016-item-layout .item-details-name-row h1 {
+  white-space: normal !important; margin: 0 !important; padding: 0 !important;
+  font-size: 30px !important; line-height: 36px; font-weight: 700 !important;
+}
+html.rbx2016 .rbx2016-item-layout .rbx2016-item-subtitle { grid-column: 1 / -1; grid-row: 2; margin-bottom: 4px; font-size: 16px; font-weight: 600; }
+html.rbx2016 .rbx2016-item-layout #item-thumbnail-container-frontend { grid-column: 1; grid-row: 3 / span 14; min-width: 0; }
+html.rbx2016 .rbx2016-item-layout .item-details-thumbnail-container { float: none !important; width: 100% !important; height: auto !important; aspect-ratio: 1; }
+html.rbx2016 .rbx2016-item-layout :is(.thumbnail-holder, .thumbnail-placeholder, .item-details-thumbnail-container .thumbnail-2d-container) {
+  width: 100% !important; height: 100% !important; background: #fff !important; border-radius: 0 !important; box-shadow: none !important;
+}
+html.rbx2016 .rbx2016-item-layout .thumbnail-holder img { width: 100%; height: 100%; object-fit: contain; }
+html.rbx2016 .rbx2016-item-layout .item-details-thumbnail-container .inner-thumbnail-ui-container { width: 100% !important; }
+html.rbx2016 .rbx2016-item-layout .item-details-creator-container { grid-column: 2; grid-row: 3; margin: 6px 0; font-size: 14px; }
+html.rbx2016 .rbx2016-item-layout .rbx2016-item-creator-avatar { float: left; width: 58px; height: 58px; object-fit: contain; margin: 0 8px 4px 0; }
+html.rbx2016 .rbx2016-item-layout .rbx2016-item-creator-avatar[hidden] { display: none; }
+html.rbx2016 .rbx2016-item-layout .item-details-info-header > .right { position: absolute; top: 15px; right: 15px; }
+html.rbx2016 .rbx2016-item-layout .rbx2016-item-metadata {
+  display: block !important;
+  grid-column: 2; grid-row: var(--rbx2016-item-row); margin: 0 !important; padding: 0 !important;
+  min-width: 0; font-size: 14px; line-height: 20px;
+}
+html.rbx2016 .rbx2016-item-layout .rbx2016-item-metadata :is(.row-label, .row-content) {
+  float: none !important; width: auto !important; padding: 0 !important; font-size: 14px !important;
+}
+html.rbx2016 .rbx2016-item-layout .rbx2016-item-metadata .row-label { display: inline; margin-right: 5px; color: #999 !important; }
+html.rbx2016 .rbx2016-item-layout .rbx2016-item-metadata .row-label::after { content: ':'; }
+html.rbx2016 .rbx2016-item-layout .rbx2016-item-metadata:has(#item-details-description) { display: block !important; border-bottom: 1px solid #ccc; padding-bottom: 12px !important; margin: 8px 0 !important; }
+html.rbx2016 .rbx2016-item-layout .rbx2016-item-metadata:has(#item-details-description) > .row-label { display: none; }
+html.rbx2016 .rbx2016-item-layout #item-details-description { margin: 0; color: #333 !important; font-size: 16px; white-space: pre-line; }
+html.rbx2016 .rbx2016-item-layout .price-row-container {
+  display: block !important;
+  grid-column: 3; grid-row: 3 / span 3; align-self: start; width: 100%; margin: 0 !important;
+  padding: 12px !important; border: 1px solid #aaa; background: #e3e3e3; text-align: center;
+}
+html.rbx2016 .rbx2016-item-layout .price-row-container :is(.price-container-text, .price-info, .row-content, .row-label, .item-info-row-container, .item-purchase-btns-container) {
+  display: block !important; float: none !important; width: 100% !important; min-width: 0 !important; margin: 0 !important;
+}
+html.rbx2016 .rbx2016-item-layout .price-row-container .item-price-value { display: inline-flex; align-items: center; justify-content: center; gap: 3px; margin: 4px 0 8px; }
+html.rbx2016 .rbx2016-item-layout .price-row-container .text-robux-lg { color: #008000 !important; font-size: 16px !important; font-weight: 700; }
+html.rbx2016 .rbx2016-item-layout .price-row-container :is(.btn-growth-lg, .btn-primary-lg, .btn-secondary-lg) {
+  min-width: 0 !important; width: 100% !important; height: auto !important; margin: 6px 0 0 !important;
+  padding: 6px 10px !important; border-radius: 0 !important; font-size: 18px !important; line-height: 24px;
+}
+html.rbx2016 .rbx2016-item-layout .price-row-container .btn-growth-lg:not(:disabled):not([aria-disabled='true']) {
+  color: #fff !important; background: linear-gradient(#00ac00, #008000) !important; border: 1px solid #007400 !important; box-shadow: none !important;
+}
+html.rbx2016 .rbx2016-item-layout .price-row-container .rbx2016-buy-action { font-size: 0 !important; }
+html.rbx2016 .rbx2016-item-layout .price-row-container .rbx2016-buy-action::after { content: 'Buy with R$'; font-size: 18px; }
+html.rbx2016 .rbx2016-item-layout #favorites-button { grid-column: 3; grid-row: 6; width: 100%; text-align: center; padding-bottom: 10px; border-bottom: 1px solid #ccc; }
+html.rbx2016 .rbx2016-item-layout .favorite-button-container { list-style: none; }
+html.rbx2016 .rbx2016-item-layout #toggle-favorite { display: inline-flex; align-items: center; flex-direction: row-reverse; gap: 5px; color: #0074bd; }
+html.rbx2016 .rbx2016-item-layout #item-report-button-frontend { grid-column: 2; grid-row: 15; }
+@media (max-width: 900px) {
+  html.rbx2016 .rbx2016-item-page .rbx2016-item-layout { grid-template-columns: minmax(220px, 40%) minmax(170px, 1fr) 180px; gap: 8px 12px; }
+}
+@media (max-width: 680px) {
+  html.rbx2016 .rbx2016-item-page .rbx2016-item-layout { display: flex !important; flex-direction: column; }
+  html.rbx2016 .rbx2016-item-layout #item-thumbnail-container-frontend { width: min(100%, 360px); align-self: center; }
+  html.rbx2016 .rbx2016-item-layout .price-row-container { max-width: 300px; }
+}

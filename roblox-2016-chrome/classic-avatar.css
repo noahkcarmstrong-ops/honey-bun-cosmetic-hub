@@ -1,0 +1,221 @@
+/* Screenshot-matched character editor. Native thumbnails still handle equip clicks. */
+html.rbx2016:has(#avatar-web-app) body,
+html.rbx2016:has(#avatar-web-app) .container-main,
+html.rbx2016:has(#avatar-web-app) .container-main > .content {
+  background: #fff !important;
+}
+html.rbx2016 #avatar-web-app { max-width: 1110px; margin: 0 auto; color: #191919; }
+html.rbx2016 #avatar-web-app .rbx2016-avatar-columns {
+  display: grid !important; grid-template-columns: 280px minmax(0, 1fr) !important;
+  gap: 20px !important; align-items: start; clear: both;
+}
+html.rbx2016 #avatar-web-app .rbx2016-avatar-columns::before,
+html.rbx2016 #avatar-web-app .rbx2016-avatar-columns::after { display: none !important; }
+html.rbx2016 #avatar-web-app .rbx2016-avatar-columns > .rbx2016-avatar-preview {
+  grid-column: 1; grid-row: 1; min-width: 0; width: 280px !important;
+  float: none !important; position: static !important; margin: 0 !important;
+}
+html.rbx2016 #avatar-web-app .rbx2016-avatar-columns > .rbx2016-avatar-inventory {
+  grid-column: 2; grid-row: 1; min-width: 0; width: 100% !important;
+  float: none !important; position: static !important; margin: 0 !important;
+}
+html.rbx2016 #avatar-web-app .avatar-editor-header { margin-bottom: 20px; }
+html.rbx2016 #avatar-web-app .avatar-editor-header h1 {
+  font-size: 32px !important; font-weight: 600 !important; line-height: 40px;
+}
+html.rbx2016 #avatar-web-app .catalog-header :is(.btn-primary-md, .btn-secondary-md, .btn-growth-md) {
+  background: linear-gradient(#00a600, #008000) !important; border: 1px solid #007500 !important;
+  color: #fff !important; border-radius: 0 !important; min-width: 67px; padding: 6px 8px;
+  font-size: 14px !important;
+}
+html.rbx2016 #avatar-web-app :is(.left-wrapper, .left-wrapper-placeholder) {
+  width: 280px !important; margin-right: 20px !important; padding: 0 !important;
+}
+html.rbx2016 #avatar-web-app .left-wrapper::before {
+  content: 'Avatar'; display: block; font-size: 24px; line-height: 30px; margin-bottom: 12px;
+}
+html.rbx2016 #avatar-web-app :is(.right-wrapper-six-column, .right-wrapper-placeholder-six-column) {
+  width: calc(100% - 300px) !important; margin-left: 0 !important; padding: 0 !important;
+}
+html.rbx2016 #avatar-web-app .right-panel.six-column { width: 100% !important; padding: 0 !important; }
+html.rbx2016 #avatar-web-app :is(.section-content, .avatar-back, .avatar-thumbnail, .right-panel) {
+  background: transparent !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+}
+html.rbx2016 #avatar-web-app .avatar-back { width: 280px !important; height: 340px !important; padding: 0 !important; }
+html.rbx2016 #avatar-web-app .avatar-thumbnail { width: 280px !important; height: 340px !important; }
+html.rbx2016 #avatar-web-app .toggle-three-dee {
+  min-width: 28px !important; min-height: 18px !important; padding: 0 4px !important;
+  font-size: 12px !important; line-height: 16px !important; border: 1px solid #aaa !important;
+  border-radius: 0 !important; background: #eee !important; color: #333 !important;
+}
+html.rbx2016 #avatar-web-app .section-sliders { padding: 20px 0 0 !important; }
+html.rbx2016 #avatar-web-app .redraw-avatar { margin-top: 30px !important; font-size: 14px !important; }
+html.rbx2016 #avatar-web-app .rbx-tabs-horizontal { background: transparent !important; box-shadow: none !important; border: 0 !important; }
+html.rbx2016 #avatar-web-app .rbx-tabs-horizontal :is(.rbx-tab, .rbx-tab-heading) {
+  background: transparent !important; border: 0 !important; box-shadow: none !important;
+  border-radius: 0 !important; font-size: 16px !important; font-weight: 400 !important;
+}
+html.rbx2016 #avatar-web-app .rbx-tabs-horizontal .text-lead { font-size: 16px !important; font-weight: 400 !important; }
+/* The current React category bar uses nav-tabs rather than the legacy rbx-tab markup. */
+/* Override modern typography on the text itself, including nested React labels. */
+html.rbx2016 #avatar-web-app :is(.nav-tabs, .rbx-tabs-horizontal, [role='tablist'], .tab-horizontal-submenu),
+html.rbx2016 #avatar-web-app :is(.nav-tabs, .rbx-tabs-horizontal, [role='tablist'], .tab-horizontal-submenu)
+  :is(a, button, span, [role='tab'], .text-label):not([class*='icon']) {
+  font-family: 'Source Sans Pro', Arial, sans-serif !important;
+  font-weight: 400 !important; font-style: normal !important; letter-spacing: normal !important;
+}
+/* The classic category menu has no floating carousel arrows. */
+html.rbx2016 #avatar-web-app .scroller-new,
+html.rbx2016 #avatar-web-app .scroller.next,
+html.rbx2016 #avatar-web-app .scroller.prev {
+  display: none !important;
+}
+html.rbx2016 #avatar-web-app :is(.horizontal-scroll-container, .nav-tabs, .rbx-tabs-horizontal, [role='tablist'])
+  :is(.scroller, .scroll-arrow, .scroll-button, .carousel-control, [aria-label='Next'], [aria-label='Previous'], [aria-label='Scroll right'], [aria-label='Scroll left']),
+html.rbx2016 #avatar-web-app :is(.nav-tabs, .rbx-tabs-horizontal, [role='tablist'])
+  button:has(:is(.icon-chevron-right, .icon-chevron-left, .icon-right, .icon-left)) {
+  display: none !important;
+}
+html.rbx2016 #avatar-web-app :is(.nav-tabs, .rbx-tabs-horizontal, [role='tablist']) {
+  background: #fff !important; border: 0 !important; border-radius: 0 !important;
+  box-shadow: none !important; min-height: 42px; margin-bottom: 12px;
+  --color-surface-0: #fff;
+  --color-surface-100: #fff;
+  --color-surface-200: #fff;
+  --color-action-subtle-background: transparent;
+}
+html.rbx2016 #avatar-web-app :is(.nav-tabs, .rbx-tabs-horizontal, [role='tablist'])
+  :is(.nav-item, .nav-link, .rbx-tab, .rbx-tab-heading, [role='tab'], button) {
+  background: transparent !important; border: 0 !important; border-radius: 0 !important;
+  box-shadow: none !important; color: #333 !important;
+  font-size: 16px !important; font-weight: 400 !important;
+}
+html.rbx2016 #avatar-web-app :is(.nav-tabs, .rbx-tabs-horizontal, [role='tablist'])
+  :is(.nav-link, .rbx-tab-heading, [role='tab']) { padding: 10px 12px !important; }
+html.rbx2016 #avatar-web-app :is(.nav-tabs, .rbx-tabs-horizontal, [role='tablist'])
+  :is(.active, [aria-selected='true'])::after { background: transparent !important; box-shadow: none !important; }
+html.rbx2016 #avatar-web-app :is(.nav-tabs, .rbx-tabs-horizontal, [role='tablist'])
+  :is(a, button, [role='tab']):hover { color: #005a91 !important; text-decoration: underline; }
+/* Native avatar submenu labels are .text-label spans, not just links.
+   Keep the complete submenu in flow so wrapped rows push inventory down. */
+html.rbx2016 #avatar-web-app :is(#avatar-items-container, .items-list.avatar-item-list)[data-rbx2016-menu-gap] {
+  margin-top: var(--rbx2016-menu-gap, 0px) !important;
+}
+html.rbx2016 #avatar-web-app :is(.nav-tabs, .rbx-tabs-horizontal, [role='tablist']) {
+  overflow: visible !important;
+}
+html.rbx2016 #avatar-web-app .tab-horizontal-submenu {
+  position: relative !important; inset: auto !important; transform: none !important; z-index: 20 !important;
+  float: none !important; clear: both !important; box-sizing: border-box;
+  width: 100% !important; min-width: 0 !important; max-width: 100% !important;
+  height: auto !important; min-height: var(--rbx2016-submenu-height, 0px) !important; max-height: none !important;
+  margin: 0 0 16px !important; padding: 6px 0 !important; overflow: visible !important;
+  background: #fff !important; border: 0 !important; border-radius: 0 !important;
+  box-shadow: none !important; white-space: normal !important;
+}
+html.rbx2016 #avatar-web-app .tab-horizontal-submenu .submenu-row,
+html.rbx2016 #avatar-web-app .tab-horizontal-submenu > ul {
+  display: flex !important; flex-wrap: wrap !important; align-items: center;
+  gap: 4px 12px !important; position: static !important; float: none !important;
+  width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important;
+  border: 0 !important;
+}
+html.rbx2016 #avatar-web-app .tab-horizontal-submenu .submenu-row > ul {
+  display: contents !important;
+}
+html.rbx2016 #avatar-web-app .tab-horizontal-submenu li {
+  display: inline-flex !important; float: none !important; flex: 0 0 auto;
+  width: auto !important; height: auto !important; margin: 0 12px 4px 0 !important; padding: 4px 8px !important;
+  font-size: 14px !important; line-height: 22px !important; color: #005a91 !important;
+  white-space: nowrap !important;
+  border: 0 !important; list-style: none;
+}
+html.rbx2016 #avatar-web-app .tab-horizontal-submenu :is(.text-label, a, button) {
+  display: inline-block !important; position: static !important; float: none !important;
+  width: auto !important; height: auto !important; margin: 0 !important;
+  padding: 4px 8px !important; font-size: 14px !important; line-height: 22px !important;
+  font-weight: 400 !important; white-space: nowrap !important; color: #005a91 !important;
+  background: transparent !important; border: 0 !important; box-shadow: none !important;
+}
+html.rbx2016 #avatar-web-app .tab-horizontal-submenu :is(.text-label, a, button):hover {
+  text-decoration: underline;
+}
+html.rbx2016 #avatar-web-app .tab-horizontal-submenu li > :is(.text-label, a, button) {
+  padding: 0 !important;
+}
+html.rbx2016 #avatar-web-app .items-list.avatar-item-list:not(.rbx2016-avatar-grid):not(:has(> .item-card)) {
+  display: block !important; width: 100% !important; margin: 0 !important; padding: 0 !important;
+}
+html.rbx2016 #avatar-web-app :is(.rbx2016-avatar-grid, .items-list.avatar-item-list:has(> .item-card)) {
+  display: grid !important; grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px 10px; width: 100% !important; margin: 0 !important; padding: 0 !important; list-style: none;
+}
+html.rbx2016 #avatar-web-app .rbx2016-avatar-grid::before,
+html.rbx2016 #avatar-web-app .rbx2016-avatar-grid::after,
+html.rbx2016 #avatar-web-app .items-list.avatar-item-list::before,
+html.rbx2016 #avatar-web-app .items-list.avatar-item-list::after { display: none !important; }
+html.rbx2016 #avatar-web-app .items-list.avatar-item-list .item-card {
+  width: auto !important; min-width: 0 !important; height: auto !important; margin: 0 !important; padding: 0 !important;
+  float: none !important; display: block !important;
+}
+html.rbx2016 #avatar-web-app :is(.item-card-container, .item-card-thumb-container, .item-card-thumb, .item-card-caption) {
+  background: transparent !important; border: 0 !important; box-shadow: none !important; border-radius: 0 !important;
+}
+html.rbx2016 #avatar-web-app .item-card-container { width: 100% !important; }
+/* Roblox paints a separate rounded hover overlay above the thumbnail. */
+html.rbx2016 #avatar-web-app .item-card:hover :is(.item-card-container, .item-card-thumb-container, .item-card-thumb, .thumbnail-2d-container, thumbnail-2d) {
+  background: transparent !important; box-shadow: none !important; border-radius: 0 !important;
+  filter: none !important;
+}
+html.rbx2016 #avatar-web-app .item-card-thumb-container::before,
+html.rbx2016 #avatar-web-app .item-card-thumb-container::after,
+html.rbx2016 #avatar-web-app .item-card-thumb::after {
+  display: none !important;
+}
+html.rbx2016 #avatar-web-app .item-card-thumb-container { position: relative; height: 125px !important; width: 100% !important; }
+html.rbx2016 #avatar-web-app .item-card-thumb { position: relative; display: flow-root; height: 125px !important; width: 100% !important; }
+html.rbx2016 #avatar-web-app .item-card-thumb :is(.thumbnail-2d-container, thumbnail-2d) {
+  display: block; width: 105px !important; height: 105px !important; margin: 20px auto 0 !important;
+}
+html.rbx2016 #avatar-web-app .item-card-thumb img { width: 105px !important; height: 105px !important; object-fit: contain; }
+html.rbx2016 #avatar-web-app .item-card-thumb::before {
+  content: 'Wear'; position: absolute; top: 0; right: 4px; z-index: 3;
+  background: linear-gradient(#0879ed, #0757b4); border: 1px solid #0757b4;
+  color: #fff; padding: 3px 7px; font: 14px/19px 'Source Sans Pro', Arial, sans-serif;
+  pointer-events: none;
+}
+/* Equipped markers can be siblings of the thumbnail, not children of it. */
+html.rbx2016 #avatar-web-app .item-card:has(
+  :is(.item-card-equipped, .icon-check-selection):not(.ng-hide):not([hidden]):not(.ng-hide *):not([hidden] *)
+) .item-card-thumb::before {
+  content: 'Remove';
+}
+html.rbx2016 #avatar-web-app .item-card-equipped {
+  background: transparent !important; border: 0 !important; box-shadow: none !important;
+}
+html.rbx2016 #avatar-web-app .item-card-equipped-label { visibility: hidden !important; }
+html.rbx2016 #avatar-web-app .item-card :is(.icon-check-selection, .item-card-equipped-label) {
+  display: none !important;
+}
+html.rbx2016 #avatar-web-app .item-card [class*='icon-check'],
+html.rbx2016 #avatar-web-app .item-card-equipped > :is(svg, i, span),
+html.rbx2016 #avatar-web-app .item-card-equipped::before,
+html.rbx2016 #avatar-web-app .item-card-equipped::after {
+  display: none !important;
+}
+html.rbx2016 #avatar-web-app .item-card-caption { padding: 8px 5px 0 !important; min-height: 48px; }
+html.rbx2016 #avatar-web-app :is(.item-card-name, .item-card-name-link) {
+  color: #005a91 !important; font-size: 14px !important; line-height: 20px !important;
+  font-weight: 400 !important; white-space: normal !important; overflow: visible !important;
+  text-overflow: clip !important; height: auto !important;
+}
+@media (max-width: 900px) {
+  html.rbx2016 #avatar-web-app :is(.rbx2016-avatar-grid, .items-list.avatar-item-list:has(> .item-card)) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  html.rbx2016 #avatar-web-app .rbx2016-avatar-columns > .rbx2016-avatar-preview { margin: 0 auto 24px !important; }
+  html.rbx2016 #avatar-web-app :is(.left-wrapper, .left-wrapper-placeholder) { float: none !important; margin: 0 auto 24px !important; }
+  html.rbx2016 #avatar-web-app :is(.right-wrapper-six-column, .right-wrapper-placeholder-six-column, .right-panel.six-column) { width: 100% !important; }
+  html.rbx2016 #avatar-web-app .rbx2016-avatar-columns { display: block !important; }
+  html.rbx2016 #avatar-web-app :is(.rbx2016-avatar-grid, .items-list.avatar-item-list:has(> .item-card)) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

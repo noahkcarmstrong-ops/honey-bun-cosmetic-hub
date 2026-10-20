@@ -1,0 +1,233 @@
+html:is(.rbx2016, .larpblox-modern) .larpbux-panel { position: fixed; z-index: 10001; right: 18px; top: 65px; width: min(440px, calc(100vw - 36px)); max-height: calc(100vh - 90px); overflow-y: auto; background: #fff; color: #191919; border: 1px solid #aaa; padding: 16px; box-shadow: 0 3px 20px #0004; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-panel[hidden] { display: none; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-panel h2 { font-size: 24px; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-panel p { margin: 8px 0; font-size: 14px; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-panel button, html:is(.rbx2016, .larpblox-modern) .larpbux-item-actions button { cursor: pointer; padding: 6px 10px; border: 1px solid #aaa; background: #eee; color: #191919; border-radius: 3px; margin: 4px 0; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-panel form { display: flex; gap: 8px; margin: 12px 0; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-panel input[type=number] { width: 55%; min-width: 0; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-panel input[type=checkbox] { appearance: auto; width: 16px; height: 16px; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-inventory { max-height: 320px; overflow-y: auto; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-inventory-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 16px; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-inventory-item { min-width: 0; text-align: left; padding: 0; background: #fff; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-inventory-item a { display: block; color: #0074bd; font-size: 14px; text-decoration: none; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-inventory-item img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border: 1px solid #ddd; box-sizing: border-box; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-inventory-item a span { display: block; margin: 5px 0; overflow-wrap: anywhere; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-inventory-item button { color: #0074bd; background: transparent; border: 0; padding: 2px 0; cursor: pointer; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-inventory-item button:disabled { color: #777; cursor: default; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-panel textarea { display: block; width: 100%; height: 65px; font-size: 12px; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-item-actions { display: none; }
+html:is(.rbx2016, .larpblox-modern).larpblox-pretend-mode :is(#item-details, #item-details-container) .item-purchase-btns-container { display: none !important; }
+html:is(.rbx2016, .larpblox-modern).larpblox-pretend-mode .larpbux-item-actions { display: block; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-item-actions button { width: 100%; background: #0074bd; color: #fff; border-color: #005b94; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-item-actions p { font-size: 12px; margin: 6px 0; }
+
+html:is(.rbx2016, .larpblox-modern) .larpbux-dropdown { padding: 12px 16px; border-top: 1px solid #ddd; color: #191919; min-width: 0; box-sizing: border-box; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-dropdown label { display: flex; align-items: center; gap: 7px; font-size: 15px; cursor: pointer; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-dropdown input[type=checkbox] { appearance: auto; width: 16px; height: 16px; margin: 0; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-dropdown form { display: flex; gap: 6px; margin: 6px 0; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-dropdown input[type=number] { width: 130px; min-width: 0; padding: 5px; background: #fff; color: #191919; border: 1px solid #aaa; border-radius: 3px; }
+html:is(.rbx2016, .larpblox-modern) #header .larpbux-dropdown button, html:is(.rbx2016, .larpblox-modern) .larpbux-dropdown button { color: #fff !important; background: #0074bd; border: 1px solid #005b94; padding: 5px 9px; border-radius: 3px; cursor: pointer; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-dropdown p { color: #606162 !important; font-size: 12px; margin: 6px 0; white-space: normal; }
+
+html:is(.rbx2016, .larpblox-modern) .larpbux-robux-menu { min-width: 250px !important; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-dropdown label { color: #191919 !important; }
+
+html:is(.rbx2016, .larpblox-modern).larpblox-pretend-mode #nav-robux-amount { max-width: none !important; width: auto !important; white-space: nowrap; text-overflow: clip !important; overflow: visible !important; }
+
+html:is(.rbx2016, .larpblox-modern) .larpbux-item-actions .larpbux-classic-buy,
+html:is(.rbx2016, .larpblox-modern) .larpbux-buy-dialog .larpbux-buy-confirm {
+  display: inline-block; box-sizing: border-box; text-align: center; text-decoration: none;
+  background: linear-gradient(#00ac00, #008000) !important; border: 1px solid #007400 !important;
+  color: #fff !important; border-radius: 3px; padding: 8px 18px; font-size: 18px; line-height: 24px; cursor: pointer;
+}
+html:is(.rbx2016, .larpblox-modern) .larpbux-item-actions .larpbux-classic-buy { width: 100%; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-item-actions .larpbux-classic-buy:disabled { background: #888 !important; border-color: #777 !important; cursor: default; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-owned-link { display: block; color: #0074bd; font-size: 14px; margin-top: 8px; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-owned-link[hidden] { display: none; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-buy-dialog {
+  width: min(530px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto;
+  box-sizing: border-box; padding: 0; margin: auto; border: 1px solid #777; border-radius: 3px;
+  background: #fff; color: #191919; box-shadow: 0 4px 20px #0006; font-family: 'Source Sans Pro', Arial, sans-serif;
+}
+html:is(.rbx2016, .larpblox-modern) .larpbux-buy-dialog::backdrop { background: #0008; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-buy-dialog h2 { margin: 0; padding: 18px 42px 14px 24px; font-size: 28px; line-height: 32px; font-weight: 400; border-bottom: 1px solid #ddd; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-modal-close { position: absolute; top: 9px; right: 13px; padding: 0; border: 0; background: transparent; color: #777; font-size: 30px; cursor: pointer; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-purchase-body { display: flex; align-items: flex-start; gap: 20px; padding: 24px; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-purchase-body > img { width: 110px; height: 110px; flex: 0 0 110px; object-fit: contain; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-purchase-body p { font-size: 16px; line-height: 22px; margin: 0 0 14px; overflow-wrap: anywhere; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-balance-summary p { color: #666; font-size: 14px; margin-bottom: 7px; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-purchase-footer { display: flex; justify-content: center; gap: 12px; padding: 0 24px 16px; flex-wrap: wrap; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-buy-dialog .larpbux-buy-cancel { display: inline-block; background: #eee; color: #333; border: 1px solid #aaa; border-radius: 3px; padding: 8px 18px; font-size: 18px; line-height: 24px; cursor: pointer; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-buy-dialog button:disabled { opacity: .55; cursor: default; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-purchase-status { color: #b00; margin: 0 24px 14px; font-size: 14px; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-purchase-status:empty { display: none; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-mode-caption { display: block; font-size: 11px; color: #777; text-align: center; padding: 0 0 12px; }
+@media (max-width: 420px) { html:is(.rbx2016, .larpblox-modern) .larpbux-purchase-body { gap: 12px; padding: 18px; } html:is(.rbx2016, .larpblox-modern) .larpbux-purchase-body > img { width: 72px; height: 72px; flex-basis: 72px; } }
+
+html:is(.rbx2016, .larpblox-modern) #avatar-web-app .larpbux-avatar-item .item-card-thumb { border: 0; padding: 0; background: transparent; cursor: pointer; color: inherit; font: inherit; }
+html:is(.rbx2016, .larpblox-modern) #avatar-web-app .larpbux-avatar-item[data-larpbux-equipped="true"] .item-card-thumb::before { content: 'Remove'; }
+
+html:is(.rbx2016, .larpblox-modern) #avatar-web-app .avatar-thumbnail:has(> .larpbux-avatar-look) { position: relative; }
+html:is(.rbx2016, .larpblox-modern) #avatar-web-app .larpbux-avatar-look { position: absolute; inset: 0; width: 100% !important; height: 100% !important; background: #fff; z-index: 2; }
+html:is(.rbx2016, .larpblox-modern) #avatar-web-app .larpbux-avatar-look[hidden] { display: none; }
+html:is(.rbx2016, .larpblox-modern) #avatar-web-app .larpbux-avatar-scene { position: absolute; inset: 0; }
+html:is(.rbx2016, .larpblox-modern) #avatar-web-app .larpbux-avatar-scene :is(canvas, img) { display: block; width: 100% !important; height: 100% !important; object-fit: contain; border: 0; background: transparent; }
+html:is(.rbx2016, .larpblox-modern) #avatar-web-app .larpbux-avatar-scene canvas { cursor: grab; }
+html:is(.rbx2016, .larpblox-modern) #avatar-web-app .larpbux-avatar-scene canvas:active { cursor: grabbing; }
+
+html:is(.rbx2016, .larpblox-modern) #avatar-web-app .larpbux-avatar-scene.larpbux-avatar-loading { pointer-events: none; }
+
+/* Pairing stays inside the existing Robux menu. */
+.larpbux-game-connection { margin-top:12px; border-top:1px solid #ccc; padding-top:10px; }
+.larpbux-game-connection summary { cursor:pointer; color:#0055a5; font-size:13px; }
+.larpbux-game-connection input[type="password"] { display:block; width:100%; box-sizing:border-box; margin:8px 0; padding:6px; border:1px solid #aaa; background:#fff; color:#333; }
+.larpbux-game-connection button { margin-right:6px; }
+
+/* Real action text does not flash a default Wear after tab suspension. */
+html:is(.rbx2016, .larpblox-modern) #avatar-web-app .larpbux-avatar-item .item-card-thumb::before { display:none !important; }
+html:is(.rbx2016, .larpblox-modern) #avatar-web-app .larpbux-avatar-action {
+ position:absolute; top:0; right:4px; z-index:3; pointer-events:none;
+ background:linear-gradient(#0879ed,#0757b4); border:1px solid #0757b4;
+ color:#fff; padding:3px 7px; font:14px/19px 'Source Sans Pro',Arial,sans-serif;
+}
+
+html:is(.rbx2016, .larpblox-modern) .larpbux-dropdown .larpbux-names { display: flex; flex-wrap: wrap; border-top: 1px solid #ddd; padding-top: 8px; margin-top: 10px; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-names h3 { width: 100%; margin: 0 0 4px; font-size: 16px; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-dropdown .larpbux-names label { display: flex; flex-direction: column; align-items: stretch; width: 100%; gap: 3px; font-size: 13px; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-names input[type=text] { width: 100%; min-width: 0; box-sizing: border-box; padding: 5px; color: #191919; background: #fff; border: 1px solid #aaa; border-radius: 3px; }
+html:is(.rbx2016, .larpblox-modern) .larpbux-robux-menu { max-height: calc(100vh - 70px); overflow-y: auto; }
+
+/* Modern mode leaves Roblox's own page styles intact; these rules style only Larp controls. */
+.larpbux-appearance { flex-direction:column; align-items:stretch !important; margin-top:12px; }
+.larpbux-appearance select { width:100%; padding:7px; border:1px solid #aaa; border-radius:6px; background:inherit; color:inherit; }
+html.larpblox-modern { --larp-panel:#fff; --larp-text:#202227; --larp-muted:#666; --larp-border:#ccc; }
+html.larpblox-modern:is(.dark-theme, :has(body.dark-theme)) { --larp-panel:#272930; --larp-text:#f7f7f8; --larp-muted:#bcbec8; --larp-border:#555862; }
+html.larpblox-modern :is(.larpbux-dropdown,.larpbux-panel,.larpbux-buy-dialog) { background:var(--larp-panel); color:var(--larp-text); font-family:inherit; border-radius:12px; }
+html.larpblox-modern .larpbux-dropdown label { color:var(--larp-text) !important; }
+html.larpblox-modern .larpbux-dropdown p { color:var(--larp-muted) !important; }
+html.larpblox-modern :is(.larpbux-dropdown input,.larpbux-panel input,.larpbux-names input[type=text],.larpbux-game-connection input[type=password],.larpbux-appearance select) { background:var(--larp-panel); color:var(--larp-text); border-color:var(--larp-border); border-radius:8px; }
+html.larpblox-modern :is(.larpbux-inventory-item,.larpbux-inventory-item img,.larpbux-avatar-look) { background:var(--larp-panel) !important; }
+html.larpblox-modern :is(.larpbux-buy-dialog button,.larpbux-dropdown button,.larpbux-item-actions button) { border-radius:8px; font-family:inherit; }
+html.larpblox-modern #avatar-web-app .larpbux-avatar-action { background:var(--color-action-emphasis-background,#335fff); border-color:transparent; font-family:inherit; border-radius:6px; }
+
+
+html.larpblox-modern :is(.larpbux-item-actions .larpbux-classic-buy,.larpbux-buy-dialog .larpbux-buy-confirm) { background:var(--color-action-emphasis-background,#335fff) !important; border-color:transparent !important; border-radius:8px; font-family:inherit; }
+
+html.larpblox-modern :is(#header .larpbux-dropdown button,.larpbux-dropdown button) { background:var(--color-action-emphasis-background,#335fff); border-color:transparent; }
+html.larpblox-modern .larpbux-buy-dialog .larpbux-buy-cancel { background:var(--larp-panel); color:var(--larp-text); border-color:var(--larp-border); }
+
+/* Current editor cards use an equipped check rather than classic action badges. */
+html.larpblox-modern #avatar-web-app .larpbux-avatar-item .larpbux-avatar-action { display:none; }
+html.larpblox-modern #avatar-web-app .larpbux-avatar-item .item-card-thumb { position:relative; border-radius:8px; overflow:hidden; }
+html.larpblox-modern #avatar-web-app .larpbux-avatar-item .item-card-thumb,
+html.larpblox-modern #avatar-web-app .larpbux-avatar-item .item-card-thumb * { cursor:pointer !important; }
+html.larpblox-modern #avatar-web-app .larpbux-avatar-item .item-card-thumb:focus-visible { outline:2px solid #335fff; outline-offset:2px; }
+
+html.larpblox-modern #avatar-web-app .larpbux-avatar-item .item-card-name-link { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
+
+html.larpblox-modern #avatar-web-app .larpbux-native-equipped { pointer-events:none; }
+
+
+html.larpblox-modern #avatar-web-app .larpbux-native-item[data-larpbux-equipped="true"] .item-card-thumb { position:relative; overflow:hidden; }
+
+
+.larpbux-character-card .item-card-thumb-container { position:relative; }
+.larpbux-character-card .item-card-thumb { display:block; width:100%; padding:0; border:0; background:transparent; cursor:pointer; }
+.larpbux-character-card .item-card-thumb * { cursor:pointer; }
+.larpbux-character-menu[hidden] { display:none; }
+.larpbux-character-dialog { width:min(420px,calc(100vw - 32px)); padding:24px; border:1px solid var(--larp-border,#ccc); border-radius:12px; background:var(--larp-panel,#fff); color:var(--larp-text,#202227); font:inherit; }
+.larpbux-character-dialog::backdrop { background:#0006; }
+.larpbux-character-dialog input { display:block; width:100%; box-sizing:border-box; margin:16px 0; padding:8px; border:1px solid var(--larp-border,#ccc); border-radius:8px; background:inherit; color:inherit; font:inherit; }
+.larpbux-character-dialog button { margin-right:8px; padding:8px 12px; border:1px solid var(--larp-border,#ccc); border-radius:8px; background:inherit; color:inherit; cursor:pointer; font:inherit; }
+.larpbux-character-dialog h2 { margin:0; font-size:22px; }
+.larpbux-character-status { font-size:12px; }
+
+/* Current purchase action stays a single-line button beside the price. */
+html.larpblox-modern :is(#item-details,#item-details-container) .larpbux-item-actions { flex:0 0 auto; width:180px; max-width:100%; margin-left:auto; }
+html.larpblox-modern .larpbux-item-actions .larpbux-classic-buy { display:flex; align-items:center; justify-content:center; min-height:40px; padding:8px 16px; margin:0; font-size:16px; font-weight:600; line-height:22px; white-space:nowrap; }
+html.larpblox-modern .larpbux-item-actions p:empty { display:none; }
+
+/* Applied at document_start, before the page can paint the account identity. */
+html:not([data-larpblox-identity-checked]) :is(a[href="/users/profile"],#navigation a[href*="/profile"],#header a[href*="/profile"],header a[href*="/profile"],.rbx-header a[href*="/profile"]),
+html[data-larpblox-identity-name="true"] :is(a[href="/users/profile"],#navigation a[href*="/profile"],#header a[href*="/profile"],header a[href*="/profile"],.rbx-header a[href*="/profile"]):not([data-larpblox-alias-ready="true"]) { visibility:hidden !important; }
+html[data-larpblox-identity-avatar="true"] :is(a[href="/users/profile"],#navigation a[href*="/profile"],#header a[href*="/profile"],header a[href*="/profile"],.rbx-header a[href*="/profile"]) :is(img:not([src^="data:image/png"]),img[srcset]) { visibility:hidden !important; }
+
+.larpbux-character-card .larpbux-character-gear { position:absolute; top:8px; right:8px; z-index:5; cursor:pointer; }
+.larpbux-character-card .larpbux-character-gear-fallback { width:16px; height:16px; padding:0; border:0; background:transparent; color:inherit; line-height:16px; }
+.larpbux-character-gear-fallback .icon-settings { display:inline-block; width:16px; height:16px; }
+.larpbux-character-menu { position:absolute; inset:0; z-index:4; display:flex; flex-direction:column; align-items:center; justify-content:center; border-radius:inherit; background:rgba(0,0,0,.55); }
+.larpbux-character-menu button { display:block; width:auto; padding:0; margin:0; border:0; background:transparent; color:#fff; cursor:pointer; font:600 12px/22px inherit; font-family:inherit; font-size:12px; font-weight:600; line-height:22px; text-align:center; }
+
+/* The thumbnail and caption are both real outfit selection controls. */
+html #avatar-web-app .larpbux-character-card,
+html #avatar-web-app .larpbux-character-card :is(.item-card-container,.item-card-thumb,.item-card-thumb *,.item-card-caption,.item-card-name-link,.larpbux-character-gear,.larpbux-character-gear *) { cursor:pointer !important; }
+html #avatar-web-app .larpbux-character-card .item-card-thumb { display:block; width:100%; aspect-ratio:1; overflow:hidden; border-radius:inherit; }
+html #avatar-web-app .larpbux-character-card .item-card-thumb .thumbnail-2d-container { display:block; width:100%; height:100%; }
+html #avatar-web-app .larpbux-character-card .item-card-thumb img { display:block; width:100%; height:100%; object-fit:contain; }
+html #avatar-web-app .larpbux-character-card .item-card-thumb:hover .thumbnail-2d-container { filter:brightness(.96); }
+html #avatar-web-app .larpbux-character-card button.item-card-name-link { padding:0; margin:0; border:0; background:transparent; color:inherit; font:inherit; text-align:left; }
+html #avatar-web-app .larpbux-character-card button.item-card-name-link:hover { text-decoration:underline; }
+html #avatar-web-app .larpbux-character-card :is(.item-card-thumb,.item-card-name-link):focus-visible { outline:2px solid #335fff; outline-offset:2px; }
+html #avatar-web-app .larpbux-character-card :is(.item-card-thumb,.item-card-name-link):disabled { cursor:wait !important; }
+
+/* Real account editing remains separate from the local outfit. */
+#avatar-web-app .larpbux-avatar-view-controls { display:flex; gap:6px; margin:0 0 12px; }
+#avatar-web-app .larpbux-avatar-view-controls button { cursor:pointer; border:1px solid #ccc; border-radius:6px; padding:7px 12px; background:transparent; color:inherit; font:inherit; }
+#avatar-web-app .larpbux-avatar-view-controls button[aria-pressed="true"] { background:#335fff; border-color:#335fff; color:#fff; }
+#avatar-web-app[data-larpbux-avatar-view="larp"] .avatar-thumbnail { position:relative; }
+#avatar-web-app .larpbux-avatar-hats { position:absolute; top:12px; left:8px; bottom:12px; width:52px; display:flex; flex-direction:column; gap:8px; z-index:4; background:#fff; border-radius:6px; }
+#avatar-web-app .larpbux-avatar-hats button { cursor:pointer; width:48px; height:48px; flex-shrink:0; padding:4px; border:0; background:transparent; border-radius:6px; }
+#avatar-web-app .larpbux-avatar-hats button:hover { background:rgba(128,128,128,.15); }
+#avatar-web-app .larpbux-avatar-hats img { width:100%; height:100%; object-fit:contain; cursor:pointer; }
+html.larpblox-modern #avatar-web-app .larpbux-avatar-hats { background:var(--larp-panel,#fff); }
+
+#avatar-web-app .avatar-thumbnail.larpbux-local-preview > :not(.larpbux-avatar-look):not(.larpbux-avatar-hats),
+#avatar-web-app .avatar-thumbnail.larpbux-local-preview > :not(.larpbux-avatar-look):not(.larpbux-avatar-hats) * { visibility:hidden !important; }
+#avatar-web-app .avatar-thumbnail.larpbux-local-preview > :not(.larpbux-avatar-look):not(.larpbux-avatar-hats) .toggle-three-dee,
+#avatar-web-app .avatar-thumbnail.larpbux-local-preview > :not(.larpbux-avatar-look):not(.larpbux-avatar-hats) .toggle-three-dee * { visibility:visible !important; }
+
+/* Keep the local viewer inside the same frame and use the native backdrop. */
+html #avatar-web-app .avatar-thumbnail:has(> .larpbux-avatar-look) { max-width:100% !important; min-width:0; overflow:hidden; border-radius:inherit; isolation:isolate; }
+html #avatar-web-app .larpbux-avatar-look { box-sizing:border-box; max-width:100%; overflow:hidden; border-radius:inherit; background-color:var(--larpbux-preview-background,transparent) !important; background-image:var(--larpbux-preview-image,none) !important; background-size:cover !important; background-repeat:no-repeat !important; background-position:center !important; }
+html #avatar-web-app .larpbux-avatar-look .larpbux-avatar-scene { left:60px; right:0; width:auto !important; min-width:0; overflow:hidden; }
+html #avatar-web-app .larpbux-avatar-hats { background:transparent !important; max-height:calc(100% - 24px); overflow-y:auto; overflow-x:hidden; }
+
+#avatar-web-app .larpbux-avatar-view-controls { flex-wrap:wrap; align-items:center; }
+#avatar-web-app .larpbux-preview-status { flex-basis:100%; font-size:12px; opacity:.8; }
+#avatar-web-app .larpbux-preview-status:empty { display:none; }
+#avatar-web-app .larpbux-preview-retry[hidden] { display:none; }
+#avatar-web-app .larpbux-avatar-scene.larpbux-avatar-loading { visibility:hidden; }
+
+#avatar-web-app .larpbux-avatar-hats button { background:var(--larpbux-hat-background,var(--larp-panel,#f2f4f5)); border-radius:var(--larpbux-hat-radius,8px); }
+html.larpblox-modern #avatar-web-app .larpbux-avatar-hats button { background:var(--larpbux-hat-background,#111216); }
+
+#avatar-web-app .larpbux-native-item .item-card-equipped:not(.larpbux-native-equipped) { display:none !important; }
+#avatar-web-app .larpbux-native-item .item-card-thumb { cursor:pointer !important; pointer-events:auto !important; }
+
+html #avatar-web-app .larpbux-avatar-hats { top:12px !important; left:8px !important; right:auto !important; transform:none !important; margin:0 !important; padding:0 !important; }
+html #avatar-web-app .larpbux-avatar-hats button { position:static !important; inset:auto !important; transform:none !important; margin:0 !important; box-sizing:border-box; }
+html #avatar-web-app .avatar-thumbnail:not(.larpbux-hat-tab) .larpbux-avatar-look .larpbux-avatar-scene { left:0; }
+
+/* Align the replacement hats with Roblox's own slot, outside nested viewer offsets. */
+html #avatar-web-app .larpbux-avatar-hats { left:var(--larpbux-hat-left,8px) !important; top:50% !important; bottom:auto !important; transform:translateY(-50%) !important; width:var(--larpbux-hat-size,48px); }
+html #avatar-web-app .larpbux-avatar-hats button { width:var(--larpbux-hat-size,48px); height:var(--larpbux-hat-size,48px); padding:0; }
+html #avatar-web-app .avatar-thumbnail:has(> .larpbux-avatar-look) { overflow:visible; }
+
+html #avatar-web-app .larpbux-avatar-hats { top:var(--larpbux-hat-top,15px) !important; transform:none !important; gap:15px; }
+
+html #avatar-web-app .larpbux-avatar-hats .larpbux-empty-hat { display:flex; align-items:center; justify-content:center; opacity:1; cursor:default; }
+
+
+html #avatar-web-app .larpbux-empty-hat-icon { display:block !important; visibility:visible !important; width:28px; height:24px; flex-shrink:0; }
+
+#avatar-web-app .larpbux-limited-badge { position:absolute; bottom:0; left:0; width:70px; height:24px; z-index:2; pointer-events:none; background:url('chrome-extension://__MSG_@@extension_id__/assets/limited-classic.png') left bottom / 70px 24px no-repeat; }
+#avatar-web-app .larpbux-limited-badge.larpbux-limited-unique { width:88px; background-image:url('chrome-extension://__MSG_@@extension_id__/assets/limited-unique-classic.png'); background-size:88px 24px; }
+#avatar-web-app .larpbux-avatar-item .item-card-thumb { position:relative; }
+
+/* Modern labels come directly from Roblox's current icon stylesheet. */
+#avatar-web-app .larpbux-limited-badge > span { display:none; }
+html.larpblox-modern #avatar-web-app .larpbux-limited-badge { width:auto; height:auto; background:none; line-height:0; }
+html.larpblox-modern #avatar-web-app .larpbux-limited-badge > span { display:inline-block; }
+
+html #avatar-web-app .larpbux-character-card .larpbux-character-gear { display:flex; align-items:center; justify-content:center; width:24px; height:24px; padding:3px; border:0; background:transparent; color:inherit; line-height:1; }
+html #avatar-web-app .larpbux-character-gear svg { display:block; width:18px; height:18px; pointer-events:none; }

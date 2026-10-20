@@ -1,0 +1,109 @@
+html.rbx2016 {
+  --rbx16-robux-art: url('chrome-extension://__MSG_@@extension_id__/assets/robux-classic.svg');
+  --rbx16-membership-art: url('chrome-extension://__MSG_@@extension_id__/assets/builders-club.png');
+}
+
+/* Roblox's current play button uses btn-common-play-game-lg and Foundation state layers. */
+html.rbx2016 :is(.btn-common-play-game-lg, .btn-play-game, [data-testid='play-button'], .game-instance-join, .game-server-join-btn):not(:disabled):not([aria-disabled='true']) {
+  background: #02b757 !important;
+  border-color: #02b757 !important;
+  color: #fff !important;
+  border-radius: 5px !important;
+  box-shadow: none !important;
+}
+html.rbx2016 :is(.btn-common-play-game-lg, .btn-play-game, [data-testid='play-button'], .game-instance-join, .game-server-join-btn):not(:disabled):not([aria-disabled='true']):is(:hover, :focus-visible) {
+  background: #3fc679 !important;
+  border-color: #3fc679 !important;
+}
+html.rbx2016 :is(.btn-common-play-game-lg, .btn-play-game, [data-testid='play-button'], .game-instance-join, .game-server-join-btn) > [data-testid='foundation-web-state-layer'] {
+  background: transparent !important;
+}
+html.rbx2016 :is(.btn-common-play-game-lg, .btn-play-game, [data-testid='play-button'], .game-instance-join, .game-server-join-btn):is(:disabled, [aria-disabled='true']) {
+  background: #b8b8b8 !important; border-color: #b8b8b8 !important; color: #fff !important;
+  box-shadow: none !important; cursor: not-allowed !important;
+}
+html.rbx2016 :is(.btn-common-play-game-lg, .btn-play-game, [data-testid='play-button']) .icon-common-play {
+  filter: brightness(0) invert(1);
+}
+
+/* Match actual currency icons, never their price/container elements. CSS also handles newly loaded cards. */
+html.rbx2016 :is(.icon-robux, .icon-robux-16x16, .icon-robux-28x28, .icon-robux-gold,
+  .icon-robux-gold-16x16, .icon-robux-gray, .icon-robux-gray-16x16,
+  .icon-robux-white, .icon-robux-white-16x16, .icon-nav-robux,
+  .icon-regular-robux, .icon-filled-robux,
+  svg[aria-label='Robux' i], img[alt='Robux' i]) {
+  background: var(--rbx16-robux-art) center / contain no-repeat !important;
+  mask: none !important; -webkit-mask: none !important;
+  filter: none !important; opacity: 1;
+  vertical-align: middle;
+}
+html.rbx2016 :is(.icon-robux, .icon-nav-robux) { width: 28px; height: 28px; display: inline-block; }
+html.rbx2016 :is(.icon-robux-16x16, .icon-robux-gold-16x16, .icon-robux-gray-16x16, .icon-robux-white-16x16) {
+  width: 16px; height: 16px; display: inline-block;
+}
+html.rbx2016 :is(.icon-robux-28x28, .icon-robux-gold, .icon-robux-gray, .icon-robux-white) {
+  width: 28px; height: 28px; display: inline-block;
+}
+html.rbx2016 :is(.icon-robux-white, .icon-robux-white-16x16),
+html.rbx2016 #header :is(.icon-robux, .icon-robux-28x28, .icon-regular-robux, .icon-filled-robux) {
+  --rbx16-robux-art: url('chrome-extension://__MSG_@@extension_id__/assets/robux-classic-white.svg');
+}
+html.rbx2016 :is(.icon-robux-gray, .icon-robux-gray-16x16) {
+  --rbx16-robux-art: url('chrome-extension://__MSG_@@extension_id__/assets/robux-classic-gray.svg');
+}
+html.rbx2016 #navigation .icon-nav-robux { filter: none !important; }
+html.rbx2016 :is(.text-robux, .text-robux-lg, .text-robux-tile) { color: #02b757 !important; }
+html.rbx2016 img[alt='Robux' i] { content: var(--rbx16-robux-art) !important; }
+
+/* Membership Plus/Premium only: a generic add/expand plus must keep its original symbol. */
+html.rbx2016 :is(.icon-regular-roblox-plus, .icon-filled-roblox-plus, .icon-roblox-plus,
+  .icon-filled-premium, .icon-regular-premium,
+  .icon-premium, .icon-premium-small, .icon-premium-medium, .icon-premium-120x120,
+  .icon-default-premium, .icon-default-premium-small, .icon-default-premium-medium,
+  .icon-white-premium-medium,
+  svg[aria-label='Roblox Plus' i], svg[aria-label='Premium' i],
+  img[alt='Roblox Plus' i], img[alt='Premium' i]) {
+  background: var(--rbx16-membership-art) center / contain no-repeat !important;
+  mask: none !important; -webkit-mask: none !important;
+  filter: none !important; opacity: 1;
+  vertical-align: middle;
+}
+html.rbx2016 :is(.icon-premium, .icon-default-premium, .icon-premium-medium, .icon-default-premium-medium, .icon-white-premium-medium) {
+  width: 28px; height: 28px; display: inline-block;
+}
+html.rbx2016 :is(.icon-premium-small, .icon-default-premium-small) { width: 20px; height: 20px; display: inline-block; }
+html.rbx2016 .icon-premium-120x120 { width: 120px; height: 120px; display: inline-block; }
+html.rbx2016 :is(img[alt='Roblox Plus' i], img[alt='Premium' i]) { content: var(--rbx16-membership-art) !important; }
+
+/* Foundation draws icons through masks/pseudo-elements; SVG variants draw children instead. */
+html.rbx2016 :is(.icon-robux, .icon-robux-16x16, .icon-robux-28x28, .icon-robux-gold,
+  .icon-robux-gold-16x16, .icon-robux-gray, .icon-robux-gray-16x16, .icon-robux-white, .icon-robux-white-16x16,
+  .icon-nav-robux, .icon-regular-robux, .icon-filled-robux,
+  .icon-regular-roblox-plus, .icon-filled-roblox-plus, .icon-roblox-plus,
+  .icon-filled-premium, .icon-regular-premium, .icon-premium, .icon-premium-small,
+  .icon-premium-medium, .icon-premium-120x120, .icon-default-premium,
+  .icon-default-premium-small, .icon-default-premium-medium, .icon-white-premium-medium)::before,
+html.rbx2016 :is(.icon-robux, .icon-robux-16x16, .icon-robux-28x28, .icon-robux-gold,
+  .icon-robux-gold-16x16, .icon-robux-gray, .icon-robux-gray-16x16, .icon-robux-white, .icon-robux-white-16x16,
+  .icon-nav-robux, .icon-regular-robux, .icon-filled-robux,
+  .icon-regular-roblox-plus, .icon-filled-roblox-plus, .icon-roblox-plus,
+  .icon-filled-premium, .icon-regular-premium, .icon-premium, .icon-premium-small,
+  .icon-premium-medium, .icon-premium-120x120, .icon-default-premium,
+  .icon-default-premium-small, .icon-default-premium-medium, .icon-white-premium-medium)::after {
+  content: none !important; display: none !important;
+}
+html.rbx2016 :is(svg[aria-label='Robux' i], svg[aria-label='Roblox Plus' i], svg[aria-label='Premium' i]) > * { visibility: hidden !important; }
+
+/* Replace native modern limited labels with the original Roblox catalog artwork. */
+html.rbx2016 :is(.icon-limited-label, .icon-limited, .icon-limited-unique-label, .icon-limited-unique) {
+  display: inline-block !important; width: 70px !important; height: 24px !important;
+  background: url('chrome-extension://__MSG_@@extension_id__/assets/limited-classic.png') left bottom / 70px 24px no-repeat !important;
+  border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+}
+html.rbx2016 :is(.icon-limited-unique-label, .icon-limited-unique) {
+  width: 88px !important;
+  background-image: url('chrome-extension://__MSG_@@extension_id__/assets/limited-unique-classic.png') !important;
+  background-size: 88px 24px !important;
+}
+html.rbx2016 :is(.icon-limited-label, .icon-limited, .icon-limited-unique-label, .icon-limited-unique)::before,
+html.rbx2016 :is(.icon-limited-label, .icon-limited, .icon-limited-unique-label, .icon-limited-unique)::after { content: none !important; }

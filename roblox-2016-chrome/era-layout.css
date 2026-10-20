@@ -1,0 +1,274 @@
+/*
+ * Roblox 2016-inspired layout rules.
+ * Adapted from rbx2016-stylustheme.css by Anthony S. (MIT License).
+ * See THEME-LICENSE.txt for the MIT license; these rules are
+ * scoped to the extension's marker so they do not affect other pages.
+ */
+
+html.rbx2016 {
+  --rbx16-blue: #0074bd;
+  --rbx16-link: #00a2ff;
+  --rbx16-green: #02b757;
+  --rbx16-page: #e3e3e3;
+  --rbx16-panel: #fff;
+  --rbx16-panel-muted: #f2f2f2;
+  --rbx16-text: #191919;
+  --rbx16-muted: #606162;
+  --rbx16-border: #b8b8b8;
+}
+html.rbx2016 .light-theme,
+html.rbx2016.light-theme {
+  --rbx16-page: #e3e3e3;
+  --rbx16-panel: #fff;
+  --rbx16-panel-muted: #f2f2f2;
+  --rbx16-text: #191919;
+  --rbx16-muted: #606162;
+  --rbx16-border: #b8b8b8;
+}
+
+html.rbx2016 body,
+html.rbx2016 .rbx-body,
+html.rbx2016 .container-main {
+  background: var(--rbx16-page) !important;
+  color: var(--rbx16-text) !important;
+  font-family: 'Source Sans Pro', Arial, sans-serif;
+  font-size: 16px;
+}
+
+html.rbx2016 .content { background: transparent !important; }
+html.rbx2016 a { color: var(--rbx16-link); }
+html.rbx2016 h1,
+html.rbx2016 h2,
+html.rbx2016 h3,
+html.rbx2016 h4,
+html.rbx2016 h5 {
+  color: var(--rbx16-text) !important;
+  font-weight: 300 !important;
+  padding-bottom: 5px;
+}
+html.rbx2016 h1 { font-size: 32px; }
+html.rbx2016 h2 { font-size: 24px; }
+html.rbx2016 .text-secondary,
+html.rbx2016 .text-muted,
+html.rbx2016 .text-date-hint,
+html.rbx2016 .text-label,
+html.rbx2016 .game-card-info,
+html.rbx2016 .item-card-price { color: var(--rbx16-muted) !important; }
+
+/* Header and left navigation use the compact desktop proportions from 2016. */
+html.rbx2016 #header,
+html.rbx2016 .rbx-header,
+html.rbx2016 .navbar-fixed-top {
+  min-height: 40px;
+  background: var(--rbx16-blue) !important;
+  border: 0 !important;
+  border-bottom: 1px solid #005a94 !important;
+  box-shadow: none !important;
+}
+html.rbx2016 #header .navbar,
+html.rbx2016 .rbx-header .navbar { background: transparent !important; }
+html.rbx2016 #header a,
+html.rbx2016 .rbx-header a,
+html.rbx2016 #header button,
+html.rbx2016 .rbx-header .text-nav { color: #fff !important; }
+html.rbx2016 .navbar-brand {
+  width: 167px;
+  min-height: 40px;
+  padding: 0 9px;
+  margin: 0;
+}
+html.rbx2016 #navigation,
+html.rbx2016 .rbx-left-col {
+  width: 167px;
+  background: var(--rbx16-panel-muted) !important;
+  color: var(--rbx16-text) !important;
+  border-right: 1px solid #ccc !important;
+  box-shadow: none !important;
+}
+html.rbx2016 #navigation a,
+html.rbx2016 #navigation .font-header-2,
+html.rbx2016 #navigation .text-nav {
+  color: var(--rbx16-text) !important;
+  font-size: 16px !important;
+}
+html.rbx2016 #navigation li:hover,
+html.rbx2016 .rbx-left-col li:hover { background: #ddd !important; }
+
+html.rbx2016 .rbx-header .navbar-search,
+html.rbx2016 .rbx-header .navbar-search .input-field,
+html.rbx2016 #header .navbar-search {
+  background: #fff !important;
+  color: var(--rbx16-text) !important;
+  border-radius: 2px !important;
+}
+html.rbx2016 .rbx-header .navbar-search input,
+html.rbx2016 #header .navbar-search input { color: var(--rbx16-text) !important; }
+html.rbx2016 .rbx-header .navbar-search button,
+html.rbx2016 #header .navbar-search button { color: #555 !important; }
+html.rbx2016 .rbx-header .navbar-search .new-dropdown-menu {
+  background: var(--rbx16-panel) !important;
+  border-radius: 3px !important;
+  box-shadow: 0 0 8px rgba(0, 0, 0, .1) !important;
+}
+
+/* Main content, home rows, friends, profile and catalog panels. */
+html.rbx2016 .container-main > .content { max-width: 1154px; margin-inline: auto; }
+html.rbx2016 .section,
+html.rbx2016 .section-content,
+html.rbx2016 .profile-header,
+html.rbx2016 .profile-container .section-content,
+html.rbx2016 .friends-carousel-container,
+html.rbx2016 .people-list,
+html.rbx2016 .inventory-container,
+html.rbx2016 .catalog-header,
+html.rbx2016 .catalog-content,
+html.rbx2016 .item-details,
+html.rbx2016 .tab-content,
+html.rbx2016 .rbx-tabs-horizontal,
+html.rbx2016 .modal-content {
+  background: var(--rbx16-panel) !important;
+  color: var(--rbx16-text) !important;
+  border-radius: 0 !important;
+}
+html.rbx2016 .section-content,
+html.rbx2016 .friends-carousel-container,
+html.rbx2016 .avatar-card-container {
+  box-shadow: 0 1px 4px rgba(25, 25, 25, .2);
+}
+html.rbx2016 .section .container-header { padding: 0; }
+html.rbx2016 .container-header h3 { margin: 0; padding-top: 10px; }
+html.rbx2016 .home-header-content h1 { font-size: 24px; font-weight: 300 !important; }
+html.rbx2016 .home-friends > .people-list { padding-top: 10px; }
+
+/* The original game card was 152px wide with a 150px image. */
+html.rbx2016 .game-card-container {
+  width: 152px;
+  min-height: 200px;
+  height: auto;
+  margin: 0 auto;
+  padding: 0;
+  position: relative;
+  background: var(--rbx16-panel) !important;
+  border-radius: 3px !important;
+  box-shadow: 0 1px 4px rgba(25, 25, 25, .3);
+}
+html.rbx2016 .game-card-container:hover { box-shadow: 0 1px 6px rgba(25, 25, 25, .55); }
+html.rbx2016 .game-card-link { min-height: 200px; height: auto; border-radius: 3px; }
+html.rbx2016 .game-card-thumb-container,
+html.rbx2016 .thumbnail-2d-container,
+html.rbx2016 .thumb-container,
+html.rbx2016 .game-card-thumb {
+  border-radius: 0 !important;
+  background: var(--rbx16-panel) !important;
+}
+html.rbx2016 .game-card-container .game-card-thumb-container img,
+html.rbx2016 .game-card-container .thumb-container img,
+html.rbx2016 .game-card-container .game-card-thumb {
+  width: 150px;
+  height: 150px;
+  object-fit: cover;
+}
+html.rbx2016 .game-card-name,
+html.rbx2016 .item-card-name { font-size: 16px !important; font-weight: 400 !important; }
+html.rbx2016 .game-card-info { font-size: 14px; }
+
+/* Friends and profile avatars use plain circular thumbnails. */
+html.rbx2016 .avatar,
+html.rbx2016 .avatar-card-container { background: var(--rbx16-panel) !important; color: var(--rbx16-text); }
+html.rbx2016 .avatar-card-fullbody .avatar-card-image,
+html.rbx2016 .avatar .avatar-card-image,
+html.rbx2016 .profile-avatar-thumb {
+  border: 0 !important;
+  border-radius: 50% !important;
+  box-shadow: none !important;
+}
+html.rbx2016 .avatar-card-container:hover { box-shadow: 0 1px 6px rgba(25, 25, 25, .45); }
+html.rbx2016 .friend-list .friend .friend-name,
+html.rbx2016 .people-list .friend .friend-name { color: var(--rbx16-link) !important; }
+html.rbx2016 .profile-avatar-left,
+html.rbx2016 .profile-accoutrements-container .accoutrement-item a { background: #fff !important; }
+html.rbx2016 .profile-avatar-right { background: var(--rbx16-blue) !important; }
+
+/* Catalog cards and tabs retain real controls and labels while using flat tiles. */
+html.rbx2016 .item-card-container {
+  padding: 0 !important;
+  background: var(--rbx16-panel) !important;
+  border-radius: 0 !important;
+  box-shadow: 0 1px 4px rgba(25, 25, 25, .2);
+}
+html.rbx2016 .item-card-thumb-container {
+  background: transparent !important;
+  border-radius: 0 !important;
+  border-bottom: 1px solid #e3e3e3;
+}
+html.rbx2016 .item-card-caption { background: var(--rbx16-panel) !important; margin-top: 0 !important; }
+html.rbx2016 .rbx-tabs-horizontal .rbx-tab a { color: var(--rbx16-muted) !important; background: var(--rbx16-panel) !important; }
+html.rbx2016 .rbx-tabs-horizontal .rbx-tab.active a { color: var(--rbx16-text) !important; box-shadow: inset 0 -4px var(--rbx16-link) !important; }
+
+html.rbx2016 button,
+html.rbx2016 .btn,
+html.rbx2016 input,
+html.rbx2016 select,
+html.rbx2016 textarea { font-family: inherit; border-radius: 2px; }
+html.rbx2016 .btn-primary-md,
+html.rbx2016 .btn-primary-lg,
+html.rbx2016 .btn-growth-md,
+html.rbx2016 .btn-growth-lg,
+html.rbx2016 .btn-play-game {
+  background: var(--rbx16-green) !important;
+  border: 1px solid #019946 !important;
+  color: #fff !important;
+}
+html.rbx2016 .btn-secondary-md,
+html.rbx2016 .btn-control-md {
+  background: var(--rbx16-panel) !important;
+  border: 1px solid var(--rbx16-border) !important;
+  color: var(--rbx16-text) !important;
+}
+html.rbx2016 input:not([type='checkbox']):not([type='radio']):not([type='range']),
+html.rbx2016 textarea,
+html.rbx2016 select {
+  background: var(--rbx16-panel) !important;
+  color: var(--rbx16-text) !important;
+  border-color: var(--rbx16-border) !important;
+}
+html.rbx2016 :focus-visible { outline: 2px solid var(--rbx16-blue) !important; outline-offset: 2px; }
+html.rbx2016 footer,
+html.rbx2016 .footer,
+html.rbx2016 .container-footer { background: transparent !important; color: var(--rbx16-muted) !important; }
+
+/* Keep the historical light palette even when the account has dark mode enabled. */
+html.rbx2016 .dark-theme,
+html.rbx2016.dark-theme {
+  --rbx16-page: #e3e3e3;
+  --rbx16-panel: #fff;
+  --rbx16-panel-muted: #f2f2f2;
+  --rbx16-text: #191919;
+  --rbx16-muted: #606162;
+  --rbx16-border: #b8b8b8;
+}
+html.rbx2016 .dark-theme .section,
+html.rbx2016 .dark-theme .section-content,
+html.rbx2016 .dark-theme .profile-header,
+html.rbx2016 .dark-theme .catalog-content,
+html.rbx2016 .dark-theme .item-card-container,
+html.rbx2016 .dark-theme .game-card-container,
+html.rbx2016 .dark-theme .avatar,
+html.rbx2016 .dark-theme .avatar-card-container { background: var(--rbx16-panel) !important; color: var(--rbx16-text) !important; }
+html.rbx2016 .dark-theme #navigation,
+html.rbx2016 .dark-theme .rbx-left-col { background: var(--rbx16-panel-muted) !important; color: var(--rbx16-text) !important; }
+html.rbx2016 .dark-theme #navigation a,
+html.rbx2016 .dark-theme #navigation .text-nav { color: var(--rbx16-text) !important; }
+html.rbx2016 .dark-theme .item-card-caption,
+html.rbx2016 .dark-theme .item-card-thumb-container,
+html.rbx2016 .dark-theme .rbx-tabs-horizontal .rbx-tab a { background: var(--rbx16-panel) !important; color: var(--rbx16-text) !important; }
+
+@media (max-width: 1199px) {
+  html.rbx2016 .container-main > .content { max-width: calc(100% - 24px); }
+}
+@media (max-width: 767px) {
+  html.rbx2016 .navbar-brand { width: 48px; }
+  html.rbx2016 #navigation,
+  html.rbx2016 .rbx-left-col { width: auto; }
+  html.rbx2016 .container-main > .content { max-width: calc(100% - 16px); }
+}

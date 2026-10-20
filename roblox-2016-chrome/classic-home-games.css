@@ -1,0 +1,65 @@
+/* Classic home shelves: actual recently played games, then actual favorites. */
+/* Modern labels can set their own font on nested spans instead of inheriting it. */
+html.rbx2016 #HomeContainer :is(h2, h3, .game-sort-header, .container-header, .game-card-name, .game-card-info, .game-card-info-label, .game-card-vote-percentage, .game-card-player-count, .text-overflow, .rbx2016-see-all),
+html.rbx2016 #HomeContainer :is(h2, h3, .game-sort-header, .container-header, .game-card-name, .game-card-info) :is(a, button, div, span):not([class*="icon"]) {
+  font-family: 'Source Sans Pro', Arial, sans-serif !important;
+  letter-spacing: normal !important;
+}
+html.rbx2016 #HomeContainer :is(h2, h3, .game-sort-header) {
+  font-size: 24px !important; line-height: 1.3 !important; font-weight: 300 !important;
+}
+html.rbx2016 #HomeContainer :is(h2, h3, .game-sort-header) :is(a, div, span):not([class*="icon"]) {
+  font-size: inherit !important; font-weight: inherit !important; line-height: inherit !important;
+}
+html.rbx2016 #HomeContainer .game-card-name,
+html.rbx2016 #HomeContainer .game-card-name :is(div, span) {
+  font-size: 16px !important; line-height: 20px !important; font-weight: 400 !important;
+}
+html.rbx2016 #HomeContainer .game-card-info,
+html.rbx2016 #HomeContainer .game-card-info :is(div, span):not([class*="icon"]) {
+  font-size: 12px !important; line-height: 16px !important; font-weight: 400 !important;
+}
+html.rbx2016 #HomeContainer .rbx2016-home-game-feed {
+  display: flex !important; flex-direction: column !important;
+}
+html.rbx2016 #HomeContainer .rbx2016-home-feed-row { order: 10; min-width: 0; }
+html.rbx2016 #HomeContainer .rbx2016-recent-row { order: 1 !important; }
+html.rbx2016 #HomeContainer .rbx2016-favorites-row { order: 2 !important; }
+html.rbx2016 #HomeContainer :is(.rbx2016-recent-row, .rbx2016-favorites-row) {
+  margin: 12px 0 20px !important; background: transparent !important;
+}
+html.rbx2016 #HomeContainer :is(.rbx2016-recent-row, .rbx2016-favorites-row) :is(.container-header, .game-sort-header) {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 0 0 6px; padding: 0 !important;
+}
+html.rbx2016 #HomeContainer :is(.rbx2016-recent-row, .rbx2016-favorites-row) :is(h2, h3) {
+  font-size: 20px !important; line-height: 26px; font-weight: 300 !important;
+  margin: 0 !important; padding: 0 !important;
+}
+html.rbx2016 #HomeContainer .rbx2016-see-all {
+  background: #00a2ff !important; color: #fff !important; border: 0;
+  font-size: 12px; line-height: 18px; padding: 1px 18px; border-radius: 2px;
+}
+html.rbx2016 #HomeContainer .rbx2016-home-game-list {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px; list-style: none; margin: 0; padding: 0;
+}
+html.rbx2016 #HomeContainer .rbx2016-home-game-list .game-card {
+  width: 100% !important; min-width: 0; padding: 0; margin: 0;
+}
+html.rbx2016 #HomeContainer .rbx2016-home-game-list :is(.game-card-container, .game-card-link) {
+  display: block; width: 100% !important; min-height: 0; height: auto;
+}
+html.rbx2016 #HomeContainer .rbx2016-home-game-list :is(.game-card-thumb-container, .game-card-thumb, .game-card-thumb img) {
+  width: 100% !important; height: auto !important; aspect-ratio: 1; object-fit: cover;
+}
+html.rbx2016 #HomeContainer .rbx2016-home-game-list .game-card-name {
+  display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  padding: 5px 6px 8px; font-size: 14px !important;
+}
+@media (max-width: 1000px) {
+  html.rbx2016 #HomeContainer .rbx2016-home-game-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  html.rbx2016 #HomeContainer .rbx2016-home-game-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
