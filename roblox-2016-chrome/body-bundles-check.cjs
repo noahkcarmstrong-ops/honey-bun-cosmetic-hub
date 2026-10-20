@@ -1,0 +1,27 @@
+const assert=require('node:assert/strict');
+const {collect,equip,itemEquipped,matchesAvatarCategory,previewDefinition,gamePreviewDefinition,gameCommand}=require('./larpbux.js');
+const parts=[{id:101,name:'Left leg',itemType:'Asset',assetType:30},{id:102,name:'Right arm',itemType:'Asset',assetType:28}];
+const bundle={id:999,itemType:'Bundle',name:'Character',bundleType:'BodyParts',assets:parts,price:10};
+let state=collect({balance:50,items:[],equipped:[]},bundle);
+assert.equal(state.balance,40);assert.equal(state.items.length,3);
+assert.ok(matchesAvatarCategory(bundle,'Avatars > Purchased'));
+assert.ok(matchesAvatarCategory(parts[0],'Body > Left Legs'));
+assert.ok(!matchesAvatarCategory(parts[0],'Body > Right Arms'));
+assert.ok(matchesAvatarCategory(parts[1],'Body > Right Arms'));
+state=equip(state,'Bundle:999');assert.deepEqual(state.equipped,['Asset:101','Asset:102']);
+state=equip(state,'Asset:101');assert.deepEqual(state.equipped,['Asset:102']);
+state=equip(state,'Bundle:999');assert.deepEqual(new Set(state.equipped),new Set(['Asset:101','Asset:102']));
+const replacement={id:103,name:'Other leg',itemType:'Asset',assetType:30,price:0};
+state=collect(state,replacement);state=equip(state,'Asset:103');assert.deepEqual(new Set(state.equipped),new Set(['Asset:102','Asset:103']));
+const definition=previewDefinition({assets:[{id:1,assetType:{id:30}},{id:2,assetType:{id:8}}],bodyColor3s:{headColor3:'ffffff'},scales:{},playerAvatarType:'R15'},{},[replacement]);
+assert.deepEqual(definition.assets.map(a=>a.id),[2,103]);
+const paired={items:[bundle,...parts],equipped:['Bundle:999'],gameLook:{definition:{assets:parts.map(item=>({id:item.id})),bodyColors:{headColor:'ffffff'}},items:parts}};
+const removedBundle=equip(paired,'Bundle:999');
+assert.deepEqual(removedBundle.equipped,[],'removing a bundle recorded by its bundle key clears the bundle and expanded parts');
+assert.deepEqual(gameCommand(removedBundle,'123').items,[],'removed bundle does not remain in the next game command');
+assert.equal(itemEquipped({equipped:['Asset:101','Asset:102']},bundle),true,'expanded body parts render the bundle as equipped');
+assert.equal(itemEquipped(paired,bundle),true,'a bundle key renders as equipped even before expansion');
+console.log('Character purchase, full equip, mixed parts, body category placement and slot replacement pass.');
+
+const {gameOutfitMatches}=require('./larpbux.js');
+assert.ok(gameOutfitMatches({items:[{id:11,itemType:'Asset',assetType:30,name:'Original leg'}]},{items:[]}),'restored native body defaults acknowledge removal');
