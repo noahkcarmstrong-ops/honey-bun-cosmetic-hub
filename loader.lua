@@ -91,9 +91,11 @@ local mm2Enabled=false
 local mm2EmotesShown=false
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 trace("Cleaning up previous menu")
-for _, name in ipairs({"HoneyBunCosmeticHub"}) do
-    local old = playerGui:FindFirstChild(name)
-    if old then
+local loadGeneration=(playerGui:GetAttribute("LarpbloxLoadGeneration") or 0)+1
+playerGui:SetAttribute("LarpbloxLoadGeneration",loadGeneration)
+-- Older refreshes could leave several menus and competing weapon controllers.
+for _,old in ipairs(playerGui:GetChildren()) do
+    if old.Name=="HoneyBunCosmeticHub" then
         for _,key in ipairs({"HoneyBunCosmeticGuns","HoneyBunCosmeticEffects"}) do
             local value=old:GetAttribute(key)
             if value and not playerGui:GetAttribute(key) then playerGui:SetAttribute(key,value) end
@@ -115,6 +117,10 @@ pcall(function()
     end)
 end)
 
+if playerGui:GetAttribute("LarpbloxLoadGeneration")~=loadGeneration then
+    if persistence then persistence.destroy() end
+    return
+end
 local gui = Instance.new("ScreenGui")
 trace("Building menu")
 gui.Name = "HoneyBunCosmeticHub"
@@ -689,6 +695,7 @@ local function mm2()
     mm2GunLibraryAPI=libraryChunk()(game,playerGui)
     local source=readSource("mm2.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
+    assert(alive,"Larpblox was refreshed; the older weapon controller was cancelled.")
     mm2API=chunk()(game,nil,mm2GunLibraryAPI)
     mm2API.setKnifeSide(knifeSide)
     return mm2API
@@ -698,6 +705,7 @@ local function nativeMM2()
     local catalog=mm2()
     local source=readSource("native_inventory.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
+    assert(alive,"Larpblox was refreshed; the older weapon controller was cancelled.")
     mm2NativeAPI=chunk()(playerGui,catalog,function(message)
         if not alive then return end
         statusText=message
@@ -710,6 +718,7 @@ local function savedNativeMM2()
     local backend=mm2()
     local source=readSource("native_inventory.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
+    assert(alive,"Larpblox was refreshed; the older weapon controller was cancelled.")
     local function openWeaponEditor(entry,mode)
         if not mm2WeaponEditorAPI then
             local editorSource=readSource("weapon_editor.lua", moduleRevision)
