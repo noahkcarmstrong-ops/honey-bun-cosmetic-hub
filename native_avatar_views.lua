@@ -156,6 +156,8 @@ function M.create(player, getPreviews)
     local alive, enabled, currentName, currentImage, previewSnapshot, effectiveKey = true, false, "", nil, nil, nil
     local overlays, overlayKeys, originalTransparency, hiddenImages, connections, scanCount, renderedCount = {}, {}, {}, {}, {}, 0, 0
     local transparencyConnections,textConnections={},{}
+    local imageCandidates=setmetatable({}, {__mode="k"})
+    local indexed=false
     local coreGui, playerGui, roots, available
     local status = "Native avatar thumbnails are disabled."
 
@@ -266,18 +268,15 @@ function M.create(player, getPreviews)
     local function scan()
         if not alive or not enabled or not available then return end
         scanCount = scanCount + 1
-        local descendants = {}
-        for _, root in ipairs(roots) do pcall(function()
-            for _, object in ipairs(root:GetDescendants()) do descendants[#descendants + 1] = object end
-        end) end
         local seen = {}
-        for _, object in ipairs(descendants) do
+        for object in pairs(imageCandidates) do
             if isAvatarImage(object, player, {name = currentName}) then seen[object] = true;if watch then watch(object)end;render(object) end
         end
         for image in pairs(hiddenImages) do if not seen[image] then destroyOverlay(image) end end
     end
     watch=function(object)
         if not watchableImage(object) then return end
+        imageCandidates[object]=true
         if enabled and isAvatarImage(object, player, {name = currentName}) then hideImage(object) end
         if not connections[object] then
             local ok, signal = pcall(function() return object:GetPropertyChangedSignal("Image") end)
@@ -341,6 +340,15 @@ function M.create(player, getPreviews)
             watch(object); watchPeopleText(object)
             if enabled and isAvatarImage(object,player,{name=currentName}) then render(object) end
         end) end) end
+        for index,root in ipairs(roots)do
+            pcall(function()connections["removed"..index]=root.DescendantRemoving:Connect(function(object)
+                imageCandidates[object]=nil
+                if overlays[object] or hiddenImages[object]then destroyOverlay(object)end
+                for _,group in ipairs({connections,transparencyConnections,textConnections})do
+                    if group[object]then group[object]:Disconnect();group[object]=nil end
+                end
+            end)end)
+        end
     end
 
     local api = {}
@@ -355,12 +363,13 @@ function M.create(player, getPreviews)
             previewSnapshot=nil
             for image,overlay in pairs(overlays)do overlay.Visible=false;hideImage(image)end
         end
-        if enabled then
+        if enabled and not indexed then
             local preflight = {}
             for _, root in ipairs(roots) do pcall(function()
                 for _, object in ipairs(root:GetDescendants()) do preflight[#preflight + 1] = object end
             end) end
             for _, object in ipairs(preflight) do watch(object); watchPeopleText(object) end
+            indexed=true
         end
         if enabled and effectiveSnapshot ~= nil and not currentImage and (nextKey ~= effectiveKey or previewSnapshot == nil) then
             previewSnapshot = nil

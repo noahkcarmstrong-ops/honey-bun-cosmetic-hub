@@ -485,7 +485,7 @@ function M.create(player,getPreviews)
         local alias=tostring(options.name or "")
         local name=alias~="" and alias or player.Name
         currentName=name
-        local label,title=ownTitle(name)
+        local label,title=ownTitle(name,true)
         if not enabled then
             if active and label and not options.preserveNative then pcall(function()gui:InspectPlayerFromUserId(player.UserId)end)end
             restoreMasks()

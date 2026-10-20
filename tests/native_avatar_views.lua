@@ -3,6 +3,7 @@ local function node(class, name)
     local x = {ClassName=class, Name=name, children={}, attrs={}}
     function x:IsA(k) return k == self.ClassName end
     function x:GetDescendants()
+        self.descendantReads=(self.descendantReads or 0)+1
         local out={}; local function walk(v) for _, child in ipairs(v.children) do out[#out+1]=child;walk(child) end end;walk(self);return out
     end
     x.signals={}
@@ -80,7 +81,9 @@ local peopleOverlay=peopleThumb.children[1]
 assert(peopleOverlay.children[1].CornerRadius.Scale==0.5,"People portraits remain circular even when the source uses a baked image mask")
 
 
+local indexedReads=core.descendantReads
 api.update({enabled=true,name="LocalAlias",snapshot={version=1}})
+assert(core.descendantReads==indexedReads,"avatar changes reuse the UI index instead of rescanning CoreGui")
 assert(shows==4 and captures==2,"a changed effective snapshot refreshes overlays once")
 local scansBefore=api.report():match("Scans: (%d+)")
 api.update({enabled=true,name="LocalAlias",snapshot={version=1}})

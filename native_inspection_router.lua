@@ -3,6 +3,7 @@ return function(localPlayer,createInspector)
     local core
     pcall(function()core=game:GetService("CoreGui")end)
     local states,connections,watched={},{},{}
+    local titleLabels=setmetatable({}, {__mode="k"})
     local active,inspector
     local alive,routing,queued=true,false,false
     local route
@@ -24,11 +25,9 @@ return function(localPlayer,createInspector)
         return true
     end
     local function selected()
-        local objects={}
-        if core then pcall(function()objects=core:GetDescendants()end)end
         local hasTitle=false
-        for _,object in ipairs(objects)do
-            if object:IsA("TextLabel") and scoped(object) and visible(object) then
+        for object in pairs(titleLabels)do
+            if object.Parent and scoped(object) and visible(object) then
                 local name=object.Text:match("^(.-)'s Avatar$")
                 if name then
                     hasTitle=true
@@ -73,6 +72,7 @@ return function(localPlayer,createInspector)
         if watched[object] or not scoped(object) then return end
         watched[object]=true
         if object:IsA("TextLabel") then
+            titleLabels[object]=true
             connections[#connections+1]=object:GetPropertyChangedSignal("Text"):Connect(schedule)
         end
         if object:IsA("GuiObject") then
@@ -81,7 +81,9 @@ return function(localPlayer,createInspector)
     end
     if core then pcall(function()
         for _,object in ipairs(core:GetDescendants())do watch(object)end
-        connections[#connections+1]=core.DescendantAdded:Connect(function(object)watch(object);schedule()end)
+        connections[#connections+1]=core.DescendantAdded:Connect(function(object)
+            if scoped(object)then watch(object);schedule()end
+        end)
     end)end
     local api={}
     function api.forPlayer(player,getPreviews)
