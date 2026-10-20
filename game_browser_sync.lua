@@ -578,7 +578,14 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if retryCommand and os.clock()>=retryAt and not incoming.browser then incoming.browser={value=retryCommand};retryCommand=nil end
                 pump()
             end)
-            if not ok then status("Browser relay: "..tostring(err):gsub("^.-:%d+:%s*",""))end
+            if not ok then
+                if tostring(err):find("HTTP 401",1,true)then
+                    -- Desktop is the pairing authority; a restarted app may have a new key.
+                    -- Rediscover it over localhost instead of retrying stale credentials forever.
+                    if pcall(api.connect)then return end
+                end
+                status("Browser relay: "..tostring(err):gsub("^.-:%d+:%s*",""))
+            end
             task.wait(socketReady and WEBSOCKET_CHECK_SECONDS or HTTP_POLL_SECONDS)
         end
     end
