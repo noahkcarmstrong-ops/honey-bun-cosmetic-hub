@@ -479,7 +479,10 @@ function M.create(player,getPreviews)
         maskPreview(false)
         if not options.snapshot then status="Waiting for the local outfit.";return end
         local signature=game:GetService("HttpService"):JSONEncode(options.snapshot)..name
-        if active and lastSignature==signature then lastLabel=label;adopting=false;maskPreview(true);return end
+        if active and lastSignature==signature then
+            if title==name.."'s Avatar" then lastLabel=label;adopting=false;maskPreview(true);return end
+            if adopting then maskPreview(false);return end
+        end
         local desc=description(options.snapshot)
         local ok,err=pcall(function()gui:InspectPlayerFromHumanoidDescription(desc,name)end)
         -- Roblox loads preview models and AccessoryDescription children asynchronously.
