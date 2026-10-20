@@ -10,6 +10,8 @@ local controllers, identities, usernames, displays = {}, {}, {}, {}
 local entries = setmetatable({}, {__mode="k"})
 local buckets, rootConnections, rosterConnections = {}, {}, {}
 local coreGui, players
+local chatService, chatPrevious, chatHook
+local chatStatus="Chat names are unavailable."
 pcall(function() coreGui=game:GetService("CoreGui") end)
 pcall(function() players=game:GetService("Players") end)
 
@@ -98,6 +100,51 @@ local function replacement(entry, controller)
     end
     return table.concat(out)
 end
+local function readCallback(service)
+    if type(getcallbackvalue)=="function" then
+        return pcall(getcallbackvalue,service,"OnChatWindowAdded")
+    end
+    return pcall(function() return service.OnChatWindowAdded end)
+end
+local function bindChat()
+    if chatHook then return end
+    local ok, service=pcall(function() return game:GetService("TextChatService") end)
+    if not ok or not service then return end
+    local readable, previous=readCallback(service)
+    -- A callback cannot normally be read through Roblox properties. Do not
+    -- overwrite game formatting unless the prior callback can be preserved.
+    if not readable or (previous~=nil and type(previous)~="function") then return end
+    local config=service:FindFirstChildOfClass("ChatWindowConfiguration")
+    if not config then return end
+    local hook=function(message)
+        local properties=previous and previous(message) or nil
+        local source=message.TextSource
+        local controller=source and controllers[source.UserId]
+        if not controller or not controller.settings.enabled then return properties end
+        local prefix=properties and properties.PrefixText
+        if not prefix or prefix=="" then prefix=message.PrefixText end
+        if type(prefix)~="string" or prefix=="" then return properties end
+        local value=replacement({source=prefix,object={RichText=true}},controller)
+        if value==prefix then return properties end
+        properties=properties or config:DeriveNewMessageProperties()
+        properties.PrefixText=value
+        return properties
+    end
+    local installed=pcall(function() service.OnChatWindowAdded=hook end)
+    if installed then
+        chatService,chatPrevious,chatHook=service,previous,hook
+        chatStatus="New chat messages use Larp names."
+    end
+end
+local function unbindChat()
+    if not chatHook then return end
+    local readable,current=readCallback(chatService)
+    if readable and current==chatHook then
+        pcall(function() chatService.OnChatWindowAdded=chatPrevious end)
+    end
+    chatService,chatPrevious,chatHook=nil,nil,nil
+    chatStatus="Chat names are unavailable."
+end
 local function render(entry)
     local value=replacement(entry,controllers[entry.id])
     if entry.object.Text==value then return end
@@ -155,6 +202,7 @@ return function(player, playerGui, gameObject)
     identities[id]=identities[id] or {username=player.Name,display=player.DisplayName or player.Name}
     local originalDisplay=identities[id].display
     rebuildIdentities()
+    bindChat()
     if not knownIdentity then
         -- Only a new identity can change existing labels' resolution.
         for _,entry in pairs(entries) do bind(entry) end
@@ -200,12 +248,13 @@ return function(player, playerGui, gameObject)
     function api.setEnabled(value) controller.settings.enabled=value==true;refresh();return api.report() end
     function api.getSettings() local s=controller.settings;return {enabled=s.enabled,username=s.username,displayName=s.displayName} end
     function api.restore() controller.settings={enabled=false,username="",displayName=""};refresh();return "Original names restored locally." end
-    function api.report() return "Names are local only. "..(controller.settings.enabled and "Override enabled locally." or "Override disabled.") end
+    function api.report() return "Names are local only. "..(controller.settings.enabled and "Override enabled locally. "..chatStatus or "Override disabled.") end
     function api.destroy()
         if controllers[id]~=controller then return end
         api.restore();characterConnection:Disconnect();controllers[id]=nil
         for humanoid,original in pairs(humanoids) do pcall(function() humanoid.DisplayName=original end) end
         if next(controllers)==nil then
+            unbindChat()
             for object in pairs(entries) do unwatch(object) end
             for _,connections in pairs(rootConnections) do for _,connection in ipairs(connections) do connection:Disconnect() end end
             for _,connection in ipairs(rosterConnections) do connection:Disconnect() end
