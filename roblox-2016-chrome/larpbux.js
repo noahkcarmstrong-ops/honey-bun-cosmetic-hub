@@ -87,9 +87,11 @@
     if (!supportsOutfit(item)) throw new Error('This item can be collected, but the game outfit importer does not support it yet.');
     if (isBodyBundle(item)) {
       const parts = item.assets.filter(isWearableAsset);
+      if (state.equipped.includes(key)) return {...state, equipped: state.equipped.filter(value => value !== key && !parts.some(part => value === keyFor(part)))};
       const removing = parts.every(part => state.equipped.includes(keyFor(part)));
+      if (removing) return {...state, equipped: state.equipped.filter(value => !parts.some(part => value === keyFor(part)))};
       let next = state;
-      for (const part of parts) if (removing || !next.equipped.includes(keyFor(part))) next = equip(next, keyFor(part));
+      for (const part of parts) if (!next.equipped.includes(keyFor(part))) next = equip(next, keyFor(part));
       return next;
     }
     if (state.equipped.includes(key)) return {...state, equipped: state.equipped.filter(value => value !== key)};
@@ -105,6 +107,9 @@
     if (Number(item.assetType) === 18) equipped = equipped.filter(value => !isHeadless(state.items.find(candidate => keyFor(candidate) === value)));
     if (equipped.length >= 20) throw new Error('Equip at most 20 cosmetic items.');
     return {...state, equipped: [...equipped, key]};
+  }
+  function itemEquipped(state, item) {
+    return state.equipped.includes(keyFor(item)) || isBodyBundle(item) && item.assets.filter(isWearableAsset).every(part => state.equipped.includes(keyFor(part)));
   }
   function outfit(state, userId) {
     return JSON.stringify({version: 1, kind: 'larpblox-cosmetic-outfit', userId, items: outfitAssets(state.items.filter(item => supportsOutfit(item) && state.equipped.includes(keyFor(item)))).map(({id, name, itemType, assetType}) => ({id, name, itemType, assetType}))});
@@ -181,7 +186,7 @@
     for (const item of outfitAssets(state.items.filter(item => state.equipped.includes(keyFor(item))))) items.set(item.id, item);
     return {version: 1, userId: String(userId), definition, items: definition.assets.map(asset => items.get(asset.id)).filter(Boolean).map(({id, name, assetType}) => ({id, name, assetType, itemType: 'Asset'}))};
   }
-  if (typeof module !== 'undefined' && module.exports) { module.exports = {localNames, amount, formatBalance, collect, equip, outfit, supportsOutfit, previewDefinition, matchesAvatarCategory, mergeGameSnapshot, gamePreviewDefinition, gameCommand, gameOutfitMatches}; return; }
+  if (typeof module !== 'undefined' && module.exports) { module.exports = {localNames, amount, formatBalance, collect, equip, itemEquipped, outfit, supportsOutfit, previewDefinition, matchesAvatarCategory, mergeGameSnapshot, gamePreviewDefinition, gameCommand, gameOutfitMatches}; return; }
   let state, userId, panel, controls, list, balance, mode, message, exportBox, purchaseDialog, previewElement, previewViewer, previewSignature, previewController;
   let nameUsername;
   const thumbnails = new Map();
@@ -342,7 +347,7 @@
       const link = node('a'); link.href = `/${item.itemType === 'Bundle' ? 'bundles' : 'catalog'}/${item.id}`;
       const image = node('img'); thumbnail(image, item);
       link.append(image, node('span', item.name));
-      const button = node('button', state.equipped.includes(keyFor(item)) ? 'Remove' : 'Wear'); button.type = 'button';
+      const button = node('button', itemEquipped(state, item) ? 'Remove' : 'Wear'); button.type = 'button';
       button.disabled = !supportsOutfit(item);
       if (button.disabled) button.textContent = 'Collection only';
       button.addEventListener('click', () => action(() => { save(equip(state, keyFor(item)), true); message.textContent = 'Outfit saved.'; }));
@@ -903,7 +908,7 @@
     const label = [...editor.querySelectorAll('.breadcrumb-container, .breadcrumb, .avatar-category-title, [aria-label="Breadcrumb"], [aria-label="breadcrumb"]')]
       .find(element => element.getClientRects().length && element.textContent?.trim())?.textContent?.toLowerCase() || '';
     const category = label || editor.querySelector('[aria-selected="true"]')?.textContent?.toLowerCase() || '';
-    const items = state.items.filter(item => item.source !== 'native' && matchesAvatarCategory(item, category, state.equipped.includes(keyFor(item))));
+    const items = state.items.filter(item => item.source !== 'native' && matchesAvatarCategory(item, category, itemEquipped(state, item)));
     const signature = JSON.stringify([userId, items, state.equipped, category, cardClasses, nativeEquipped?.outerHTML]);
     const cards = [...grid.querySelectorAll('.larpbux-avatar-item')];
     if (grid._larpbuxSignature !== signature || cards.length !== items.length) {
@@ -911,7 +916,7 @@
       const wanted = new Set(items.map(keyFor));
       for (const card of cards) if (!wanted.has(card.dataset.larpbuxKey)) card.remove();
       for (const item of items) {
-        const itemKey = keyFor(item), equipped = isBodyBundle(item) ? item.assets.filter(isWearableAsset).every(part => state.equipped.includes(keyFor(part))) : state.equipped.includes(itemKey);
+        const itemKey = keyFor(item), equipped = itemEquipped(state, item);
         const label = equipped ? 'Remove' : 'Wear';
         const previous = existing.get(itemKey);
         if (previous) {
