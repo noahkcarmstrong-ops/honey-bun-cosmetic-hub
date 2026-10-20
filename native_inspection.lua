@@ -54,6 +54,15 @@ function M.create(player,getPreviews)
     local quarantineUnknownPanels,maskPreview
     local overlayName="LarpbloxInspectPreview"
     local fallbackGui,fallbackEntry,previewLabel
+    local loadingItems,loadingItemKey,loadingList,loadingCanvas,loadingAuto
+    local loadingSkeletons={}
+    local function clearLoadingItems()
+        if loadingItems then loadingItems:Destroy();loadingItems=nil end
+        for object,value in pairs(loadingSkeletons)do pcall(function()object.Visible=value end)end
+        loadingSkeletons={}
+        if loadingList then pcall(function()loadingList.CanvasSize=loadingCanvas;loadingList.AutomaticCanvasSize=loadingAuto end)end
+        loadingList=nil;loadingItemKey=nil
+    end
     local activeDescription
     local function releaseDescription()
         if activeDescription then activeDescription:Destroy();activeDescription=nil end
@@ -97,7 +106,7 @@ function M.create(player,getPreviews)
         local ancestor=object.Parent
         while ancestor do
             if ancestor.Name==overlayName then return false end
-            if ancestor.Name=="ViewportContainer" then return true end
+            if ancestor.Name=="ViewportContainer" or (ancestor.Name=="Thumbnail" and ancestor.Parent and ancestor.Parent.Name=="InnerView") then return true end
             if ancestor.Name:find("InspectAndBuy",1,true) then break end
             ancestor=ancestor.Parent
         end
@@ -218,7 +227,44 @@ function M.create(player,getPreviews)
             end
         end
     end
+    local function showLoadingItems(root)
+        if not currentSnapshot or not root.FindFirstChild then return end
+        local first=root:FindFirstChild("FirstPanel",true)
+        local list=first and first:FindFirstChild("List",true)
+        if not list then return end
+        local skeleton=false
+        for _,object in ipairs(list:GetChildren())do
+            if object.Name:match("^Skeleton%d+$") then skeleton=true end
+        end
+        if not skeleton then clearLoadingItems();return end
+        local ids={};for _,item in ipairs(currentSnapshot.items or {})do ids[#ids+1]=tostring(item.id)..":"..tostring(item.name)end
+        local key=table.concat(ids,"|")
+        if loadingItems and loadingList==list and loadingItemKey==key then return end
+        clearLoadingItems()
+        loadingList=list;loadingCanvas=list.CanvasSize;loadingAuto=list.AutomaticCanvasSize
+        local wrapper=Instance.new("Frame");wrapper.Name="LarpbloxInspectItems";wrapper.BackgroundTransparency=1
+        wrapper.Size=UDim2.new(1,0,0,#ids*112);wrapper.LayoutOrder=1;wrapper.Parent=list;loadingItems=wrapper;loadingItemKey=key
+        for _,object in ipairs(list:GetChildren())do
+            if object.Name:match("^Skeleton%d+$") then loadingSkeletons[object]=object.Visible;object.Visible=false end
+        end
+        list.AutomaticCanvasSize=Enum.AutomaticSize.Y
+        local heading=root:FindFirstChild("HeaderText",true)
+        for index,item in ipairs(currentSnapshot.items or {})do
+            local row=Instance.new("Frame");row.Name="Asset_"..tostring(item.id);row.BackgroundTransparency=0.9
+            row.BackgroundColor3=Color3.fromRGB(255,255,255);row.BorderSizePixel=0
+            row.Position=UDim2.fromOffset(0,(index-1)*112);row.Size=UDim2.new(1,0,0,104);row.Parent=wrapper
+            local image=Instance.new("ImageLabel");image.Name="Thumbnail";image.BackgroundTransparency=1
+            image.Position=UDim2.fromOffset(8,8);image.Size=UDim2.fromOffset(88,88)
+            image.Image="rbxthumb://type=Asset&id="..tostring(item.id).."&w=150&h=150";image.Parent=row
+            local name=Instance.new("TextLabel");name.Name="ItemName";name.BackgroundTransparency=1
+            name.Position=UDim2.fromOffset(108,8);name.Size=UDim2.new(1,-120,1,-16)
+            name.Text=tostring(item.name or item.id);name.TextSize=18;name.TextColor3=Color3.fromRGB(255,255,255)
+            if heading then name.FontFace=heading.FontFace end
+            name.TextWrapped=true;name.TextXAlignment=Enum.TextXAlignment.Left;name.Parent=row
+        end
+    end
     local function restoreMasks()
+        clearLoadingItems()
         restorePanels()
         if fallbackEntry and fallbackEntry.overlay then fallbackEntry.overlay:Destroy()end
         if fallbackGui then fallbackGui:Destroy();fallbackGui=nil;fallbackEntry=nil end
@@ -267,6 +313,7 @@ function M.create(player,getPreviews)
         local label,title,root=ownTitle(currentName,preserveLive)
         previewLabel=label
         if not label or not root then
+            clearLoadingItems()
             if fallbackGui then fallbackGui.Enabled=false;if fallbackEntry and fallbackEntry.overlay then fallbackEntry.overlay.Visible=false end end
             -- Return shared native containers to normal when another player is inspected.
             for object,entry in pairs(panels)do
@@ -343,6 +390,7 @@ function M.create(player,getPreviews)
                     fallbackGui.Enabled=height>0 and overlay.Visible==true and larpTitle
                 end
                 panelVisibility(root,fallbackGui.Enabled)
+                if fallbackGui.Enabled then showLoadingItems(root)end
             end
         end
     end
