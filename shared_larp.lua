@@ -14,11 +14,17 @@ local function safeId(value)
     local n=tonumber(value)
     return n and n>0 and n%1==0 and n<9007199254740992 and n or nil
 end
+local function safeImageUrl(value)
+    return type(value)=="string" and #value<=2048 and
+        (value:match("^https://tr%.rbxcdn%.com/[%w%-%._~/]+$") or value:match("^https://t%d%.rbxcdn%.com/[%w%-%._~/]+$"))~=nil
+end
 
-return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createClothes,createAnimations,createNames,isAlive,onStatus)
+return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createClothes,createAnimations,createNames,isAlive,onStatus,presentation)
+    presentation=presentation or {}
     local sharing=false
     local generation=0
     local peers={}
+    local imageSerial=0
     local lastSent,lastPublished="",0
     local nextStatus=0
     local function status(message)
@@ -44,9 +50,10 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local entry=peers[userId]
         if not entry then return end
         peers[userId]=nil
-        for _,api in ipairs({entry.names,entry.animations,entry.clothes,entry.avatar})do
+        for _,api in ipairs({entry.names,entry.animations,entry.clothes,entry.avatar,entry.views})do
             if api and api.destroy then pcall(api.destroy)end
         end
+        if entry.imagePath and type(delfile)=="function" then pcall(delfile,entry.imagePath)end
     end
     local function cleanupAll()
         for userId in pairs(peers)do cleanupPeer(userId)end
@@ -61,6 +68,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             animations=createAnimations(player,callback),
             names=createNames(player,playerGui),
             player=player,
+            character=player.Character,
         }
     end
     local function validRecord(record)
@@ -68,6 +76,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local snapshot=record.snapshot
         if type(snapshot)~="table" or snapshot.version~=1 or tostring(snapshot.userId)~=record.userId then return false end
         if not safeId(record.userId) or type(snapshot.definition)~="table" or type(snapshot.definition.assets)~="table" or #snapshot.definition.assets>100 or type(snapshot.items)~="table" or #snapshot.items>100 then return false end
+        if record.imageUrl~=nil and not safeImageUrl(record.imageUrl) then return false end
         if record.name~=nil then
             local name=record.name
             if type(name)~="table" or type(name.enabled)~="boolean" or type(name.username)~="string" or #name.username>20 or not name.username:match("^[A-Za-z0-9_]*$") or type(name.displayName)~="string" or #name.displayName>50 or name.displayName:find("[%c]") then return false end
@@ -80,9 +89,9 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local target=Players:GetPlayerByUserId(tonumber(record.userId))
         if not target or target==localPlayer then return end
         local snapshot=record.snapshot
-        local fingerprint=HttpService:JSONEncode({snapshot=snapshot,name=record.name})
+        local fingerprint=HttpService:JSONEncode({snapshot=snapshot,name=record.name,imageUrl=record.imageUrl})
         local entry=peers[record.userId]
-        if entry and entry.player==target and entry.fingerprint==fingerprint then return end
+        if entry and entry.player==target and entry.character==target.Character and entry.fingerprint==fingerprint then return end
         if entry then cleanupPeer(record.userId)end
         entry=peerApis(target);peers[record.userId]=entry
         local ok,err=pcall(function()
@@ -121,6 +130,29 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             if #animationAssets>0 then pcall(entry.animations.equipAssets,animationAssets)end
             local name=record.name
             if type(name)=="table" and name.enabled then pcall(entry.names.set,name.username,name.displayName)end
+            if presentation.createViews and peers[record.userId]==entry and sharing and isAlive() then
+                entry.views=presentation.createViews(target)
+                local options={enabled=true,name=name and name.enabled and name.username or "",snapshot=snapshot}
+                entry.views.update(options)
+                local custom=getcustomasset or getsynasset
+                if record.imageUrl and type(custom)=="function" and type(writefile)=="function" then
+                    task.spawn(function()
+                        local loaded,reason=pcall(function()
+                            local bytes=game:HttpGet(record.imageUrl,false)
+                            assert(type(bytes)=="string" and #bytes<=4*1024*1024 and bytes:sub(1,8)=="\137PNG\r\n\26\n","Invalid shared avatar image.")
+                            if peers[record.userId]~=entry or not sharing or not isAlive() then return end
+                            imageSerial=imageSerial+1
+                            local path="larpblox-shared-avatar-"..record.userId.."-"..imageSerial..".png"
+                            entry.imagePath=path
+                            writefile(path,bytes)
+                            local image=custom(path)
+                            if peers[record.userId]~=entry or not sharing or not isAlive() then return end
+                            options.image=image;entry.views.update(options)
+                        end)
+                        if not loaded and peers[record.userId]==entry then status("Shared avatar image: "..tostring(reason))end
+                    end)
+                end
+            end
         end)
         if ok then entry.fingerprint=fingerprint else
             cleanupPeer(record.userId)
@@ -131,6 +163,10 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local snapshot=getSnapshot()
         local name=getNameSettings and getNameSettings() or {enabled=false,username="",displayName=""}
         local record={version=1,userId=tostring(localPlayer.UserId),snapshot=snapshot,name=name}
+        if presentation.getImageUrl then
+            local url=presentation.getImageUrl()
+            if safeImageUrl(url) then record.imageUrl=url end
+        end
         local encoded=HttpService:JSONEncode(record)
         if encoded==lastSent and os.clock()-lastPublished<PUBLISH_SECONDS then return end
         callRelay("PUT",roomPath().."/players/"..tostring(localPlayer.UserId),record)
@@ -138,12 +174,21 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     end
     local function loop(mine)
         while sharing and generation==mine and isAlive() do
+            local published,publishError=pcall(publish)
+            if not published then status("Shared Larp publish: "..tostring(publishError):gsub("^.-:%d+:%s*",""))end
+            if not sharing or generation~=mine or not isAlive() then return end
             local ok,err=pcall(function()
-                publish()
                 local result=callRelay("GET",roomPath().."/players?excludeUserId="..tostring(localPlayer.UserId))
+                if not sharing or generation~=mine or not isAlive() then return end
                 assert(type(result.players)=="table","Shared Larp relay returned an invalid player list.")
                 local seen={}
-                for _,record in ipairs(result.players)do if validRecord(record)then seen[record.userId]=true;applyRecord(record)end end
+                for _,record in ipairs(result.players)do
+                    if validRecord(record) and record.userId~=tostring(localPlayer.UserId) then
+                        seen[record.userId]=true
+                        local applied,reason=pcall(applyRecord,record)
+                        if not applied then status("Shared appearance: "..tostring(reason))end
+                    end
+                end
                 for userId in pairs(peers)do if not seen[userId]or not Players:GetPlayerByUserId(tonumber(userId))then cleanupPeer(userId)end end
             end)
             if not ok then status("Shared Larp relay: "..tostring(err):gsub("^.-:%d+:%s*",""))end

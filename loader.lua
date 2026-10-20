@@ -202,6 +202,7 @@ layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
 local avatarAPI,motionAPI,animationAPI,clothesAPI,previewsAPI,browserOutfitAPI,gameBrowserSyncAPI,sharedLarpAPI
 local avatarFactory,animationFactory,clothesFactory,nameFactory
+local previewFactory,portraitFactory
 local refresh = Instance.new("TextButton")
 refresh.Position = UDim2.new(1, -126, 0, 62)
 refresh.Size = UDim2.fromOffset(98, 26)
@@ -495,6 +496,25 @@ local function localNames()
     return localNamesAPI
 end
 local gameBrowserSync
+local function presentationFactories()
+    if not previewFactory then
+        local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/previews.lua",false)
+        local chunk,message=loadstring(source);assert(chunk,message);previewFactory=chunk()
+    end
+    if not portraitFactory then
+        local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_avatar_views.lua",false)
+        local chunk,message=loadstring(source);assert(chunk,message);portraitFactory=chunk()
+    end
+end
+local function peerViews(player)
+    presentationFactories()
+    local preview=previewFactory(player)
+    local portraits=portraitFactory.create(player,function()return preview end)
+    return {
+        update=function(options)return portraits.update(options)end,
+        destroy=function()portraits.destroy();preview.destroy()end,
+    }
+end
 local function sharedLarp()
     if sharedLarpAPI then return sharedLarpAPI end
     api();clothes();animations();localNames()
@@ -510,24 +530,22 @@ local function sharedLarp()
             if not alive then return end
             statusText=message
             if statusLabel then statusLabel.Text=message end
-        end)
+        end,{getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews})
     return sharedLarpAPI
 end
 local function previews()
     if previewsAPI then return previewsAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/previews.lua",false)
-    local chunk,message=loadstring(source);assert(chunk,message)
+    presentationFactories()
     assert(alive,"Menu was closed.")
-    previewsAPI=chunk()(Players.LocalPlayer)
+    previewsAPI=previewFactory(Players.LocalPlayer)
     return previewsAPI
 end
 local function nativeViews()
     if nativeViewsAPI then return nativeViewsAPI end
     api()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_avatar_views.lua",false)
-    local chunk,message=loadstring(source);assert(chunk,message)
-    local portraits=chunk().create(Players.LocalPlayer,function()
+    presentationFactories()
+    local portraits=portraitFactory.create(Players.LocalPlayer,function()
         return previews()
     end)
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inspection.lua",false)
