@@ -7,6 +7,11 @@
     if (username && !/^[A-Za-z0-9_]{3,20}$/.test(username)) throw new Error('Use 3–20 letters, numbers, or underscores for the Larp username.');
     return {username};
   }
+  const bodyColorKeys = ['headColor', 'torsoColor', 'leftArmColor', 'rightArmColor', 'leftLegColor', 'rightLegColor'];
+  function localBodyColors(value) {
+    if (!value || typeof value !== 'object' || bodyColorKeys.some(key => !/^#?[0-9a-f]{6}$/i.test(String(value[key] || '')))) return undefined;
+    return Object.fromEntries(bodyColorKeys.map(key => [key, String(value[key])]));
+  }
   function amount(value) {
     const number = Number(value);
     if (!Number.isSafeInteger(number) || number < 0) throw new Error('Enter a whole number from 0 to 9,007,199,254,740,991.');
@@ -31,6 +36,8 @@
     return {...state, balance: state.balance - price, items};
   }
   const bodyAssetTypes = [17, 18, 27, 28, 29, 30, 31, 79];
+  const headlessIds = new Set([15093053680, 134082579]);
+  const isHeadless = item => headlessIds.has(Number(item?.id)) || /headless(?:horseman)?head/i.test(String(item?.name || '').replace(/[^a-z]/gi, ''));
   const wearableAssetTypes = [17, 18, 27, 28, 29, 30, 31, 79, 2, 8, 11, 12, 19, 41, 42, 43, 44, 45, 46, 47, 48, 50, 51, 52, 53, 54, 55, 56, 64, 65, 66, 67, 68, 69, 70, 71, 72, 76, 77];
   const animationAssetTypes = [48, 50, 51, 52, 53, 54, 55, 56];
   const isWearableAsset = item => item?.itemType === 'Asset' && wearableAssetTypes.includes(Number(item.assetType));
@@ -55,7 +62,7 @@
       name = name.replace(/^recent/, '');
     }
     if (/hair/.test(name)) return item.assetType === 41;
-    if (/body/.test(name) || /^(head|heads|face|faces|torso|leftarm|rightarm|leftleg|rightleg)$/.test(name)) {
+    if (/body/.test(name) || /^(?:body|classic)faces?$/.test(name) || /^(head|heads|face|faces|torso|leftarm|rightarm|leftleg|rightleg)$/.test(name)) {
       for (const [label, types] of [['leftarm',[29]],['rightarm',[28]],['leftleg',[30]],['rightleg',[31]],['torso',[27]],['head',[17,79]],['face',[18]]]) if (name.includes(label)) return types.includes(Number(item.assetType));
       return false;
     }
@@ -65,7 +72,7 @@
     if (/hats?$/.test(name)) return item.assetType === 8;
     if (name === 'clothing') return [2, 11, 12, 64, 65, 66, 67, 68, 69, 70, 71, 72].includes(item.assetType);
     if (/layered/.test(name)) return [64, 65, 66, 67, 68, 69, 70, 71, 72].includes(item.assetType);
-    if (/^(head|face|neck|shoulder|front|back|waist)$/.test(name)) return {head: 8, face: 42, neck: 43, shoulder: 44, front: 45, back: 46, waist: 47}[name] === item.assetType;
+    if (/^(head|face|neck|shoulder|front|back|waist)$/.test(name)) return {head: 8, face: 18, neck: 43, shoulder: 44, front: 45, back: 46, waist: 47}[name] === item.assetType;
     if (/accessor/.test(name)) {
       for (const [label, type] of [['head', 8], ['face', 42], ['neck', 43], ['shoulder', 44], ['front', 45], ['back', 46], ['waist', 47]]) {
         if (name.includes(label)) return item.assetType === type;
@@ -95,6 +102,7 @@
       const other = state.items.find(candidate => keyFor(candidate) === value);
       return !expandOutfitItem(other).some(asset => asset.assetType === item.assetType || [17,79].includes(asset.assetType) && [17,79].includes(item.assetType));
     });
+    if (Number(item.assetType) === 18) equipped = equipped.filter(value => !isHeadless(state.items.find(candidate => keyFor(candidate) === value)));
     if (equipped.length >= 20) throw new Error('Equip at most 20 cosmetic items.');
     return {...state, equipped: [...equipped, key]};
   }
@@ -106,7 +114,7 @@
     const slots = new Set(items.filter(item => [17, 18, 27, 28, 29, 30, 31, 79, 2, 11, 12, 19, 48, 50, 51, 52, 53, 54, 55, 56, 64, 65, 66, 67, 68, 69, 70, 71, 72].includes(item.assetType)).map(item => item.assetType));
     if (slots.has(17) || slots.has(79)) { slots.add(17); slots.add(79); }
     const renderAsset = asset => asset.meta === undefined ? {id: asset.id} : {id: asset.id, meta: asset.meta};
-    const assets = (avatar.assets || []).filter(asset => !slots.has(asset.assetType?.id)).map(renderAsset);
+    let assets = (avatar.assets || []).filter(asset => !slots.has(asset.assetType?.id) && !(slots.has(18) && isHeadless(asset))).map(renderAsset);
     for (const item of items) if (!assets.some(asset => asset.id === item.id)) assets.push(renderAsset(item));
     const bodyColors = {};
     for (const [part, color] of Object.entries(avatar.bodyColor3s || avatar.bodyColors || {})) {
@@ -152,10 +160,11 @@
     const replaceSlots = new Set(selected.filter(item => [17, 18, 27, 28, 29, 30, 31, 79, 2, 11, 12, 19, 48, 50, 51, 52, 53, 54, 55, 56, 64, 65, 66, 67, 68, 69, 70, 71, 72].includes(item.assetType)).map(item => item.assetType));
     if (replaceSlots.has(17) || replaceSlots.has(79)) { replaceSlots.add(17); replaceSlots.add(79); }
     const types = new Map(look.items.map(item => [item.id, item.assetType]));
+    const faceSelected = selected.some(item => Number(item.assetType) === 18);
     const assets = look.definition.assets.filter(asset =>
-      (!managed.has(asset.id) || selectedIds.has(asset.id)) && (!replaceSlots.has(types.get(asset.id)) || selectedIds.has(asset.id)));
+      (!managed.has(asset.id) || selectedIds.has(asset.id)) && (!replaceSlots.has(types.get(asset.id)) || selectedIds.has(asset.id)) && !(faceSelected && isHeadless(asset)));
     for (const item of selected) if (!assets.some(asset => asset.id === item.id)) assets.push({id: item.id});
-    return {...look.definition, assets};
+    return {...look.definition, bodyColors: state.bodyColors || look.definition.bodyColors, assets};
   }
   function gameOutfitMatches(snapshot, command) {
     const defaultSlots = [...animationAssetTypes, ...bodyAssetTypes];
@@ -202,7 +211,8 @@
     if (saved?.gameLook && typeof LarpbloxGameBridge !== 'undefined') {
       try { gameLook = LarpbloxGameBridge.validateSnapshot(saved.gameLook, id); } catch (_) {}
     }
-    return {version: 1, names, mode: saved?.mode === true, pendingOutfit: saved?.mode === true && saved?.pendingOutfit === true, balance: Number.isSafeInteger(saved?.balance) && saved.balance >= 0 ? saved.balance : 0, items, equipped: Array.isArray(saved?.equipped) ? saved.equipped.filter(value => items.some(item => keyFor(item) === value)).slice(0, 100) : [], ...(gameLook ? {gameLook} : {})};
+    const bodyColors = localBodyColors(saved?.bodyColors);
+    return {version: 1, names, mode: saved?.mode === true, pendingOutfit: saved?.mode === true && saved?.pendingOutfit === true, balance: Number.isSafeInteger(saved?.balance) && saved.balance >= 0 ? saved.balance : 0, items, equipped: Array.isArray(saved?.equipped) ? saved.equipped.filter(value => items.some(item => keyFor(item) === value)).slice(0, 100) : [], ...(bodyColors ? {bodyColors} : {}), ...(gameLook ? {gameLook} : {})};
   }
   const avatarUrl = () => '/my/avatar';
   async function syncNames() {
@@ -340,6 +350,59 @@
     }
   }
   let browserAvatarBase;
+  let bodyColorSerial = 0;
+  function bodyColorControl(target) {
+    const editor = document.querySelector('#avatar-web-app');
+    for (let control = target; control && control !== editor; control = control.parentElement) {
+      if (!editor?.contains(control) || !control.getAttribute) return null;
+      const explicit = ['data-color', 'data-color-id', 'data-brick-color-id'].some(name => control.hasAttribute(name));
+      const details = [control.className, control.getAttribute('aria-label'), control.getAttribute('data-testid'), control.getAttribute('name')].join(' ');
+      if ((explicit || /(?:body|skin)[^\n]{0,30}color|color[^\n]{0,30}(?:body|skin)|color[-_ ]?(?:picker|swatch|option|tile|item)/i.test(details))
+          && bodyColorValue(control) !== undefined) return control;
+    }
+    return null;
+  }
+  function bodyColorValue(control) {
+    const raw = control.getAttribute('data-color') || control.getAttribute('data-color-id') || control.getAttribute('data-brick-color-id') || control.getAttribute('data-value') || control.value;
+    if (/^#?[0-9a-f]{6}$/i.test(String(raw || ''))) return String(raw);
+    if (/^\d+$/.test(String(raw || ''))) return Number(raw);
+    if (!control.style?.backgroundColor && !/color[-_ ]?(?:picker[-_ ]?item|swatch|option|tile|item)/i.test(String(control.className))) return undefined;
+    const rgb = getComputedStyle(control).backgroundColor.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    if (rgb && !/^rgba\(0,\s*0,\s*0,\s*0\)$/i.test(getComputedStyle(control).backgroundColor)) return `#${rgb.slice(1).map(value => Number(value).toString(16).padStart(2, '0')).join('')}`;
+    return undefined;
+  }
+  function bodyColorRegion(control) {
+    const region = value => {
+      const key = String(value || '').toLowerCase().replace(/[^a-z]/g, '').replace(/color$/, '');
+      return ['head', 'torso', 'leftarm', 'rightarm', 'leftleg', 'rightleg'].includes(key) ? key : undefined;
+    };
+    for (let node = control; node && node.id !== 'avatar-web-app'; node = node.parentElement) {
+      const selected = region(node.getAttribute('data-region') || node.getAttribute('data-body-part') || node.getAttribute('aria-label'));
+      if (selected) return selected;
+    }
+    const selected = document.querySelector('#avatar-web-app [data-region][aria-selected="true"], #avatar-web-app [data-body-part][aria-pressed="true"]');
+    return selected && region(selected.getAttribute('data-region') || selected.getAttribute('data-body-part'));
+  }
+  async function applyBodyColorIntent(control) {
+    const account = userId, value = bodyColorValue(control), region = bodyColorRegion(control), serial = ++bodyColorSerial;
+    if (value === undefined || !editingLarp()) return false;
+    try {
+      let color = value;
+      if (typeof value === 'number') {
+        const rules = await (await fetch('https://avatar.roblox.com/v1/avatar-rules', {credentials: 'include'})).json();
+        color = rules.bodyColorsPalette?.find(entry => entry.brickColorId === value)?.hexColor;
+      }
+      if (!/^#?[0-9a-f]{6}$/i.test(String(color || '')) || account !== userId || !editingLarp() || serial !== bodyColorSerial) return false;
+      const current = read(account);
+      const base = current.bodyColors || current.gameLook?.definition?.bodyColors || (await loadBrowserPreview([], new AbortController().signal)).bodyColors;
+      if (account !== userId || !editingLarp() || serial !== bodyColorSerial) return false;
+      const bodyColors = {...base};
+      for (const key of bodyColorKeys.filter(key => !region || key.toLowerCase().startsWith(region))) bodyColors[key] = color;
+      if (JSON.stringify(base) === JSON.stringify(bodyColors)) return true;
+      save({...current, bodyColors, pendingOutfit: true}, Boolean(current.gameLook));
+      return true;
+    } catch (_) { return false; }
+  }
   async function loadBrowserPreview(selected, signal) {
     const account = userId;
     if (!browserAvatarBase || browserAvatarBase.account !== account || Date.now() > browserAvatarBase.expires) {
@@ -364,7 +427,8 @@
     }
     const {avatar, rules} = await browserAvatarBase.promise;
     if (signal.aborted || account !== userId) throw new Error('Avatar update cancelled.');
-    return previewDefinition(avatar, rules, selected);
+    const definition = previewDefinition(avatar, rules, selected);
+    return state?.bodyColors ? {...definition, bodyColors: state.bodyColors} : definition;
   }
   async function captureCharacter() {
     const account = userId, current = state;
@@ -397,7 +461,9 @@
   function applyCharacter(snapshot) {
     if (!state?.mode) throw new Error('Turn Larp mode on first.');
     LarpbloxGameBridge.validateSnapshot(snapshot, userId);
-    save(mergeGameSnapshot(state, JSON.parse(JSON.stringify(snapshot))), true);
+    const next = mergeGameSnapshot(state, JSON.parse(JSON.stringify(snapshot)));
+    delete next.bodyColors;
+    save(next, true);
   }
   async function applyNativeCharacter(card) {
     const account = userId;
@@ -564,8 +630,9 @@
     const selected = editingLarp() ? state.items.filter(item => state.equipped.includes(keyFor(item)) && supportsOutfit(item)) : [];
     const holder = editor?.querySelector('.avatar-thumbnail');
     const gameLook = editingLarp() && state.gameLook;
-    holder?.classList.toggle('larpbux-local-preview', Boolean(editingLarp() && (selected.length || gameLook)));
-    if (!holder || (!selected.length && !gameLook)) {
+    const localColors = editingLarp() && state.bodyColors;
+    holder?.classList.toggle('larpbux-local-preview', Boolean(editingLarp() && (selected.length || gameLook || localColors)));
+    if (!holder || (!selected.length && !gameLook && !localColors)) {
       clearTimeout(previewRetryTimer); previewRetryKey = undefined;
       previewFeedback(editor, '');
       previewController?.abort(); previewViewer?.dispose(); previewElement?.remove();
@@ -578,8 +645,8 @@
     // Roblox's existing toggle names the mode it will switch to, not the current mode.
     const toggle = editor.querySelector('.toggle-three-dee');
     const threeDimensional = !/^3d$/i.test(toggle?.textContent?.trim() || '');
-    const signature = JSON.stringify([userId, selected.map(item => item.id), threeDimensional, gameLook?.definition, Boolean(state?.mode)]);
-    if (previewSignature === signature && (previewElement?.isConnected || (!selected.length && !gameLook))) return;
+    const signature = JSON.stringify([userId, selected.map(item => item.id), threeDimensional, gameLook?.definition, localColors, Boolean(state?.mode)]);
+    if (previewSignature === signature && (previewElement?.isConnected || (!selected.length && !gameLook && !localColors))) return;
     clearTimeout(previewRetryTimer);
     if (previewRetryKey !== signature) { previewRetryKey = signature; previewRetries = 0; }
     previewController?.abort(); previewController = new AbortController();
@@ -614,7 +681,7 @@
         definition = await loadBrowserPreview(selected, signal);
       }
       if (account !== userId || signature !== previewSignature || signal.aborted) return;
-      if (!selected.length && !gameLook) {
+      if (!selected.length && !gameLook && !localColors) {
         previewViewer?.dispose(); previewElement?.remove();
         previewViewer = undefined; previewElement = undefined; previewController = undefined;
         return;
@@ -730,10 +797,12 @@
   }
   // Recover older purchases whose category had not loaded when they were bought.
   const typeRepairs = new Map();
+  const knownFaceMisclassification = item => Number(item?.assetType) === 42 && /^epic\s*face$/i.test(String(item?.name || '').trim());
+  const knownHeadlessMisclassification = item => headlessIds.has(Number(item?.id)) && ![17, 79].includes(Number(item?.assetType));
   function repairPurchasedTypes() {
     if (!state?.mode || !userId) return;
     const account = userId;
-    for (const item of state.items.filter(item => (item.itemType === 'Asset' && (!item.assetTypeVerified || !item.limitedVerified)) || (item.itemType === 'Bundle' && (!item.bundleType || !Array.isArray(item.assets))))) {
+    for (const item of state.items.filter(item => (item.itemType === 'Asset' && (!item.assetTypeVerified || !item.limitedVerified || knownFaceMisclassification(item) || knownHeadlessMisclassification(item))) || (item.itemType === 'Bundle' && (!item.bundleType || !Array.isArray(item.assets))))) {
       const repairKey = `${account}:${item.id}`;
       if ((typeRepairs.get(repairKey) || 0) > Date.now()) continue;
       if ([...typeRepairs.values()].filter(value => value === Infinity).length >= 4) break;
@@ -749,8 +818,10 @@
           if (item.itemType === 'Bundle' && !['AvatarAnimations','BodyParts','DynamicHead'].includes(data.bundleType)) throw new Error('Item type unavailable');
           if (userId !== account) return;
           const latest = read(account);
-          if (!latest.items.some(owned => keyFor(owned) === keyFor(item) && (item.itemType === 'Bundle' || (!owned.assetTypeVerified || !owned.limitedVerified)))) return;
-          save({...latest, items: latest.items.map(owned => keyFor(owned) === keyFor(item) ? {...owned, ...(item.itemType === 'Bundle' ? {bundleType: data.bundleType, assets} : {assetType: owned.assetTypeVerified ? owned.assetType : data.AssetTypeId, assetTypeVerified:true, limitedVerified:true, isLimited:data.IsLimited === true, isLimitedUnique:data.IsLimitedUnique === true})} : owned)});
+          if (!latest.items.some(owned => keyFor(owned) === keyFor(item) && (item.itemType === 'Bundle' || (!owned.assetTypeVerified || !owned.limitedVerified || knownFaceMisclassification(owned) || knownHeadlessMisclassification(owned))))) return;
+          const repaired = latest.items.map(owned => keyFor(owned) === keyFor(item) ? {...owned, ...(item.itemType === 'Bundle' ? {bundleType: data.bundleType, assets} : {assetType: knownFaceMisclassification(owned) || knownHeadlessMisclassification(owned) ? data.AssetTypeId : (owned.assetTypeVerified ? owned.assetType : data.AssetTypeId), assetTypeVerified:true, limitedVerified:true, isLimited:data.IsLimited === true, isLimitedUnique:data.IsLimitedUnique === true})} : owned);
+          const clearHeadless = repaired.some(owned => Number(owned.assetType) === 18 && latest.equipped.includes(keyFor(owned)));
+          save({...latest, items: repaired, equipped: clearHeadless ? latest.equipped.filter(value => !isHeadless(repaired.find(owned => keyFor(owned) === value))) : latest.equipped});
         })
         .catch(() => {})
         .finally(() => { clearTimeout(timer); typeRepairs.set(repairKey, Date.now() + 60000); });
@@ -763,6 +834,16 @@
     badge.setAttribute('role', 'img'); badge.setAttribute('aria-label', item.isLimitedUnique ? 'Limited Unique' : 'Limited');
     badge.append(node('span', '', item.isLimitedUnique ? 'icon-limited-unique-label' : 'icon-limited-label')); 
     holder.append(badge);
+  }
+  function itemMiddleClick(card, item, enabled = () => true) {
+    card.addEventListener('mousedown', event => {
+      if (event.button === 1 && enabled()) event.preventDefault();
+    }, true);
+    card.addEventListener('auxclick', event => {
+      if (event.button !== 1 || !enabled()) return;
+      event.preventDefault(); event.stopPropagation();
+      window.open(`https://www.roblox.com/${item.itemType === 'Bundle' ? 'bundles' : 'catalog'}/${item.id}`, '_blank', 'noopener');
+    }, true);
   }
   const nativeEquipControls = new Map();
   function restoreNativeEquipControls() {
@@ -849,11 +930,7 @@
         const card = node('li', '', `${cardClasses} larpbux-avatar-item`);
         card.dataset.larpbuxKey = itemKey;
         card.dataset.larpbuxEquipped = String(equipped);
-        card.addEventListener('auxclick', event => {
-          if (event.button !== 1) return;
-          event.preventDefault(); event.stopPropagation();
-          window.open(`https://www.roblox.com/${item.itemType === 'Bundle' ? 'bundles' : 'catalog'}/${item.id}`, '_blank', 'noopener');
-        });
+        itemMiddleClick(card, item);
         const container = node('div', '', 'item-card-container');
         const holder = node('div', '', 'item-card-thumb-container');
         const button = node('button', '', 'item-card-thumb'); button.type = 'button';
@@ -884,6 +961,8 @@
       if (/gear/.test(name)) return 19;
       if (/eyebrow/.test(name)) return 76;
       if (/eyelash/.test(name)) return 77;
+      if (/faceaccessor/.test(name)) return 42;
+      if (/^(?:body|classic)?faces?$/.test(name)) return 18;
       if (/face/.test(name)) return 42;
       if (/neck/.test(name)) return 43;
       if (/shoulder/.test(name)) return 44;
@@ -918,6 +997,7 @@
       const holder = card.querySelector('.item-card-thumb-container, .thumbnail-2d-container');
       if (holder) updateEquipped(holder, equipped);
       if (card._larpbuxNativeClick) continue;
+      itemMiddleClick(card, native, () => editingLarp() && account === userId);
       const click = event => {
         if (!editingLarp() || account !== userId) return;
         const target = event.target;
@@ -1071,7 +1151,7 @@
       faceaccessory: 42, faceaccessories: 42, neckaccessory: 43, neckaccessories: 43,
       shoulderaccessory: 44, shoulderaccessories: 44, frontaccessory: 45, frontaccessories: 45,
       backaccessory: 46, backaccessories: 46, waistaccessory: 47, waistaccessories: 47,
-      face: 42, neck: 43, shoulder: 44, front: 45, back: 46, waist: 47,
+      head: 17, heads: 17, dynamichead: 79, dynamicheads: 79, face: 18, faces: 18, bodyfaces: 18, classicfaces: 18, neck: 43, shoulder: 44, front: 45, back: 46, waist: 47,
       shirt: 11, shirts: 11, classicshirt: 11, classicshirts: 11,
       pants: 12, classicpants: 12, tshirt: 2, tshirts: 2, classictshirt: 2, classictshirts: 2,
       tshirtaccessory:64, tshirtaccessories:64, shirtaccessory:65, shirtaccessories:65,
@@ -1084,7 +1164,7 @@
       runanimation:53, swimanimation:54, walkanimation:55, poseanimation:56,
       gear:19, gears:19,
       gear:19, gears:19,
-    }[normalizedType] || {head:8,hair:41,face:42,neck:43,shoulder:44,front:45,back:46,waist:47,eyebrow:76,eyelash:77}[normalizedType.replace(/accessor(?:y|ies)/g, '')] || 0;
+    }[normalizedType] || {head:17,heads:17,dynamichead:79,dynamicheads:79,hair:41,face:18,faces:18,bodyfaces:18,classicfaces:18,neck:43,shoulder:44,front:45,back:46,waist:47,eyebrow:76,eyelash:77}[normalizedType.replace(/accessor(?:y|ies)/g, '')] || 0;
     const image = document.querySelector('#item-thumbnail-container-frontend img');
     return {id: Number(match[2]), itemType: match[1] === 'bundles' ? 'Bundle' : 'Asset', assetType, name: name.slice(0, 128), price, thumbnail: image?.currentSrc || image?.src || undefined};
   }
@@ -1257,6 +1337,13 @@
   function start() {
     update(); let queued = false;
     new MutationObserver(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; update(); }); }).observe(document.body, {childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset', 'sizes', 'data-user-id', 'data-userid']});
+    const refreshBodyColors = event => {
+      const control = bodyColorControl(event.target);
+      if (!control) return;
+      if (bodyColorValue(control) !== undefined && editingLarp()) { event.preventDefault(); event.stopImmediatePropagation(); applyBodyColorIntent(control); }
+    };
+    document.addEventListener('click', refreshBodyColors, true);
+    document.addEventListener('change', refreshBodyColors, true);
     window.addEventListener('storage', event => { if (userId && (event.key === key() || event.key === null)) { closePurchase(); state = read(userId); render(); } });
     if (typeof LarpbloxGameBridge !== 'undefined') {
       const poll = async () => {

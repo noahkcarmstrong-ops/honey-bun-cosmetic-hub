@@ -36,7 +36,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local instanceConnections={}
     local snapshotPending=false
     local snapshotScheduleId=0
-    local nextSocketPing=0
+    local nextSocketPing,nextCommandCheck=0,0
     local loadingImageUrl
     local lastDefinition,imageAssetDefinition
     local commandSnapshotPending=false
@@ -505,7 +505,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             local read,value=pcall(function()return HttpService:JSONDecode(message)end)
             if not read or type(value)~="table" then return end
             if value.type=="ready" then
-                socketReady=true;lastJson=nil;nextSocketPing=0
+                socketReady=true;lastJson=nil;nextSocketPing=0;nextCommandCheck=0
                 if value.instanceId~=api.instanceId then lastRevision=0;lastNameState=nil;api.instanceId=value.instanceId end
                 scheduleSnapshot()
                 status("Browser connected via WebSocket.")
@@ -525,6 +525,17 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                     nextSocketPing=os.clock()+20
                     local sent=pcall(function()socket:Send(HttpService:JSONEncode({type="ping"}))end)
                     if not sent then closeSocket()end
+                end
+                -- Recover a missed push even when the socket still appears connected.
+                if socketReady and os.clock()>=nextCommandCheck then
+                    nextCommandCheck=os.clock()+3
+                    local command=call("GET","/v1/browser/"..player.UserId,token)
+                    if generation~=mine or not connected then return end
+                    local queued=incoming.browser and incoming.browser.value
+                    if command and tonumber(command.revision) and command.revision>lastRevision
+                        and (not queued or command.revision>(tonumber(queued.revision) or 0)) then
+                        incoming.browser={value=command}
+                    end
                 end
                 if not socketReady then
                 local relay=call("GET","/v1/status",token)

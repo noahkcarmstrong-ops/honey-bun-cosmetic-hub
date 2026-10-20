@@ -50,7 +50,7 @@ resume(jobs[1]);assert(#jobs==2,"auto-connect starts the transport")
 assert(resume(jobs[2])==5,"ready socket uses the slow maintenance interval")
 flush();assert(snapshots==1,"connection publishes an initial snapshot")
 for _=1,3 do resume(jobs[2])end
-assert(snapshots==1 and httpRequests==2,"idle WebSocket neither polls HTTP nor rebuilds snapshots")
+assert(snapshots==1,"idle WebSocket does not rebuild snapshots during recovery checks")
 body:GetPropertyChangedSignal("HeadColor3"):Fire()
 body:GetPropertyChangedSignal("HeadColor3"):Fire()
 humanoid.ApplyDescriptionFinished:Fire()

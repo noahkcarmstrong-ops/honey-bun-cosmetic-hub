@@ -316,5 +316,32 @@ assert(faceEditor.getSettings().face==900,"face selection persists")
 faceEditor.restoreFace();assert(faceHead:FindFirstChildOfClass("Decal").Texture=="original-face","face restoration preserves original")
 faceEditor.applyFace(900);assert(faceReads==1,"face re-equip reuses validated texture")
 faceEditor.destroy();assert(faceHead:FindFirstChildOfClass("Decal").Texture=="original-face","cleanup restores original face")
+marketplace.assetType=17
+local headlessFaceEditor=create(player)
+headlessFaceEditor.applyBodyPart("Head",134082579)
+assert(headlessFaceEditor.getSettings().bodyParts.Head==134082579)
+headlessFaceEditor.applyFace(900)
+assert(headlessFaceEditor.getSettings().bodyParts.Head==nil,"classic face removes the active Headless override")
+assert(faceHead:FindFirstChildOfClass("Decal").Texture=="new-face","face is applied after restoring the visible head")
+headlessFaceEditor.destroy()
 game.GetObjects=previousObjects
 print("Classic face equip, cache, persistence and restore passed.")
+
+local effectEditor=create(player)
+game.GetObjects=function()
+    local hat=node("Accessory","TheDusekkar");hat.AttachmentPoint=cf()
+    local handle=node("Part","Handle");handle.CFrame=cf();handle.Parent=hat
+    for _,class in ipairs({"Fire","Smoke"})do local effect=node(class,class);effect.Enabled=false;effect.Parent=handle end
+    node("Script","DusekkarScript").Parent=handle
+    return{hat}
+end
+for _,id in ipairs({1474657,123})do
+    effectEditor.equipAccessory(id)
+    local hat=body:FindFirstChild("TheDusekkar")
+    assert(hat:FindFirstChild("Fire",true).Enabled==(id==1474657),"Dusekkar effects work for any wearer without changing other hats")
+    assert(hat:FindFirstChild("Smoke",true).Enabled==(id==1474657),"Dusekkar smoke enabled")
+    assert(not hat:FindFirstChild("DusekkarScript",true),"asset scripts remain removed")
+    effectEditor.clearAccessories()
+end
+effectEditor.destroy();game.GetObjects=previousObjects
+print("Dusekkar fire and smoke enable without an owner restriction; other hats remain unchanged.")

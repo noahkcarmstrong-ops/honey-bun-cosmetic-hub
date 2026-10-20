@@ -381,6 +381,12 @@ return function(player,onStatus)
         local candidate=accessory:Clone()
         dispose(objects)
         strip(candidate)
+        -- The original Dusekkar script gates these existing effects to user 916.
+        if id==1474657 then
+            for _,effect in ipairs(candidate:GetDescendants()) do
+                if effect:IsA("Fire") or effect:IsA("Smoke") then effect.Enabled=true end
+            end
+        end
         for _,item in ipairs(candidate:GetDescendants()) do
             if item:IsA("BasePart") then item.Anchored=false;item.CanCollide=false;item.CanTouch=false;item.Massless=true end
         end
@@ -785,6 +791,10 @@ return function(player,onStatus)
             dispose(objects)
             assert(type(texture)=="string" and texture~="","That catalog item is not a classic face.")
             faceTemplates[id]=texture
+        end
+        if settings.bodyParts.Head then
+            local ok,headId=pcall(idFrom,settings.bodyParts.Head,"catalog")
+            if ok and (headId==134082579 or headId==15093053680) then api.restoreBodyPart("Head") end
         end
         local head=ctx.character:FindFirstChild("Head");assert(head,"This avatar has no head.")
         capture(ctx)
