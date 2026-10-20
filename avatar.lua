@@ -13,6 +13,7 @@ local r15={"Head","UpperTorso","LowerTorso","LeftUpperArm","LeftLowerArm","LeftH
     "RightUpperLeg","RightLowerLeg","RightFoot"}
 local outfits={Girl=131929545,["Robloxian 2.0"]=131929576}
 local bodyRegions={Head=true,Torso=true,LeftArm=true,RightArm=true,LeftLeg=true,RightLeg=true}
+local r6BodyPartNames={Head="Head",Torso="Torso",LeftArm="LeftArm",RightArm="RightArm",LeftLeg="LeftLeg",RightLeg="RightLeg"}
 local function regionNames(region)
     if region=="Head" then return {"Head"} end
     local names=groups[region];local out={}
@@ -135,6 +136,7 @@ return function(player,onStatus)
         showOriginalAccessories()
         if snapshot then
             dispose(snapshot.meshes)
+            if snapshot.r6Head then snapshot.r6Head:Destroy() end
             dispose(snapshot.face or {})
             for _,part in pairs(snapshot.parts) do part:Destroy() end
         end
@@ -151,6 +153,10 @@ return function(player,onStatus)
                     saved.hadBodyColors=true
                     for region in pairs(groups) do saved.bodyColors[region]=item[region.."Color3"] end
                 end
+            end
+            if ctx.humanoid.RigType==Enum.HumanoidRigType.R6 then
+                local head=ctx.character:FindFirstChild("Head")
+                if head and head:IsA("BasePart") then saved.r6Head=bodyClone(head) end
             end
             snapshot=saved
         end
@@ -328,6 +334,31 @@ return function(player,onStatus)
             if joint.Parent then joint.C0,joint.C1=offset.C0,offset.C1 end
         end
         if snapshot.hipHeight~=nil then ctx.humanoid.HipHeight=snapshot.hipHeight end
+    end
+    local function r6MeshPart(mesh)
+        local value=tostring(mesh.BodyPart or "")
+        return value:match("([%w]+)$")
+    end
+    local function r6MeshesFor(region,list)
+        local wanted=r6BodyPartNames[region];local found={}
+        for _,mesh in ipairs(list or {}) do
+            if mesh:IsA("CharacterMesh") and r6MeshPart(mesh)==wanted then found[#found+1]=mesh end
+        end
+        return found
+    end
+    local function removeR6RegionMeshes(ctx,region)
+        for _,item in ipairs(ctx.character:GetChildren()) do
+            if item:IsA("CharacterMesh") and r6MeshPart(item)==r6BodyPartNames[region] then item:Destroy() end
+        end
+    end
+    local function restoreR6Region(ctx,region)
+        if region=="Head" and snapshot and snapshot.r6Head then
+            local head=ctx.character:FindFirstChild("Head")
+            if head and head:IsA("BasePart") then applyPartAppearance(head,snapshot.r6Head) end
+            return
+        end
+        removeR6RegionMeshes(ctx,region)
+        for _,mesh in ipairs(r6MeshesFor(region,snapshot and snapshot.meshes)) do mesh:Clone().Parent=ctx.character end
     end
     local api={}
     function api.equipAccessory(value)
@@ -635,8 +666,8 @@ return function(player,onStatus)
     end
     function api.applyBodyPart(region,value)
         local ctx=context()
-        assert(ctx.humanoid.RigType==Enum.HumanoidRigType.R15,"Individual body parts are only supported on R15 avatars.")
         assert(bodyRegions[region],"Choose a body region.")
+        local isR6=ctx.humanoid.RigType==Enum.HumanoidRigType.R6
         local field=region;local names=regionNames(region)
         local text=tostring(value or ""):match("^%s*(.-)%s*$")
         local isBundle=text:match("^https?://[^/]+/bundles/%d+") ~= nil
@@ -677,6 +708,27 @@ return function(player,onStatus)
         if not valid(ctx) then if ok and template then template:Destroy() end;check(ctx) end
         assert(ok and template,"Roblox blocked generating that body part.")
         strip(template)
+        if isR6 then
+            local applied,message=pcall(function()
+                capture(ctx)
+                if region=="Head" then
+                    local source=template:FindFirstChild("Head")
+                    local target=ctx.character:FindFirstChild("Head")
+                    assert(source and source:IsA("BasePart") and target and target:IsA("BasePart"),"That package has no compatible R6 head.")
+                    applyPartAppearance(target,source)
+                else
+                    local meshes=r6MeshesFor(region,template:GetChildren())
+                    assert(#meshes>0,"That package has no compatible R6 "..region.." body mesh. Try an R15 game.")
+                    removeR6RegionMeshes(ctx,region)
+                    for _,mesh in ipairs(meshes) do mesh:Clone().Parent=ctx.character end
+                end
+            end)
+            template:Destroy()
+            assert(applied,message)
+            snapshot.bodyChanged=true
+            if not reapplying then settings.bodyParts[region]=value;save() end
+            return region.." body part applied (visible to you)."
+        end
         local parts={}
         for _,name in ipairs(names) do local part=template:FindFirstChild(name);if part and part:IsA("BasePart") then parts[name]=part end end
         local applied,message=pcall(function() capture(ctx,true);replaceParts(ctx,parts,names) end)
@@ -688,8 +740,12 @@ return function(player,onStatus)
     end
     function api.restoreBodyPart(region)
         local ctx=context();assert(bodyRegions[region],"Choose a body region.")
-        if snapshot and snapshot.character==ctx.character and next(snapshot.parts) then
-            replaceParts(ctx,snapshot.parts,regionNames(region))
+        if snapshot and snapshot.character==ctx.character then
+            if ctx.humanoid.RigType==Enum.HumanoidRigType.R6 then
+                restoreR6Region(ctx,region)
+            elseif next(snapshot.parts) then
+                replaceParts(ctx,snapshot.parts,regionNames(region))
+            end
         end
         settings.bodyParts[region]=nil;save()
         return "Original "..region.." restored."
@@ -756,8 +812,13 @@ return function(player,onStatus)
         if snapshot.bodyChanged then
             if ctx.humanoid.RigType==Enum.HumanoidRigType.R15 then restoreBodyParts(ctx)
             else
-                for _,item in ipairs(ctx.character:GetChildren()) do if item:IsA("CharacterMesh") then item:Destroy() end end
+                local oldMeshes={};for _,item in ipairs(ctx.character:GetChildren()) do if item:IsA("CharacterMesh") then oldMeshes[#oldMeshes+1]=item end end
+                for _,item in ipairs(oldMeshes) do item:Destroy() end
                 for _,mesh in ipairs(snapshot.meshes) do mesh:Clone().Parent=ctx.character end
+                if snapshot.r6Head then
+                    local head=ctx.character:FindFirstChild("Head")
+                    if head and head:IsA("BasePart") then applyPartAppearance(head,snapshot.r6Head) end
+                end
             end
             snapshot.bodyChanged=false
         end
@@ -776,8 +837,13 @@ return function(player,onStatus)
         if snapshot and snapshot.character==ctx.character and snapshot.bodyChanged then
             if ctx.humanoid.RigType==Enum.HumanoidRigType.R15 then restoreBodyParts(ctx)
             else
-                for _,item in ipairs(ctx.character:GetChildren()) do if item:IsA("CharacterMesh") then item:Destroy() end end
+                local oldMeshes={};for _,item in ipairs(ctx.character:GetChildren()) do if item:IsA("CharacterMesh") then oldMeshes[#oldMeshes+1]=item end end
+                for _,item in ipairs(oldMeshes) do item:Destroy() end
                 for _,mesh in ipairs(snapshot.meshes) do mesh:Clone().Parent=ctx.character end
+                if snapshot.r6Head then
+                    local head=ctx.character:FindFirstChild("Head")
+                    if head and head:IsA("BasePart") then applyPartAppearance(head,snapshot.r6Head) end
+                end
             end
             snapshot.bodyChanged=false
         end
