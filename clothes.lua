@@ -30,6 +30,11 @@ return function(player,onStatus)
     local settings={Shirt=nil,Pants=nil,ShirtGraphic=nil}
     local alive,generation=true,0
     local state={Shirt=nil,Pants=nil,ShirtGraphic=nil}
+    local templates,requests={},{}
+    local function nextRequest(kind)
+        requests[kind]=(requests[kind] or 0)+1
+        return requests[kind]
+    end
     local function read()
         if not gui then return end
         local ok,saved=pcall(function() return Http:JSONDecode(gui:GetAttribute(attribute) or "") end)
@@ -73,7 +78,7 @@ return function(player,onStatus)
         if s and s.applied then s.applied:Destroy();s.applied=nil end
     end
     local function restoreKind(kind,clearSaved)
-        local ctx=context();local s=state[kind]
+        nextRequest(kind);local ctx=context();local s=state[kind]
         if s then
             clearApplied(s)
             if s.character==ctx.character then for _,item in ipairs(s.originals) do item.Parent=ctx.character end end
@@ -83,21 +88,26 @@ return function(player,onStatus)
         return "Original "..string.lower(kind).." restored."
     end
     local function equip(kind,value)
-        local ctx=context();local id=parse(value);local ok,roots=pcall(function() return game:GetObjects("rbxassetid://"..string.format("%.0f",id)) end)
-        assert(ok and type(roots)=="table" and #roots>0,"Roblox could not load that catalog item. It may be private or unavailable.")
-        if not valid(ctx) then dispose(roots);check(ctx) end
-        local source
-        for _,root in ipairs(roots) do
-            if root:IsA(kind) then source=root end
-            if not source then for _,item in ipairs(root:GetDescendants()) do if item:IsA(kind) then source=item;break end end end
-            if source then break end
-        end
-        if not source then dispose(roots);error("That catalog item is not a classic "..string.lower(kind)..".") end
         local property=({Shirt="ShirtTemplate",Pants="PantsTemplate",ShirtGraphic="Graphic"})[kind]
-        local template=source[property]
-        if type(template)~="string" or template=="" then dispose(roots);error("That classic "..string.lower(kind).." has no usable template.") end
+        local ctx=context();local id=parse(value);local ticket=nextRequest(kind);local assetId=string.format("%.0f",id);local key=kind..":"..assetId;local template=templates[key]
+        if not template then
+            local ok,roots=pcall(function() return game:GetObjects("rbxassetid://"..assetId) end)
+            assert(ok and type(roots)=="table" and #roots>0,"Roblox could not load that catalog item. It may be private or unavailable.")
+            if not valid(ctx) then dispose(roots);check(ctx) end
+            local source
+            for _,root in ipairs(roots) do
+                if root:IsA(kind) then source=root end
+                if not source then for _,item in ipairs(root:GetDescendants()) do if item:IsA(kind) then source=item;break end end end
+                if source then break end
+            end
+            if not source then dispose(roots);error("That catalog item is not a classic "..string.lower(kind)..".") end
+            template=source[property]
+            if type(template)~="string" or template=="" then dispose(roots);error("That classic "..string.lower(kind).." has no usable template.") end
+            templates[key]=template
+            dispose(roots)
+        end
+        assert(requests[kind]==ticket,"Clothing choice changed while loading.")
         local applied=Instance.new(kind);applied.Name="HoneyBun"..kind;applied[property]=template
-        dispose(roots)
         if not valid(ctx) then applied:Destroy();check(ctx) end
         local s=capture(ctx,kind);clearApplied(s)
         applied.Parent=ctx.character;s.applied=applied;settings[kind]=id;save()
@@ -105,7 +115,7 @@ return function(player,onStatus)
     end
     local api={}
     local function remove(kind)
-        local ctx=context();local s=capture(ctx,kind);clearApplied(s)
+        nextRequest(kind);local ctx=context();local s=capture(ctx,kind);clearApplied(s)
         settings[kind]=0;save()
         return "Removed classic "..string.lower(kind).." locally."
     end

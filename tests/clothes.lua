@@ -98,3 +98,25 @@ graphics.destroy();assert(originalGraphic.Parent==graphicCharacter,"cleanup rest
 local graphicsReload=create(player);graphicsReload.reapplySaved();assert(not graphicCharacter:FindFirstChildOfClass("ShirtGraphic"),"removed T-shirt survives rerun")
 graphicsReload.restoreTShirt();graphicsReload.destroy()
 print("Classic graphic T-shirt equip, remove, persistence and restore passed.")
+
+-- Repeated choices reuse templates; older downloads cannot replace a newer choice.
+local cached=create(player)
+local underlying=game.GetObjects
+local reads=0
+game.GetObjects=function(self,id)
+    reads=reads+1
+    if id=="rbxassetid://1001" or id=="rbxassetid://1002" then coroutine.yield() end
+    return underlying(self,id)
+end
+cached.equipShirt(123);cached.removeShirt();cached.equipShirt(123)
+assert(reads==1,"re-equipping a validated shirt reuses its template")
+local old=coroutine.create(function() return pcall(cached.equipShirt,1001) end)
+assert(coroutine.resume(old));cached.equipShirt(123)
+local resumed,success=coroutine.resume(old)
+assert(resumed and not success and cached.getSettings().Shirt==123,"old download cannot overwrite a newer equip")
+local pending=coroutine.create(function() return pcall(cached.equipShirt,1002) end)
+assert(coroutine.resume(pending));cached.removeShirt()
+local resumedRemove,successRemove=coroutine.resume(pending)
+assert(resumedRemove and not successRemove and not player.Character:FindFirstChildOfClass("Shirt"),"old download cannot undo removal")
+cached.destroy();game.GetObjects=underlying
+print("Clothing template cache and latest-choice checks passed.")
