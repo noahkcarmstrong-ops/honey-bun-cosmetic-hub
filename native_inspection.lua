@@ -1,4 +1,4 @@
--- Reopens only the local player's native avatar inspector with local cosmetic data.
+-- Reopens the selected player's native avatar inspector with local cosmetic data.
 local fields={[2]="GraphicTShirt",[11]="Shirt",[12]="Pants",[17]="Head",[79]="Head",[18]="Face",[27]="Torso",[28]="RightArm",[29]="LeftArm",[30]="LeftLeg",[31]="RightLeg",[48]="ClimbAnimation",[50]="FallAnimation",[51]="IdleAnimation",[52]="JumpAnimation",[53]="RunAnimation",[54]="SwimAnimation",[55]="WalkAnimation"}
 local accessoryTypes={[8]="Hat",[41]="Hair",[42]="Face",[43]="Neck",[44]="Shoulder",[45]="Front",[46]="Back",[47]="Waist",[64]="TShirt",[65]="Shirt",[66]="Pants",[67]="Jacket",[68]="Sweater",[69]="Shorts",[70]="LeftShoe",[71]="RightShoe",[72]="DressSkirt",[76]="Eyebrow",[77]="Eyelash"}
 local scales={height="HeightScale",width="WidthScale",depth="DepthScale",head="HeadScale",proportion="ProportionScale",bodyType="BodyTypeScale"}
@@ -487,7 +487,7 @@ function M.create(player,getPreviews)
         currentName=name
         local label,title=ownTitle(name)
         if not enabled then
-            if active and label then pcall(function()gui:InspectPlayerFromUserId(player.UserId)end)end
+            if active and label and not options.preserveNative then pcall(function()gui:InspectPlayerFromUserId(player.UserId)end)end
             restoreMasks()
             releaseDescription()
             active=false;lastLabel=nil;lastSignature=nil;adopting=false;lastName=nil
@@ -509,10 +509,10 @@ function M.create(player,getPreviews)
         else desc:Destroy();status="Roblox blocked the local avatar inspector: "..tostring(err)end
     end
     function api.report()return status end
-    function api.destroy()
+    function api.destroy(preserveNative)
         if unbindGuard then unbindGuard();unbindGuard=nil end
         previewData=nil;previewKey=nil;currentImage=nil
-        api.update({enabled=false,name=""})
+        api.update({enabled=false,name="",preserveNative=preserveNative==true})
         for _,connection in ipairs(connections)do connection:Disconnect()end
         connections={}
     end
