@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Roblox 2016 Classic",
-  "version": "1.18.49",
+  "version": "1.18.50",
   "permissions": [
     "storage"
   ],

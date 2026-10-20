@@ -764,6 +764,16 @@
     badge.append(node('span', '', item.isLimitedUnique ? 'icon-limited-unique-label' : 'icon-limited-label')); 
     holder.append(badge);
   }
+  function itemMiddleClick(card, item, enabled = () => true) {
+    card.addEventListener('mousedown', event => {
+      if (event.button === 1 && enabled()) event.preventDefault();
+    }, true);
+    card.addEventListener('auxclick', event => {
+      if (event.button !== 1 || !enabled()) return;
+      event.preventDefault(); event.stopPropagation();
+      window.open(`https://www.roblox.com/${item.itemType === 'Bundle' ? 'bundles' : 'catalog'}/${item.id}`, '_blank', 'noopener');
+    }, true);
+  }
   const nativeEquipControls = new Map();
   function restoreNativeEquipControls() {
     for (const [control, saved] of nativeEquipControls) {
@@ -849,11 +859,7 @@
         const card = node('li', '', `${cardClasses} larpbux-avatar-item`);
         card.dataset.larpbuxKey = itemKey;
         card.dataset.larpbuxEquipped = String(equipped);
-        card.addEventListener('auxclick', event => {
-          if (event.button !== 1) return;
-          event.preventDefault(); event.stopPropagation();
-          window.open(`https://www.roblox.com/${item.itemType === 'Bundle' ? 'bundles' : 'catalog'}/${item.id}`, '_blank', 'noopener');
-        });
+        itemMiddleClick(card, item);
         const container = node('div', '', 'item-card-container');
         const holder = node('div', '', 'item-card-thumb-container');
         const button = node('button', '', 'item-card-thumb'); button.type = 'button';
@@ -918,6 +924,7 @@
       const holder = card.querySelector('.item-card-thumb-container, .thumbnail-2d-container');
       if (holder) updateEquipped(holder, equipped);
       if (card._larpbuxNativeClick) continue;
+      itemMiddleClick(card, native, () => editingLarp() && account === userId);
       const click = event => {
         if (!editingLarp() || account !== userId) return;
         const target = event.target;
