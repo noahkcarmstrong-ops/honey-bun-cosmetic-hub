@@ -4,6 +4,8 @@
 
 <p align="center">best way to larp.</p>
 
+![Without Larpblox and with Larpblox comparison](assets/larpblox-before-after.png)
+
 ## Features
 
 - Edit accessories, clothes, skin, body parts, emotes, and movement animations.
