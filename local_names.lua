@@ -49,8 +49,6 @@ return function(player, playerGui, gameObject)
     local originalDisplay = tostring(player.DisplayName or originalUsername)
     local characterChanged, watchedRoots = nil, {}
     local status = "Names are local only."
-    local playersService
-    pcall(function() playersService = game:GetService("Players") end)
 
     -- Browser relay is the only source of name settings. Ignore older menu saves.
     local function targetUsername() return settings.username ~= "" and settings.username or originalUsername end
@@ -79,90 +77,6 @@ return function(player, playerGui, gameObject)
         end
         return table.concat(out)
     end
-    local function chatRoot(object)
-        local matched=false
-        for _, item in ipairs(ancestors(object)) do
-            local name = tostring(item.Name or ""):lower()
-            if name=="bubblechat" or name=="systemmessage" then return false end
-            if name == "experiencechat" or name == "textchatservice" or name == "chat" or name == "chatwindow" or name == "chatcontainer" then matched=true end
-        end
-        return matched
-    end
-    local function hasForeignId(object)
-        local own = tostring(player.UserId or "")
-        for _, item in ipairs(ancestors(object)) do
-            for _, key in ipairs({"UserId", "UserID", "PlayerId", "playerId"}) do
-                local ok, value = pcall(function() return item:GetAttribute(key) end)
-                if ok and tostring(value or "") ~= "" and tostring(value) ~= own then return true end
-            end
-        end
-        return false
-    end
-    local function duplicateDisplay()
-        if not playersService or type(playersService.GetPlayers) ~= "function" then return false end
-        local ok, list = pcall(function() return playersService:GetPlayers() end)
-        if not ok then return false end
-        for _, other in ipairs(list or {}) do
-            if tostring(other ~= player and other.DisplayName or "") == originalDisplay then return true end
-        end
-        return false
-    end
-    local function chatPrefix(object, text)
-        if type(text) ~= "string" then return nil end
-        if hasForeignId(object) then return nil end
-        local plain = visibleText(text)
-        local colon = plain:find(":", 1, true)
-        if not colon then
-            local name=tostring(object.Name or ""):lower()
-            if name~="prefixtext" and name~="sendername" and name~="speakername" then return nil end
-        end
-        local prefix = trim(colon and plain:sub(1, colon - 1) or plain)
-        if prefix == originalUsername then return prefix end
-        if prefix == originalDisplay and (hasOwnId(object,player) or not duplicateDisplay()) then return prefix end
-        return nil
-    end
-    local function replaceChatPrefix(object, text, rich)
-        local plain = visibleText(text)
-        local colon = plain:find(":", 1, true)
-        if not chatPrefix(object,text) then return text end
-        if not colon then return replaceText(text,rich) end
-        local prefix = trim(plain:sub(1, colon - 1))
-        local target = prefix == originalUsername and targetUsername() or targetDisplay()
-        if rich then target = escapeRich(target) end
-        local visibleSeen, rawColon = 0, nil
-        local cursor = 1
-        while cursor <= #text do
-            local start, finish = text:find("<[^>]*>", cursor)
-            if start == cursor then cursor = finish + 1
-            else
-                local nextTag = start or (#text + 1)
-                for i = cursor, nextTag - 1 do
-                    visibleSeen = visibleSeen + 1
-                    if visibleSeen == colon then rawColon = i; break end
-                end
-                if rawColon then break end
-                cursor = nextTag
-            end
-        end
-        if not rawColon then return text end
-        local rawPrefix = text:sub(1, rawColon - 1)
-        -- Edit visible text chunks only; names in font attributes are not sender text.
-        local chunks,offset,replaced={},1,false
-        local function chunk(value)
-            if replaced then return value end
-            local result,count=value:gsub(pattern(prefix),function() return target end,1)
-            if count>0 then replaced=true end
-            return result
-        end
-        while true do
-            local first,last=rawPrefix:find("<[^>]*>",offset)
-            if not first then chunks[#chunks+1]=chunk(rawPrefix:sub(offset));break end
-            chunks[#chunks+1]=chunk(rawPrefix:sub(offset,first-1))
-            chunks[#chunks+1]=rawPrefix:sub(first,last);offset=last+1
-        end
-        return table.concat(chunks) .. text:sub(rawColon)
-    end
-
     local function inCore(object)
         for _, ancestor in ipairs(ancestors(object)) do if ancestor == coreGuiRoot then return true end end
         return false
@@ -209,21 +123,18 @@ return function(player, playerGui, gameObject)
         return false
     end
     local function candidate(object)
-        if not isTextObject(object) or isHubOwned(object) then return false end
-        if chatRoot(object) and chatPrefix(object, object.Text) then return true end
-        if not owned(object) then return false end
+        if not isTextObject(object) or isHubOwned(object) or not owned(object) then return false end
         if nativeName(object) then return true end
         local plain=visibleText(object.Text)
         return plain==originalUsername or plain=="@"..originalUsername or plain==originalDisplay
     end
     local function applyText(object)
         local original=originals[object]
-        if not original or (not chatRoot(object) and not owned(object)) then return end
+        if not original or not owned(object) then return end
         local replacement
         if nativeName(object) and (settings.displayName~="" or settings.username~="") then
             replacement=settings.displayName~="" and settings.displayName or settings.username
             if object.RichText then replacement=escapeRich(replacement) end
-        elseif chatRoot(object) then replacement=replaceChatPrefix(object,original,object.RichText==true)
         else replacement=replaceText(original,object.RichText==true) end
         if replacement==object.Text then return end
         applying=true
@@ -258,7 +169,7 @@ return function(player, playerGui, gameObject)
     end
     local function restoreText()
         applying = true
-        for object, original in pairs(originals) do if chatRoot(object) or owned(object) then pcall(function() object.Text = original end) end end
+        for object, original in pairs(originals) do if owned(object) then pcall(function() object.Text = original end) end end
         applying = false
     end
     local function humanoid(character)
