@@ -205,12 +205,16 @@ function M.create(player,getPreviews)
         for root in pairs(inspectRoots)do
             if not root.Parent then inspectRoots[root]=nil
             else
-                local identified=false
+                local identified,own=false,false
                 for _,object in ipairs(root:GetDescendants())do
-                    if object:IsA("TextLabel") and object.Text:match("'s Avatar$")then identified=true;break end
+                    if object:IsA("TextLabel") and object.Text:match("'s Avatar$")then
+                        identified=true
+                        if object.Text==player.Name.."'s Avatar" or object.Text==currentName.."'s Avatar" then own=true end
+                    end
                 end
-                -- A thumbnail can arrive before the name; keep unknown panels blank.
-                if not identified then panelVisibility(root,false)end
+                local ready=active and fallbackGui and fallbackGui.Enabled and fallbackEntry and fallbackEntry.overlay and fallbackEntry.overlay.Visible
+                -- Mask own content while its shell is still hidden, before opening animation starts.
+                if not identified or (own and not ready) then panelVisibility(root,false)end
             end
         end
     end

@@ -81,8 +81,11 @@ local function liveOverlay()
  for _,object in ipairs(core:GetDescendants())do if object.Name=="LarpbloxInspectPreview" and not object.destroyed then return object end end
 end
 local snapshot={version=1,definition={assets={{id=100,meta=nil},{id=200,meta={order=3,puffiness=0.35}}},scales={height=1.1,width=0.9,depth=1.05,head=1.2,proportion=0.4,bodyType=0.7},bodyColors={headColor="#112233",torsoColor="445566"}},items={{id=100,assetType=11,name="Larp Shirt"},{id=200,assetType=67},{id=301,assetType=8},{id=302,assetType=41},{id=303,assetType=42},{id=304,assetType=79},{id=305,assetType=12},{id=306,assetType=8}}}
+inspect.Visible=false
 title.Text="LarpAlias's Avatar"
 api.update({enabled=true,name="LarpAlias"})
+assert(not viewport.Visible and not loadingImage.Visible,"own avatar content is quarantined before the inspector shell opens")
+inspect.Visible=true;inspect:GetPropertyChangedSignal("Visible"):Fire()
 assert(inspect.Visible and closeButton.Visible and not title.Visible and not itemContent.Visible,"missing outfit data leaves the page open while account content stays hidden")
 -- local_names can rewrite the own title before the native redirect starts.
 title.Visible=true;title:GetPropertyChangedSignal("Visible"):Fire()
