@@ -49,6 +49,8 @@ local function uniquePeopleRow(object, player, options)
     if not inPeople then return false end
     for depth=2,math.min(#path,6)do
         local row=path[depth]
+        local class=read(row,"ClassName")
+        if class=="CoreGui" or class=="PlayerGui" or class=="ScreenGui" then break end
         local descendants=read(row,"GetDescendants") and row:GetDescendants() or {}
         if #descendants>120 then break end
         local found,other,texts=false,false,0
@@ -291,16 +293,26 @@ function M.create(player, getPreviews)
         local class = read(object, "ClassName")
         if class ~= "TextLabel" and class ~= "TextButton" then return end
         local people = false
+        local scope
         for _, item in ipairs(ancestors(object)) do
             local name = tostring(read(item, "Name") or ""):lower()
-            if name:find("people",1,true) or name == "profile" or name == "viewprofile" then people = true; break end
+            if name:find("people",1,true) or name == "profile" or name == "viewprofile" then people = true; scope = item; break end
         end
         if not people or textConnections[object] then return end
         local ok, signal = pcall(function() return object:GetPropertyChangedSignal("Text") end)
         if not ok or not signal then return end
         local connection
         pcall(function() connection = signal:Connect(function()
-            if alive and enabled then scan() end
+            if not alive or not enabled then return end
+            -- A profile name change only affects portraits inside that profile/list.
+            local ok, objects = pcall(function() return scope:GetDescendants() end)
+            if not ok then return end
+            for _, image in ipairs(objects) do
+                if watchableImage(image) then
+                    if isAvatarImage(image, player, {name = currentName}) then watch(image); render(image)
+                    elseif hiddenImages[image] then destroyOverlay(image) end
+                end
+            end
         end) end)
         if connection then textConnections[object] = connection end
     end

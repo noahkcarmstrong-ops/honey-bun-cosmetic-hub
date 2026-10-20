@@ -5,6 +5,13 @@ local function node(class, name)
     function x:GetDescendants()
         local out={}; local function walk(v) for _, child in ipairs(v.children) do out[#out+1]=child;walk(child) end end;walk(self);return out
     end
+    x.signals={}
+    function x:GetPropertyChangedSignal(k)
+        self.signals[k]=self.signals[k] or {callbacks={}}
+        local signal=self.signals[k]
+        function signal:Connect(f) self.callbacks[#self.callbacks+1]=f;return {Disconnect=function()end} end
+        return signal
+    end
     function x:GetAttribute(k) return self.attrs[k] end
     function x:Destroy() self.destroyed=true;self.Parent=nil end
     return setmetatable(x,{__index=function(t,k) if k=="Parent" then return rawget(t,"parent") end;return rawget(t,k) end,__newindex=function(t,k,v)
@@ -67,6 +74,11 @@ local scansBefore=api.report():match("Scans: (%d+)")
 api.update({enabled=true,name="LocalAlias",snapshot={version=1}})
 assert(api.report():match("Scans: (%d+)")==scansBefore,"unchanged sync updates do not rescan the entire game UI")
 assert(shows==4 and captures==2,"periodic scans reuse unchanged overlays and captures")
+local coreReads=0;local originalDescendants=core.GetDescendants
+core.GetDescendants=function(self)coreReads=coreReads+1;return originalDescendants(self)end
+for _,callback in ipairs(otherPeopleLabel.signals.Text.callbacks)do callback()end
+assert(coreReads==0,"other player text updates must not rescan all CoreGui")
+core.GetDescendants=originalDescendants
 local report=api.report();assert(report:find("active",1,true) and report:find("rendered: 4",1,true),"report states active rendering accurately")
 api.update({enabled=false,name="LocalAlias",snapshot={version=1}})
 local overlayGone=true;for _,child in ipairs(row:GetDescendants())do if child.Name=="LarpbloxOwnAvatarPreview" and child.Parent then overlayGone=false end end
