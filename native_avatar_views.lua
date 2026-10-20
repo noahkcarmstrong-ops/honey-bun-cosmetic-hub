@@ -195,6 +195,7 @@ function M.create(player, getPreviews)
     local transparencyConnections,textConnections,geometryConnections={},{},{}
     local pending = {}
     local directImages={}
+    local ownedOverlays={}
     local stagingFolder
     local imageCandidates=setmetatable({}, {__mode="k"})
     local indexed=false
@@ -299,6 +300,8 @@ function M.create(player, getPreviews)
     local function makeOverlay(image, imageSource)
         local class = imageSource and "ImageLabel" or "ViewportFrame"
         local overlay = Instance.new(class)
+        ownedOverlays[overlay]=true
+        overlay.Destroying:Connect(function() ownedOverlays[overlay]=nil end)
         overlay.Name = "LarpbloxOwnAvatarPreview"
         overlay.Position = UDim2.fromScale(0, 0); overlay.Size = UDim2.fromScale(1, 1)
         overlay.BackgroundTransparency = 1; overlay.BorderSizePixel = 0
@@ -601,13 +604,19 @@ function M.create(player, getPreviews)
         for _,group in ipairs({transparencyConnections,textConnections})do
             for _,connection in pairs(group)do pcall(function()connection:Disconnect()end)end
         end
-        for _,group in pairs(geometryConnections) do for _,connection in ipairs(group) do connection:Disconnect() end end
+        for _,group in pairs(geometryConnections) do
+            for _,connection in ipairs(group) do pcall(function() connection:Disconnect() end) end
+        end
         connections = {};transparencyConnections={};textConnections={};geometryConnections={}
-        for image in pairs(directImages) do destroyOverlay(image) end
-        for image in pairs(overlays) do destroyOverlay(image) end
-        for image in pairs(pending) do destroyOverlay(image) end
-        restoreAllImages()
-        if stagingFolder then stagingFolder:Destroy();stagingFolder=nil end
+        for image in pairs(directImages) do pcall(destroyOverlay,image) end
+        for image in pairs(overlays) do pcall(destroyOverlay,image) end
+        for image in pairs(pending) do pcall(destroyOverlay,image) end
+        -- The ownership set also catches previews no longer referenced by a slot
+        -- after a cancelled render or a partially completed replacement.
+        for overlay in pairs(ownedOverlays) do pcall(function() overlay:Destroy() end) end
+        ownedOverlays={}
+        for image in pairs(hiddenImages) do pcall(restoreImage,image) end
+        if stagingFolder then pcall(function() stagingFolder:Destroy() end);stagingFolder=nil end
     end
     rendererOwners[ownerKey]=api
     return api
