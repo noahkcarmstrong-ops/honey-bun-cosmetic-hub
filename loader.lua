@@ -282,9 +282,9 @@ local crosshairImage=uiSetting("mm2Crosshair","")
 local crosshairSize=uiSetting("mm2CrosshairSize",40)
 if crosshairSize~=crosshairSize or crosshairSize<8 or crosshairSize>200 then crosshairSize=40 end
 local crosshairInput=crosshairImage
-local alive, busy, activePage = true, false, uiSetting("page","Accessories")
+local alive, busy, activePage = true, false, uiSetting("page","Connection")
 local actionRunning=false
-if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" and activePage~="Atmosphere" and not (isMM2 and activePage=="MM2") then activePage="Accessories" end
+if activePage~="Connection" and activePage~="Emotes" and activePage~="Animations" and activePage~="Atmosphere" and not (isMM2 and activePage=="MM2") then activePage="Connection" end
 local statusText = "Local avatar editor. Saved selections reapply automatically."
 local statusLabel, render,lastRenderedPage
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
@@ -1003,8 +1003,7 @@ render=function()
             caption("Open your dedicated MM2 menu below.",40)
             button("Open MM2 menu",function() mm2MenuOpen=true;render() end)
         end
-    elseif activePage=="Accessories" then
-        caption("ACCESSORIES",24)
+    elseif activePage=="Connection" then
         caption("BROWSER CONNECTION",24)
         caption("Open the Larpblox app to connect your browser and game automatically.",40)
         button(gameBrowserSyncAPI and gameBrowserSyncAPI.isConnected() and "Disconnect browser" or "Connect browser",function()
@@ -1035,6 +1034,8 @@ render=function()
             browserOutfitInput=browserOutfitBox.Text;saveUI()
             action(function() return browserOutfit().import(browserOutfitInput) end)
         end)
+    elseif activePage=="Accessories" then
+        caption("ACCESSORIES",24)
         local soundsEnabled=playerGui:GetAttribute("HoneyBunCosmeticUI_HatSounds")~=false
         button(soundsEnabled and "Hat sounds: ON" or "Hat sounds: OFF",function() action(function()
             local sounds=hatSounds();return sounds.setEnabled(not sounds.isEnabled())
@@ -1445,7 +1446,7 @@ render=function()
         button("Restore original body",function() action(function(editor) return editor.restoreBody() end) end)
         caption("R6 and R15 use different body parts. Unsupported packages show a message instead of changing your avatar rig.",48)
     end
-    if activePage~="MM2" and activePage~="Atmosphere" then
+    if activePage~="Connection" and activePage~="MM2" and activePage~="Atmosphere" then
     button("Reapply saved cosmetics",function() action(reapplyAll) end)
     button("Restore original appearance",function() action(function(editor)
         if motionAPI then motionAPI.restore() end
@@ -1456,13 +1457,13 @@ render=function()
     end
     if savedScroll then content.CanvasPosition=savedScroll end
 end
-local pages={"Accessories", "Clothes", "Skin", "Body", "Emotes", "Animations", "Atmosphere"}
+local pages={"Connection", "Emotes", "Animations", "Atmosphere"}
 if isMM2 then table.insert(pages,"MM2") end
 for index,name in ipairs(pages) do
     local page=name
     local item=Instance.new("TextButton")
     item.Name=page
-    item.Size=UDim2.fromOffset((page=="Accessories" or page=="Animations" or page=="Atmosphere") and 96 or 64,32)
+    item.Size=UDim2.fromOffset((page=="Connection" or page=="Animations" or page=="Atmosphere") and 96 or 64,32)
     item.LayoutOrder=index
     item.Parent=tabs
     styleButton(item,string.upper(page))
