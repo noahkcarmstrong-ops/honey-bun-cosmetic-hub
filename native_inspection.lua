@@ -84,7 +84,7 @@ function M.create(player,getPreviews)
                     ancestor=ancestor.Parent
                 end
                 if scoped then knownLabels[object]=true end
-                if scoped and (text==player.Name.."'s Avatar" or (active and (object==lastLabel or adopting) and (text==alias.."'s Avatar" or (lastName and text==lastName.."'s Avatar"))))then
+                if scoped and (text==player.Name.."'s Avatar" or (not active and text==alias.."'s Avatar") or (active and (object==lastLabel or adopting) and (text==alias.."'s Avatar" or (lastName and text==lastName.."'s Avatar"))))then
                     return object,text,scopeRoot
                 end
             end
@@ -252,8 +252,10 @@ function M.create(player,getPreviews)
         panelVisibility(root,preserveLive and ready==true)
         if not ready and fallbackGui then fallbackGui.Enabled=false end
         local objects=root:GetDescendants()
+        local nativeViewport
         for _,viewport in ipairs(objects)do
             if viewport:IsA("ViewportFrame") and viewport.Name~=overlayName then
+                nativeViewport=nativeViewport or viewport
                 local entry=masked[viewport]
                 if not entry then
                     entry={original=viewport.ImageTransparency or 0};masked[viewport]=entry
@@ -280,14 +282,24 @@ function M.create(player,getPreviews)
             renderPreview(fallbackEntry,fallbackGui)
             local overlay=fallbackEntry.overlay
             if overlay then
-                -- The native item title marks the bottom of the avatar area.
-                local titleY=label.AbsolutePosition and label.AbsolutePosition.Y or 340
-                if titleY<120 then titleY=340 end
-                local height=math.min(300,math.max(0,titleY-84))
-                overlay.AnchorPoint=Vector2.new(0.5,0)
-                overlay.Position=UDim2.new(0.5,0,0,math.max(64,titleY-height-12))
-                overlay.Size=UDim2.fromOffset(math.min(320,height),height)
-                fallbackGui.Enabled=height>0 and overlay.Visible==true and larpTitle
+                local position=nativeViewport and nativeViewport.AbsolutePosition
+                local size=nativeViewport and nativeViewport.AbsoluteSize
+                local hasBounds=position and size and position.X and position.Y and size.X and size.Y and size.X>0 and size.Y>0
+                if hasBounds then
+                    overlay.AnchorPoint=Vector2.new(0,0)
+                    overlay.Position=UDim2.fromOffset(position.X,position.Y)
+                    overlay.Size=UDim2.fromOffset(size.X,size.Y)
+                    fallbackGui.Enabled=overlay.Visible==true and larpTitle
+                else
+                    -- Older layouts expose no usable viewport bounds; use the title as a fallback.
+                    local titleY=label.AbsolutePosition and label.AbsolutePosition.Y or 340
+                    if titleY<120 then titleY=340 end
+                    local height=math.min(300,math.max(0,titleY-84))
+                    overlay.AnchorPoint=Vector2.new(0.5,0)
+                    overlay.Position=UDim2.new(0.5,0,0,math.max(64,titleY-height-12))
+                    overlay.Size=UDim2.fromOffset(math.min(320,height),height)
+                    fallbackGui.Enabled=height>0 and overlay.Visible==true and larpTitle
+                end
                 panelVisibility(root,fallbackGui.Enabled)
             end
         end

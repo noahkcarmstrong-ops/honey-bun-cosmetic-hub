@@ -44,7 +44,7 @@ local mount=child(core,"Folder","InspectAndBuy")
 local inspect=child(mount,"Frame","ItemDetails")
 local closeButton=child(inspect,"ImageButton","CloseButton")
 local title=child(inspect,"TextLabel","Title");title.Text="Original's Avatar"
-local viewport=child(inspect,"ViewportFrame","AvatarViewport");viewport.ImageTransparency=0.2
+local viewport=child(inspect,"ViewportFrame","AvatarViewport");viewport.ImageTransparency=0.2;viewport.AbsolutePosition={X=111,Y=222};viewport.AbsoluteSize={X=200,Y=250}
 local itemContent=child(inspect,"Frame","ItemDetails");local itemLabel=child(itemContent,"TextLabel","ItemName");itemLabel.Text="Original item"
 local world=child(viewport,"WorldModel","WorldModel")
 local model=child(world,"Model","Avatar")
@@ -79,13 +79,16 @@ local function liveOverlay()
  for _,object in ipairs(parent.children)do if object.Name=="LarpbloxInspectPreview" and not object.destroyed then return object end end
 end
 local snapshot={version=1,definition={assets={{id=100,meta=nil},{id=200,meta={order=3,puffiness=0.35}}},scales={height=1.1,width=0.9,depth=1.05,head=1.2,proportion=0.4,bodyType=0.7},bodyColors={headColor="#112233",torsoColor="445566"}},items={{id=100,assetType=11,name="Larp Shirt"},{id=200,assetType=67},{id=301,assetType=8},{id=302,assetType=41},{id=303,assetType=42},{id=304,assetType=79},{id=305,assetType=12},{id=306,assetType=8}}}
+title.Text="LarpAlias's Avatar"
 api.update({enabled=true,name="LarpAlias"})
 assert(inspect.Visible and closeButton.Visible and not title.Visible and not itemContent.Visible,"missing outfit data leaves the page open while account content stays hidden")
+-- local_names can rewrite the own title before the native redirect starts.
+title.Text="LarpAlias's Avatar";title:GetPropertyChangedSignal("Text"):Fire()
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
 assert(#inspectCalls==1 and inspectCalls[1].name=="LarpAlias","local native inspection is requested with the alias")
 assert(viewport.ImageTransparency==1,"the account preview is hidden before native loading starts")
 assert(closeButton.Visible,"close control stays usable while Larp content loads")
-assert(inspect.Visible==true and not title.Visible and not itemContent.Visible and title.Text=="Original's Avatar","the native shell stays visible while old avatar and item content are quarantined")
+assert(inspect.Visible==true and not title.Visible and not itemContent.Visible and title.Text=="LarpAlias's Avatar","the native shell stays visible while old avatar and item content are quarantined")
 inspect.Visible=true;inspect:GetPropertyChangedSignal("Visible"):Fire()
 assert(inspect.Visible==true and not title.Visible and not itemContent.Visible,"native visibility updates cannot reveal quarantined content during loading")
 local d=inspectCalls[1].description
@@ -99,6 +102,7 @@ assert(d.HeadColor.R==17/255 and d.HeadColor.G==34/255 and d.HeadColor.B==51/255
 title.Text="LarpAlias's Avatar";itemLabel.Text="Larp Shirt";api.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(#inspectCalls==1,"adopting the redirected title does not reopen in a loop")
 assert(inspect.Visible==true,"the panel reveals only after its Larp title and local preview are ready")
 assert(title.Visible and itemContent.Visible,"the redirected title and refreshed item content appear only after adoption")
+assert(liveOverlay().Position[1]==111 and liveOverlay().Position[2]==222 and liveOverlay().Size[1]==200 and liveOverlay().Size[2]==250,"live preview follows the native viewport bounds")
 itemLabel.Text="Original item";boundGuard()
 assert(not itemContent.Visible,"a stale original item cannot be revealed by the new Larp title")
 itemLabel.Text="Larp Shirt";boundGuard()
@@ -161,9 +165,10 @@ assert(unknownPanel.Visible==true and not unknownAvatar.Visible,"avatar-first lo
 local legacyPanel=child(core,"ImageButton","InspectAndBuy")
 core.DescendantAdded:Fire(legacyPanel)
 assert(legacyPanel.Visible==true,"legacy root controls remain available before children arrive")
+api.destroy();assert(unbound,"closing the hub removes the last-priority render guard")
 local blockedGui={InspectPlayerFromHumanoidDescription=function()error("blocked")end,InspectPlayerFromUserId=function()end}
 game.GetService=function(_,name)if name=="CoreGui"then return core elseif name=="GuiService"then return blockedGui elseif name=="HttpService"then return http end end
 local blocked=module.create(player);title.Text="Original's Avatar";blocked.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(blocked.report():find("blocked",1,true),"blocked native API access is reported")
-api.destroy();assert(unbound,"closing the hub removes the last-priority render guard")
+blocked.destroy()
 Instance,Enum,Color3,game,UDim2,Vector2=old.Instance,old.Enum,old.Color3,old.game,old.UDim2,old.Vector2
 print("Native inspection description, redirect adoption, lifecycle and blocked API checks passed.")
