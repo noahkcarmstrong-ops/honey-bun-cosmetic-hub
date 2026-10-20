@@ -321,7 +321,7 @@ function M.create(player, getPreviews)
         overlay.BackgroundTransparency = 1; overlay.BorderSizePixel = 0
         overlay.Visible = false
         overlay.ZIndex = read(image, "ZIndex") or 1; overlay.Parent = image
-        if imageSource then overlay.Image = imageSource end
+        if imageSource then overlay.Image = imageSource;overlay.ScaleType=read(image,"ScaleType") or Enum.ScaleType.Fit end
         return overlay
     end
     local render
@@ -339,7 +339,9 @@ function M.create(player, getPreviews)
             if staged.connection then staged.connection:Disconnect() end
             staged.overlay:Destroy()
         end
-        local imageSource, snapshot = currentImage, previewSnapshot
+        -- Native full-body slots use the Roblox-rendered PNG. Headshots need
+        -- a distinct crop/render, so never squeeze a full-body image into them.
+        local imageSource, snapshot = fullPortrait(image) and currentImage or nil, previewSnapshot
         local overlay = makeOverlay(image, imageSource)
         if imageSource then
             -- Keep preload images outside the styled native GUI. Image children
@@ -566,9 +568,7 @@ function M.create(player, getPreviews)
         if not alive then return api.report() end
         options = options or {}; local wasEnabled=enabled; local previousName=currentName
         enabled = options.enabled == true; currentName = tostring(options.name or "")
-        -- Browser PNGs can include an opaque backdrop. Native in-game portraits
-        -- use the captured model so the surrounding UI remains visible.
-        currentImage = nil
+        currentImage = type(options.image)=="string" and options.image~="" and options.image or nil
         local character = read(player, "Character")
         local effectiveSnapshot = options.snapshot
         local nextKey = signature(effectiveSnapshot) .. "|" .. tostring(character) .. "|" .. tostring(currentImage or "")
@@ -581,7 +581,7 @@ function M.create(player, getPreviews)
             for _, object in ipairs(preflight) do watch(object); watchPeopleText(object) end
             indexed=true
         end
-        if enabled and effectiveSnapshot ~= nil and not currentImage and (nextKey ~= effectiveKey or previewSnapshot == nil) then
+        if enabled and effectiveSnapshot ~= nil and (nextKey ~= effectiveKey or previewSnapshot == nil) then
             local captured
             local okPreview, previews = pcall(getPreviews)
             if okPreview and previews and type(previews.capture) == "function" then

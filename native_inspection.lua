@@ -271,7 +271,7 @@ function M.create(player,getPreviews)
                         end
                         entry.overlay.Parent=parent
                         if entry.key~=key then
-                            if currentImage then entry.overlay.Image=currentImage
+                            if currentImage then entry.overlay.Image=currentImage;entry.overlay.ScaleType=Enum.ScaleType.Fit
                             else
                                 assert(previews and previews.show(entry.overlay,previewData)~=false,"Local avatar preview could not render.")
                                 if previews.poseThumbnail then previews.poseThumbnail(entry.overlay) end
@@ -502,8 +502,9 @@ function M.create(player,getPreviews)
                 task.spawn(function()pcall(function()game:GetService("ContentProvider"):PreloadAsync(thumbs)end)end)
             end
         end
-        -- Use the transparent model preview; browser PNG backdrops are baked in.
-        currentImage=nil
+        -- The default native inspector displays a full-body thumbnail with Fit.
+        -- Keep the isolated model fallback until the matching PNG arrives.
+        currentImage=type(options.image)=="string" and options.image~="" and options.image or nil
         if not currentSnapshot then previewData=nil;previewKey=nil end
         local alias=tostring(options.name or "")
         local name=alias~="" and alias or player.Name
