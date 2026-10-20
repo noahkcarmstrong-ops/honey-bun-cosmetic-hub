@@ -42,6 +42,8 @@ assert(not module.isAvatarImage(otherPeopleThumb,player,{name="LocalAlias"}),"an
 assert(not module.isAvatarImage(static,player,{name="LocalAlias"}),"static icons are excluded")
 local captures, shows, shownData=0,0,nil
 local api=module.create(player,function() return {capture=function()captures=captures+1;return {live=true,serial=captures}end,show=function(frame,data)shows=shows+1;shownData=data;frame.CurrentCamera={};return true end} end)
+api.update({enabled=true,name="LocalAlias",snapshot=nil})
+assert(captures==0 and shows==0 and thumb.ImageTransparency==1,"nil effective snapshot stays blank without capturing the live avatar")
 local effective={definition={shirt="effective"},items={1,2}}
 api.update({enabled=true,name="LocalAlias",snapshot=effective})
 assert(shows==2 and captures==1 and shownData ~= effective,"effective outfit signature drives one cached live capture")
@@ -68,5 +70,9 @@ assert(retryCaptures==1 and retryShows==0,"capture failure leaves thumbnails unt
 retry.update({enabled=true,name="LocalAlias",snapshot=effective})
 assert(retryCaptures==2 and retryShows==2,"capture retries when the cached preview is missing")
 retry.update({enabled=false,name="LocalAlias",snapshot=effective});retry.destroy()
+local failed=module.create(player,function() return {capture=function()return {live=true}end,show=function()return false end} end)
+failed.update({enabled=true,name="LocalAlias",snapshot=effective})
+assert(thumb.ImageTransparency==1,"render failure keeps the original avatar blank")
+failed.update({enabled=false,name="LocalAlias",snapshot=effective});failed.destroy()
 Instance,game,task,UDim2=InstanceOld,gameOld,taskOld,UDim2Old
 print("Native avatar ownership and overlay lifecycle passed.")

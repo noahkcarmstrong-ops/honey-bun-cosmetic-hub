@@ -97,7 +97,8 @@ local M = {isAvatarImage = isAvatarImage, hasOwnId = hasOwnId}
 function M.create(player, getPreviews)
     assert(player, "player is required"); assert(type(getPreviews) == "function", "getPreviews is required")
     local alive, enabled, currentName, previewSnapshot, effectiveKey = true, false, "", nil, nil
-    local overlays, overlayKeys, originalTransparency, hiddenImages, scanCount, renderedCount = {}, {}, {}, {}, 0, 0
+    local overlays, overlayKeys, originalTransparency, hiddenImages, connections, scanCount, renderedCount = {}, {}, {}, {}, {}, 0, 0
+    local transparencyConnections,textConnections={},{}
     local coreGui, available
     local status = "Native avatar thumbnails are disabled."
 
@@ -107,10 +108,17 @@ function M.create(player, getPreviews)
             originalTransparency[image] = nil; hiddenImages[image] = nil
         end
     end
-    local function destroyOverlay(image)
+    local function hideImage(image)
+        if not hiddenImages[image] then originalTransparency[image] = read(image, "ImageTransparency"); hiddenImages[image] = true end
+        pcall(function() image.ImageTransparency = 1 end)
+    end
+    local function restoreAllImages()
+        for image in pairs(hiddenImages) do restoreImage(image) end
+    end
+    local function destroyOverlay(image, restore)
         local overlay = overlays[image]
         if overlay then pcall(function() overlay:Destroy() end); overlays[image] = nil; overlayKeys[image] = nil end
-        restoreImage(image)
+        if restore ~= false then restoreImage(image) end
     end
     local function frameCamera(frame)
         local world = read(frame, "FindFirstChild") and frame:FindFirstChild("CharacterPreview")
@@ -130,11 +138,13 @@ function M.create(player, getPreviews)
         overlay.Name = "LarpbloxOwnAvatarPreview"
         overlay.Position = UDim2.fromScale(0, 0); overlay.Size = UDim2.fromScale(1, 1)
         overlay.BackgroundTransparency = 1; overlay.BorderSizePixel = 0
+        overlay.Visible = false
         overlay.ZIndex = (read(image, "ZIndex") or 1) + 1; overlay.Parent = image
         overlays[image] = overlay
         return overlay
     end
     local function render(image)
+        hideImage(image)
         if not previewSnapshot then return end
         if overlays[image] and overlayKeys[image] == effectiveKey then return end
         local ok, previews = pcall(getPreviews)
@@ -143,23 +153,68 @@ function M.create(player, getPreviews)
         local shown, result = pcall(function() return previews.show(overlay, previewSnapshot) end)
         if shown and result ~= false then
             overlayKeys[image] = effectiveKey; frameCamera(overlay); renderedCount = renderedCount + 1
-            if not hiddenImages[image] then originalTransparency[image] = read(image, "ImageTransparency"); hiddenImages[image] = true end
-            pcall(function() image.ImageTransparency = 1 end)
-        else destroyOverlay(image) end
+            pcall(function() overlay.Visible = true end)
+        else destroyOverlay(image, false) end
     end
+    local watch
     local function scan()
         if not alive or not enabled or not available then return end
         scanCount = scanCount + 1
         local descendants = {}; pcall(function() descendants = coreGui:GetDescendants() end)
         local seen = {}
         for _, object in ipairs(descendants) do
-            if isAvatarImage(object, player, {name = currentName}) then seen[object] = true; render(object) end
+            if isAvatarImage(object, player, {name = currentName}) then seen[object] = true;if watch then watch(object)end;render(object) end
         end
-        for image in pairs(overlays) do if not seen[image] then destroyOverlay(image) end end
+        for image in pairs(hiddenImages) do if not seen[image] then destroyOverlay(image) end end
+    end
+    watch=function(object)
+        if not enabled or not isAvatarImage(object, player, {name = currentName}) then return end
+        hideImage(object)
+        if not connections[object] then
+            local ok, signal = pcall(function() return object:GetPropertyChangedSignal("Image") end)
+            if ok and signal then
+                local connection
+                local connected = pcall(function() connection = signal:Connect(function()
+                    if alive and enabled and isAvatarImage(object, player, {name = currentName}) then hideImage(object) end
+                end) end)
+                if connected and connection then connections[object] = connection end
+            end
+            local okTransparency, transparencySignal = pcall(function() return object:GetPropertyChangedSignal("ImageTransparency") end)
+            if okTransparency and transparencySignal then
+                local transparencyConnection
+                pcall(function() transparencyConnection = transparencySignal:Connect(function()
+                    if alive and enabled and isAvatarImage(object, player, {name = currentName}) then hideImage(object) end
+                end) end)
+                if transparencyConnection then transparencyConnections[object] = transparencyConnection end
+            end
+        end
+    end
+    local function watchPeopleText(object)
+        local class = read(object, "ClassName")
+        if class ~= "TextLabel" and class ~= "TextButton" then return end
+        local people = false
+        for _, item in ipairs(ancestors(object)) do
+            local name = tostring(read(item, "Name") or ""):lower()
+            if name:find("people",1,true) then people = true; break end
+        end
+        if not people or textConnections[object] then return end
+        local ok, signal = pcall(function() return object:GetPropertyChangedSignal("Text") end)
+        if not ok or not signal then return end
+        local connection
+        pcall(function() connection = signal:Connect(function()
+            if alive and enabled then scan() end
+        end) end)
+        if connection then textConnections[object] = connection end
+        if enabled then scan()end
     end
     local ok = pcall(function() coreGui = game:GetService("CoreGui"); coreGui:GetDescendants() end)
     available = ok and coreGui ~= nil
     if not available then status = "Roblox CoreGui is unavailable; native avatar thumbnails could not be inspected." end
+    if available then
+        pcall(function() connections.core = coreGui.DescendantAdded:Connect(function(object)
+            watch(object); watchPeopleText(object)
+        end) end)
+    end
 
     local api = {}
     function api.update(options)
@@ -167,24 +222,54 @@ function M.create(player, getPreviews)
         local character = read(player, "Character")
         local effectiveSnapshot = options.snapshot
         local nextKey = signature(effectiveSnapshot) .. "|" .. tostring(character)
-        if enabled and (nextKey ~= effectiveKey or previewSnapshot == nil) then
+        if enabled and (nextKey~=effectiveKey or effectiveSnapshot==nil)then
+            previewSnapshot=nil
+            for image,overlay in pairs(overlays)do overlay.Visible=false;hideImage(image)end
+        end
+        if enabled then
+            local preflight = {}; pcall(function() preflight = coreGui:GetDescendants() end)
+            for _, object in ipairs(preflight) do watch(object); watchPeopleText(object) end
+        end
+        if enabled and effectiveSnapshot ~= nil and (nextKey ~= effectiveKey or previewSnapshot == nil) then
             previewSnapshot = nil
+            for image, overlay in pairs(overlays) do
+                pcall(function() overlay.Visible = false end)
+                hideImage(image)
+            end
             local okPreview, previews = pcall(getPreviews)
             if okPreview and previews and type(previews.capture) == "function" then
                 local capturedOk, captured = pcall(previews.capture)
                 if capturedOk then previewSnapshot = captured end
             end
         end
+        if enabled and effectiveSnapshot == nil then
+            previewSnapshot = nil
+            for image, overlay in pairs(overlays) do
+                pcall(function() overlay.Visible = false end)
+                hideImage(image)
+            end
+        end
         effectiveKey = nextKey
         if not enabled then
             previewSnapshot = nil
             for image in pairs(overlays) do destroyOverlay(image) end
+            restoreAllImages()
             status = "Native avatar thumbnails are disabled."; return api.report()
         end
         scan(); status = available and "Native avatar thumbnails active." or status; return api.report()
     end
     function api.report() return status .. " Scans: " .. tostring(scanCount) .. "; rendered: " .. tostring(renderedCount) .. "." end
-    function api.destroy() if not alive then return end; alive = false; for image in pairs(overlays) do destroyOverlay(image) end end
+    function api.destroy()
+        if not alive then return end
+        alive = false
+        for _, connection in pairs(connections) do pcall(function() connection:Disconnect() end) end
+        for _,group in ipairs({transparencyConnections,textConnections})do
+            for _,connection in pairs(group)do pcall(function()connection:Disconnect()end)end
+        end
+        connections = {};transparencyConnections={};textConnections={}
+        for image in pairs(overlays) do destroyOverlay(image) end
+        restoreAllImages()
+    end
     return api
 end
 

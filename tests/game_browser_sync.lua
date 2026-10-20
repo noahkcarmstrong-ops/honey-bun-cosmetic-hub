@@ -142,6 +142,7 @@ jobs={}
 local viewsSync=create(player,function()return avatar end,function()return clothing end,function()return true end,function()end,nil,function()return nameApi end,function()return {update=function(value)viewEvents[#viewEvents+1]=value end}end)
 task.wait=function()viewsSync.disconnect()end
 viewsSync.connect(string.rep("a",32));jobs[1]()
-assert(viewEvents[1].enabled==true and viewEvents[1].name=="" and viewEvents[1].snapshot,"blank name still enables live avatar views")
+assert(viewEvents[1].enabled==true and viewEvents[1].name=="" and not viewEvents[1].snapshot,"mode hides account previews before outfit loading")
+assert(viewEvents[2].enabled==true and viewEvents[2].snapshot,"effective outfit is delivered after the loading gate")
 assert(viewEvents[#viewEvents].enabled==false,"disconnect restores native views")
 print("Native view mode, effective outfit and disconnect forwarding passed.")

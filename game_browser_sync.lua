@@ -202,6 +202,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             local names=getNames()
             if state=="disabled" then names.setEnabled(false) else names.set(name,name) end
         end
+        if getViews then getViews().update({enabled=larpEnabled,name=larpName})end
         lastNameState=state
     end
     local function loop()
