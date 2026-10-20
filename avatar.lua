@@ -381,6 +381,12 @@ return function(player,onStatus)
         local candidate=accessory:Clone()
         dispose(objects)
         strip(candidate)
+        -- The original Dusekkar script gates these existing effects to user 916.
+        if id==1474657 then
+            for _,effect in ipairs(candidate:GetDescendants()) do
+                if effect:IsA("Fire") or effect:IsA("Smoke") then effect.Enabled=true end
+            end
+        end
         for _,item in ipairs(candidate:GetDescendants()) do
             if item:IsA("BasePart") then item.Anchored=false;item.CanCollide=false;item.CanTouch=false;item.Massless=true end
         end
