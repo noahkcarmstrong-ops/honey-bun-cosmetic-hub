@@ -64,7 +64,7 @@ end}
 local module=dofile("native_inspection.lua")
 local player={Name="Original",UserId=123}
 UDim2={fromScale=function(x,y)return {x,y}end,fromOffset=function(x,y)return {x,y}end,new=function(...)return {...}end}
-Vector2={new=function(x,y)return {x,y}end}
+Vector2={new=function(x,y)return {X=x,Y=y}end}
 local captures,shows=0,0
 local failRender=false
 local livePreview={version=1,records={{class="MeshPart",name="LiveLarpHat"}}}
