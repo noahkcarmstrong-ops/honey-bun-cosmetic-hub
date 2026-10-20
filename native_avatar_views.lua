@@ -535,7 +535,10 @@ function M.create(player, getPreviews)
     local api = {}
     function api.update(options)
         options = options or {}; local wasEnabled=enabled; local previousName=currentName
-        enabled = options.enabled == true; currentName = tostring(options.name or ""); currentImage = tostring(options.image or ""); if currentImage == "" then currentImage = nil end
+        enabled = options.enabled == true; currentName = tostring(options.name or "")
+        -- Browser PNGs can include an opaque backdrop. Native in-game portraits
+        -- use the captured model so the surrounding UI remains visible.
+        currentImage = nil
         local character = read(player, "Character")
         local effectiveSnapshot = options.snapshot
         local nextKey = signature(effectiveSnapshot) .. "|" .. tostring(character) .. "|" .. tostring(currentImage or "")

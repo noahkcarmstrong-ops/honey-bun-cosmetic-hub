@@ -480,7 +480,8 @@ function M.create(player,getPreviews)
                 task.spawn(function()pcall(function()game:GetService("ContentProvider"):PreloadAsync(thumbs)end)end)
             end
         end
-        currentImage=type(options.image)=="string" and options.image~="" and options.image or nil
+        -- Use the transparent model preview; browser PNG backdrops are baked in.
+        currentImage=nil
         if not currentSnapshot then previewData=nil;previewKey=nil end
         local alias=tostring(options.name or "")
         local name=alias~="" and alias or player.Name
