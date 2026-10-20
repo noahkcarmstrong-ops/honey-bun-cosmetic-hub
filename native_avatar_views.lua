@@ -154,6 +154,14 @@ local M = {isAvatarImage = isAvatarImage, hasOwnId = hasOwnId}
 -- All subjects share the native image's authored transparency. A second
 -- renderer must never save the first renderer's masking value as its baseline.
 local imageStates = setmetatable({}, {__mode="k"})
+-- A refresh can load a new copy of this module. Keep renderer ownership across
+-- module copies so the old instance is retired before a new one starts.
+local rendererOwners={}
+if type(getgenv)=="function" then
+    local environment=getgenv()
+    if type(environment.__LarpbloxPortraitOwners)~="table" then environment.__LarpbloxPortraitOwners={} end
+    rendererOwners=environment.__LarpbloxPortraitOwners
+end
 local function authoredTransparency(image)
     local current=read(image,"ImageTransparency")
     if current~=1 then return current end
@@ -179,6 +187,9 @@ end
 
 function M.create(player, getPreviews)
     assert(player, "player is required"); assert(type(getPreviews) == "function", "getPreviews is required")
+    local ownerKey=tostring(read(player,"UserId"))
+    local previousOwner=rendererOwners[ownerKey]
+    if previousOwner and type(previousOwner.destroy)=="function" then pcall(previousOwner.destroy) end
     local alive, enabled, currentName, currentImage, previewSnapshot, effectiveKey = true, false, "", nil, nil, nil
     local overlays, overlayKeys, hiddenImages, connections, scanCount, renderedCount = {}, {}, {}, {}, 0, 0
     local transparencyConnections,textConnections,geometryConnections={},{},{}
@@ -534,6 +545,7 @@ function M.create(player, getPreviews)
 
     local api = {}
     function api.update(options)
+        if not alive then return api.report() end
         options = options or {}; local wasEnabled=enabled; local previousName=currentName
         enabled = options.enabled == true; currentName = tostring(options.name or "")
         -- Browser PNGs can include an opaque backdrop. Native in-game portraits
@@ -584,6 +596,7 @@ function M.create(player, getPreviews)
     function api.destroy()
         if not alive then return end
         alive = false
+        if rendererOwners[ownerKey]==api then rendererOwners[ownerKey]=nil end
         for _, connection in pairs(connections) do pcall(function() connection:Disconnect() end) end
         for _,group in ipairs({transparencyConnections,textConnections})do
             for _,connection in pairs(group)do pcall(function()connection:Disconnect()end)end
@@ -596,6 +609,7 @@ function M.create(player, getPreviews)
         restoreAllImages()
         if stagingFolder then stagingFolder:Destroy();stagingFolder=nil end
     end
+    rendererOwners[ownerKey]=api
     return api
 end
 

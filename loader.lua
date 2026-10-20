@@ -1510,28 +1510,28 @@ gui.Destroying:Connect(function()
     connection:Disconnect()
     for object,tween in pairs(tweens) do tween:Cancel();tweens[object]=nil end
     respawn:Disconnect()
-    if atmosphereAPI then atmosphereAPI.destroy() end
-    if mm2EmoteBarAPI then mm2EmoteBarAPI.destroy() end
-    if mm2EmotesNativeAPI then mm2EmotesNativeAPI.destroy() end
-    if mm2EffectsNativeAPI then mm2EffectsNativeAPI.destroy() end
-    if mm2EffectsAPI then mm2EffectsAPI.destroy() end
-    if mm2EffectsLibraryAPI then mm2EffectsLibraryAPI.destroy() end
-    if mm2WeaponEditorAPI then mm2WeaponEditorAPI.destroy() end
-    if mm2SavedNativeAPI then mm2SavedNativeAPI.destroy() end
-    if mm2NativeAPI then mm2NativeAPI.destroy() end
-    if mm2API then mm2API.destroy() end
-    if crosshairAPI then crosshairAPI.destroy() end
-    if accessorySoundsAPI then accessorySoundsAPI.destroy() end
-    if sharedLarpAPI then sharedLarpAPI.destroy() end
-    if gameBrowserSyncAPI then gameBrowserSyncAPI.destroy() end
-    if nativeViewsAPI then nativeViewsAPI.destroy() end
-    if localNamesAPI then localNamesAPI.destroy() end
-    if persistence then persistence.destroy() end
-    if avatarAPI then avatarAPI.destroy() end
-    if motionAPI then motionAPI.destroy() end
-    if animationAPI then animationAPI.destroy() end
-    if clothesAPI then clothesAPI.destroy() end
-    if previewsAPI and previewsAPI.destroy then previewsAPI.destroy() end
+    if atmosphereAPI then pcall(atmosphereAPI.destroy) end
+    if mm2EmoteBarAPI then pcall(mm2EmoteBarAPI.destroy) end
+    if mm2EmotesNativeAPI then pcall(mm2EmotesNativeAPI.destroy) end
+    if mm2EffectsNativeAPI then pcall(mm2EffectsNativeAPI.destroy) end
+    if mm2EffectsAPI then pcall(mm2EffectsAPI.destroy) end
+    if mm2EffectsLibraryAPI then pcall(mm2EffectsLibraryAPI.destroy) end
+    if mm2WeaponEditorAPI then pcall(mm2WeaponEditorAPI.destroy) end
+    if mm2SavedNativeAPI then pcall(mm2SavedNativeAPI.destroy) end
+    if mm2NativeAPI then pcall(mm2NativeAPI.destroy) end
+    if mm2API then pcall(mm2API.destroy) end
+    if crosshairAPI then pcall(crosshairAPI.destroy) end
+    if accessorySoundsAPI then pcall(accessorySoundsAPI.destroy) end
+    if sharedLarpAPI then pcall(sharedLarpAPI.destroy) end
+    if gameBrowserSyncAPI then pcall(gameBrowserSyncAPI.destroy) end
+    if nativeViewsAPI then pcall(nativeViewsAPI.destroy) end
+    if localNamesAPI then pcall(localNamesAPI.destroy) end
+    if persistence then pcall(persistence.destroy) end
+    if avatarAPI then pcall(avatarAPI.destroy) end
+    if motionAPI then pcall(motionAPI.destroy) end
+    if animationAPI then pcall(animationAPI.destroy) end
+    if clothesAPI then pcall(clothesAPI.destroy) end
+    if previewsAPI and previewsAPI.destroy then pcall(previewsAPI.destroy) end
 end)
 trace("Showing menu")
 panelScale.Scale=0.975
