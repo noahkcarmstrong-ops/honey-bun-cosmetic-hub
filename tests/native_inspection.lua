@@ -6,7 +6,7 @@ local function signal()
 end
 local function node(class,name,parent)
     local x={ClassName=class,Name=name or class,Visible=true,Enabled=true,Text="",children={},destroyed=false,DescendantAdded=signal(),signals={}}
-    function x:IsA(k)return k==self.ClassName or k=="GuiObject" and (self.ClassName=="Frame" or self.ClassName=="ImageButton" or self.ClassName=="ViewportFrame" or self.ClassName=="TextLabel")end
+    function x:IsA(k)return k==self.ClassName or k=="GuiObject" and (self.ClassName=="Frame" or self.ClassName=="ImageButton" or self.ClassName=="ImageLabel" or self.ClassName=="ViewportFrame" or self.ClassName=="TextLabel")end
     function x:GetDescendants()
         local out={};local function walk(v)for _,c in ipairs(v.children)do out[#out+1]=c;walk(c)end end;walk(self);return out
     end
@@ -46,6 +46,8 @@ local closeButton=child(inspect,"ImageButton","CloseButton")
 local title=child(inspect,"TextLabel","Title");title.Text="Original's Avatar";title.Visible=false
 local viewport=child(inspect,"ViewportFrame","AvatarViewport");viewport.ImageTransparency=0.2;viewport.AbsolutePosition={X=111,Y=222};viewport.AbsoluteSize={X=200,Y=250}
 local itemContent=child(inspect,"Frame","ItemDetails");local itemLabel=child(itemContent,"TextLabel","ItemName");itemLabel.Text="Original item"
+local loadingContainer=child(inspect,"Frame","ViewportContainer")
+local loadingImage=child(loadingContainer,"ImageLabel","AvatarLoadingImage");loadingImage.ImageTransparency=0.3
 local world=child(viewport,"WorldModel","WorldModel")
 local model=child(world,"Model","Avatar")
 local renderedHumanoid=child(model,"Humanoid","Humanoid")
@@ -76,7 +78,7 @@ local function previewGui()
 end
 local function liveOverlay()
  local parent=previewGui();if not parent then return end
- for _,object in ipairs(parent.children)do if object.Name=="LarpbloxInspectPreview" and not object.destroyed then return object end end
+ for _,object in ipairs(core:GetDescendants())do if object.Name=="LarpbloxInspectPreview" and not object.destroyed then return object end end
 end
 local snapshot={version=1,definition={assets={{id=100,meta=nil},{id=200,meta={order=3,puffiness=0.35}}},scales={height=1.1,width=0.9,depth=1.05,head=1.2,proportion=0.4,bodyType=0.7},bodyColors={headColor="#112233",torsoColor="445566"}},items={{id=100,assetType=11,name="Larp Shirt"},{id=200,assetType=67},{id=301,assetType=8},{id=302,assetType=41},{id=303,assetType=42},{id=304,assetType=79},{id=305,assetType=12},{id=306,assetType=8}}}
 title.Text="LarpAlias's Avatar"
@@ -87,7 +89,7 @@ title.Visible=true;title:GetPropertyChangedSignal("Visible"):Fire()
 title.Text="LarpAlias's Avatar";title:GetPropertyChangedSignal("Text"):Fire()
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
 assert(#inspectCalls==1 and inspectCalls[1].name=="LarpAlias","local native inspection is requested with the alias")
-assert(viewport.ImageTransparency==1,"the account preview is hidden before native loading starts")
+assert(viewport.ImageTransparency==1 and loadingImage.ImageTransparency==1,"both native loading thumbnail and 3D account preview are hidden before loading")
 assert(closeButton.Visible,"close control stays usable while Larp content loads")
 assert(inspect.Visible==true and not title.Visible and not itemContent.Visible and title.Text=="LarpAlias's Avatar","the native shell stays visible while old avatar and item content are quarantined")
 inspect.Visible=true;inspect:GetPropertyChangedSignal("Visible"):Fire()
@@ -115,11 +117,18 @@ title=child(inspect,"TextLabel","HeaderText");title.Text="LarpAlias's Avatar";co
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
 assert(liveOverlay() and liveOverlay().Visible and previewGui().Enabled,"a remounted alias heading must keep the own avatar rendering")
 
-assert(liveOverlay().Position[1]==111 and liveOverlay().Position[2]==222 and liveOverlay().Size[1]==200 and liveOverlay().Size[2]==250,"live preview follows the native viewport bounds")
+assert(liveOverlay().Parent==viewport and liveOverlay().Position[1]==0 and liveOverlay().Position[2]==0 and liveOverlay().Size[1]==1 and liveOverlay().Size[2]==1,"live preview lives inside the native viewport and follows its layout")
 itemLabel.Text="Original item";boundGuard()
 assert(not itemContent.Visible,"a stale original item cannot be revealed by the new Larp title")
 itemLabel.Text="Larp Shirt";boundGuard()
 assert(itemContent.Visible,"matching Larp items reveal after their content arrives")
+local assetThumb=child(itemContent,"ImageLabel","Thumbnail");assetThumb.Image="rbxthumb://type=Asset&id=100&w=150&h=150"
+itemLabel.Text="Catalog name differs from local accessory name";boundGuard()
+assert(itemContent.Visible,"owned asset IDs reveal cards even when their catalog names differ")
+assetThumb.Image="rbxthumb://type=Asset&id=999&w=150&h=150";boundGuard()
+assert(not itemContent.Visible,"a different account item ID stays hidden")
+assetThumb.Image="";itemLabel.Text="Larp Shirt";boundGuard()
+
 -- Reopening an already-mounted native inspector must mask its viewport in the
 -- Visible signal itself, before the render-step guard gets a chance to run.
 inspect.Visible=false;inspect:GetPropertyChangedSignal("Visible"):Fire()

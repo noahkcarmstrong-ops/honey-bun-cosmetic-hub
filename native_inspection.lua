@@ -90,11 +90,26 @@ function M.create(player,getPreviews)
             end
         end
     end
+    local function nativeAvatarVisual(object)
+        if object.Name==overlayName then return false end
+        if object:IsA("ViewportFrame") then return true end
+        if not (object:IsA("ImageLabel") or object:IsA("ImageButton")) then return false end
+        local ancestor=object.Parent
+        while ancestor do
+            if ancestor.Name==overlayName then return false end
+            if ancestor.Name=="ViewportContainer" then return true end
+            if ancestor.Name:find("InspectAndBuy",1,true) then break end
+            ancestor=ancestor.Parent
+        end
+        return false
+    end
     local function panelVisibility(root,show)
         local targets={}
-        local itemNames={}
+        local itemNames,itemIds={},{}
+        local function normalized(value)return tostring(value or ""):match("^%s*(.-)%s*$"):lower()end
         for _,item in ipairs(currentSnapshot and currentSnapshot.items or {})do
-            if type(item.name)=="string" then itemNames[item.name]=true end
+            if type(item.name)=="string" then itemNames[normalized(item.name)]=true end
+            itemIds[tostring(item.id)]=true
         end
         local function larpItems(object)
             local labels={object}
@@ -103,7 +118,30 @@ function M.create(player,getPreviews)
             for _,label in ipairs(labels)do
                 if label:IsA("TextLabel") and string.lower(label.Name or "")=="itemname" then
                     found=true
-                    if not itemNames[label.Text] then return false end
+                    if not itemNames[normalized(label.Text)] then
+                        local matched=false
+                        local card=label.Parent
+                        for depth=1,4 do
+                            if not card then break end
+                            local images,labels={},0
+                            for _,child in ipairs(card:GetDescendants())do
+                                if child:IsA("TextLabel") and child.Name:lower()=="itemname" then labels=labels+1 end
+                                if child:IsA("ImageLabel") or child:IsA("ImageButton") then
+                                    local image=tostring(child.Image or "")
+                                    local id=image:match("^rbxthumb://type=Asset&id=(%d+)[&]")
+                                    if id then images[#images+1]=id end
+                                end
+                            end
+                            if labels>1 then break end
+                            if #images>0 then
+                                matched=true;for _,id in ipairs(images)do if not itemIds[id] then matched=false end end
+                                break
+                            end
+                            if card==object then break end
+                            card=card.Parent
+                        end
+                        if not matched then return false end
+                    end
                 end
             end
             return found
@@ -131,7 +169,7 @@ function M.create(player,getPreviews)
                         panels[object]=nil
                     end
                 end
-                if object:IsA("ViewportFrame") or (object:IsA("TextLabel") and object.Text:match("'s Avatar$")) or itemContent then
+                if nativeAvatarVisual(object) or (object:IsA("TextLabel") and object.Text:match("'s Avatar$")) or itemContent then
                     targets[#targets+1]={object=object,itemContent=itemContent}
                 end
             end
@@ -178,6 +216,7 @@ function M.create(player,getPreviews)
     end
     local function restoreMasks()
         restorePanels()
+        if fallbackEntry and fallbackEntry.overlay then fallbackEntry.overlay:Destroy()end
         if fallbackGui then fallbackGui:Destroy();fallbackGui=nil;fallbackEntry=nil end
         for viewport,entry in pairs(masked)do
             if entry.connection then entry.connection:Disconnect()end
@@ -206,6 +245,7 @@ function M.create(player,getPreviews)
                             overlay.Visible=false;overlay.ZIndex=10
                             entry.overlay=overlay;overlay.Parent=parent
                         end
+                        entry.overlay.Parent=parent
                         if entry.key~=key then
                             if currentImage then entry.overlay.Image=currentImage
                             else assert(previews and previews.show(entry.overlay,previewData)~=false,"Local avatar preview could not render.") end
@@ -223,7 +263,7 @@ function M.create(player,getPreviews)
         local label,title,root=ownTitle(currentName,preserveLive)
         previewLabel=label
         if not label or not root then
-            if fallbackGui then fallbackGui.Enabled=false end
+            if fallbackGui then fallbackGui.Enabled=false;if fallbackEntry and fallbackEntry.overlay then fallbackEntry.overlay.Visible=false end end
             -- Return shared native containers to normal when another player is inspected.
             for object,entry in pairs(panels)do
                 local other=false
@@ -255,8 +295,8 @@ function M.create(player,getPreviews)
         local objects=root:GetDescendants()
         local nativeViewport
         for _,viewport in ipairs(objects)do
-            if viewport:IsA("ViewportFrame") and viewport.Name~=overlayName then
-                nativeViewport=nativeViewport or viewport
+            if nativeAvatarVisual(viewport) then
+                if viewport:IsA("ViewportFrame") then nativeViewport=nativeViewport or viewport end
                 local entry=masked[viewport]
                 if not entry then
                     entry={original=viewport.ImageTransparency or 0};masked[viewport]=entry
@@ -280,16 +320,13 @@ function M.create(player,getPreviews)
                 fallbackGui.Enabled=false;fallbackGui.Parent=core
                 fallbackEntry={}
             end
-            renderPreview(fallbackEntry,fallbackGui)
+            renderPreview(fallbackEntry,nativeViewport or fallbackGui)
             local overlay=fallbackEntry.overlay
             if overlay then
-                local position=nativeViewport and nativeViewport.AbsolutePosition
-                local size=nativeViewport and nativeViewport.AbsoluteSize
-                local hasBounds=position and size and position.X and position.Y and size.X and size.Y and size.X>0 and size.Y>0
-                if hasBounds then
+                if nativeViewport then
                     overlay.AnchorPoint=Vector2.new(0,0)
-                    overlay.Position=UDim2.fromOffset(position.X,position.Y)
-                    overlay.Size=UDim2.fromOffset(size.X,size.Y)
+                    overlay.Position=UDim2.fromScale(0,0)
+                    overlay.Size=UDim2.fromScale(1,1)
                     fallbackGui.Enabled=overlay.Visible==true and larpTitle
                 else
                     -- Older layouts expose no usable viewport bounds; use the title as a fallback.
@@ -346,7 +383,7 @@ function M.create(player,getPreviews)
             connections[#connections+1]=core.DescendantAdded:Connect(function(object)
                 local scoped=watchTitle(object)
                 if scoped and modeEnabled then quarantineUnknownPanels()end
-                if scoped and (object:IsA("ViewportFrame") or (object:IsA("TextLabel") and object.Text:match("'s Avatar$")))then maskPreview(false)end
+                if scoped and (nativeAvatarVisual(object) or (object:IsA("TextLabel") and object.Text:match("'s Avatar$")))then maskPreview(false)end
             end)
         end)
     end
@@ -358,6 +395,7 @@ function M.create(player,getPreviews)
             if modeEnabled then maskPreview(false,true)end
             if fallbackGui and fallbackGui.Enabled and (not modeEnabled or not previewLabel or not previewLabel.Parent or not visible(previewLabel))then
                 fallbackGui.Enabled=false
+                if fallbackEntry and fallbackEntry.overlay then fallbackEntry.overlay.Visible=false end
             end
         end
         if run.BindToRenderStep then
