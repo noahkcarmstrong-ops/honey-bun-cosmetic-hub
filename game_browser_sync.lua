@@ -31,7 +31,8 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local imageValue,imageAsset,imageUrl,imageSerial=nil,nil,nil,0
     local nextSocketPing=0
     local loadingImageUrl
-    local lastDefinition
+    local lastDefinition,imageAssetDefinition
+    local commandSnapshotPending=false
     local file="larpblox-browser-pair-"..tostring(player.UserId)..".txt"
     local cache,assetTypes,bodyCache={},{},{}
     local function status(message)if onStatus and isAlive() then onStatus(message)end end
@@ -87,7 +88,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         return table.concat(values,"|")
     end
     local function currentImage()
-        return imageAsset and imageValue and definitionKey(imageValue.definition)==definitionKey(lastDefinition) and imageAsset or nil
+        return imageAsset and imageAssetDefinition and definitionKey(imageAssetDefinition)==definitionKey(lastDefinition) and imageAsset or nil
     end
     local function updateViews()
         if getViews then getViews().update({enabled=larpEnabled,name=larpName,snapshot=lastSnapshot,image=currentImage()})end
@@ -98,7 +99,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         if type(url)~="string" or #url>2048 or not (url:match("^https://tr%.rbxcdn%.com/[%w%-%._~/]+$") or url:match("^https://t%d%.rbxcdn%.com/[%w%-%._~/]+$")) then return end
         if type(value.definition)~="table" then return end
         imageValue=value
-        if imageUrl==url and imageAsset then updateViews();return end
+        if imageUrl==url and imageAsset then imageAssetDefinition=value.definition;updateViews();return end
         local custom=getcustomasset or getsynasset
         if type(custom)~="function" or type(writefile)~="function" then return end
         if loadingImageUrl==url then return end
@@ -114,7 +115,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             return custom(path)
         end)
         if loadingImageUrl==url then loadingImageUrl=nil end
-        if ok and type(result)=="string" and mine==generation and imageValue and imageValue.imageUrl==url then imageAsset=result;imageUrl=url;updateViews()
+        if ok and type(result)=="string" and mine==generation and imageValue and imageValue.imageUrl==url then imageAsset=result;imageUrl=url;imageAssetDefinition=imageValue.definition;updateViews()
         elseif not ok then status("Browser avatar image: "..tostring(result))end
     end
     local function snapshot()
@@ -292,7 +293,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             elseif #wantedAnimations>0 then loadErrors[#loadErrors+1]="Reload the connected script to enable movement animations." end
             if #loadErrors>0 then error(table.concat(loadErrors,"; "))end
         end)
-        if ok then lastRevision=revision;lastDefinition=value.definition end
+        if ok then lastRevision=revision;lastDefinition=value.definition;commandSnapshotPending=true end
         if not ok then status("Browser outfit failed: "..tostring(msg)) elseif #failed>0 then status("Browser outfit applied; unsupported items: "..table.concat(failed,", ")) else status("Browser outfit applied locally.") end
     end
     local function applyNameState(value)
@@ -332,6 +333,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local function publishSnapshot()
         local made,value=pcall(snapshot)
         if made then
+            if commandSnapshotPending then
+                commandSnapshotPending=false
+            elseif not lastDefinition or (lastSnapshot and definitionKey(value.definition)~=definitionKey(lastSnapshot.definition)) then
+                lastDefinition=value.definition
+            end
             lastSnapshot=value
             local encoded=HttpService:JSONEncode(value)
             if encoded~=lastJson then send("game",value);lastJson=encoded end

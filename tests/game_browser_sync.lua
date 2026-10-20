@@ -219,17 +219,27 @@ writefile=function(path,bytes)if path:match("%.png$")then pngWritten=bytes:sub(1
 viewEvents={}
 jobs={};local socketSync=create(player,function()return avatar end,function()return clothing end,function()return true end,function()end,nil,function()return nameApi end,function()return {update=function(value)viewEvents[#viewEvents+1]=value end}end)
 local socketStatus
+local refreshCycle=0
+local customLoads=0
+getcustomasset=function()customLoads=customLoads+1;return customLoads==1 and "rbxasset://custom-avatar.png" or "rbxasset://updated-avatar.png"end
 task.wait=function()
-    for i=2,#jobs do jobs[i]()end
+    refreshCycle=refreshCycle+1
+    for i=refreshCycle==1 and 2 or 1,#jobs do jobs[i]()end
+    jobs={}
     socketStatus=socketSync.status()
-    local received=false;for _,value in ipairs(viewEvents)do if value.image=="rbxasset://custom-avatar.png"then received=true end end
-    assert(pngWritten and received,"browser PNG loads as a custom asset and forwards to native views")
-    socketSync.disconnect()
+    local expected=refreshCycle==1 and "rbxasset://custom-avatar.png" or "rbxasset://updated-avatar.png"
+    local received=false;for _,value in ipairs(viewEvents)do if value.image==expected then received=true end end
+    assert(pngWritten and received,refreshCycle==1 and "browser PNG loads as a custom asset and forwards to native views" or "image refreshes after an in-game outfit change without another browser command")
+    if refreshCycle==1 then
+        extraTypes[24]=8;localHats={{key=24,id=24,name="Changed in game"}}
+        local updated=socketSync.publish()
+        messageHandler({type="state",channel="image",value={version=1,userId="7",definition=updated.definition,imageUrl="https://tr.rbxcdn.com/Updated-Png/420/420/Avatar/Png/noFilter"}})
+    else socketSync.disconnect()end
 end
 socketSync.connect(string.rep("a",32));jobs[1]()
 assert(sent[1].type=="auth" and sent[1].role=="game" and sent[1].userId=="7","WebSocket authenticates account and role")
 assert(socketStatus=="Browser connected via WebSocket.","WebSocket reports active transport")
-assert(#localHats==1 and localHats[1].id==23,"pushed command applies outfit")
+assert(#localHats==1 and localHats[1].id==24,"in-game outfit change remains equipped")
 local published=false;for _,value in ipairs(sent)do if value.type=="publish" and value.channel=="game" then published=true end end
 assert(published and closed,"game snapshot publishes over socket and disconnect closes it")
 WebSocket=nil
