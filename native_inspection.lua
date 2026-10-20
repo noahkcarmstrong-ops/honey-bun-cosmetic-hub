@@ -250,11 +250,20 @@ function M.create(player,getPreviews)
                             overlay.Size=UDim2.fromScale(1,1);overlay.Position=UDim2.fromScale(0,0)
                             overlay.Visible=false;overlay.ZIndex=10
                             entry.overlay=overlay;overlay.Parent=parent
+                            overlay:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+                                if modeEnabled and overlay.Parent and overlay:IsA("ViewportFrame") and previews.frameThumbnail then
+                                    previews.frameThumbnail(overlay)
+                                end
+                            end)
                         end
                         entry.overlay.Parent=parent
                         if entry.key~=key then
                             if currentImage then entry.overlay.Image=currentImage
-                            else assert(previews and previews.show(entry.overlay,previewData)~=false,"Local avatar preview could not render.") end
+                            else
+                                assert(previews and previews.show(entry.overlay,previewData)~=false,"Local avatar preview could not render.")
+                                if previews.poseThumbnail then previews.poseThumbnail(entry.overlay) end
+                                if previews.frameThumbnail then previews.frameThumbnail(entry.overlay) end
+                            end
                             entry.key=key
                         end
                         if modeEnabled and (entry==fallbackEntry or masked[parent]==entry) then entry.overlay.Visible=true end

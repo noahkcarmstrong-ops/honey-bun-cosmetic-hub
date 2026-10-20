@@ -259,31 +259,8 @@ function M.create(player, getPreviews)
     end
     local function posePortrait(frame,image)
         if not fullPortrait(image) then return end
-        local model=frame:FindFirstChild("Avatar",true)
-        if not model then return end
-        local function transform(names,pivot,rotation)
-            local delta=CFrame.new(pivot)*rotation*CFrame.new(-pivot)
-            for _,name in ipairs(names) do
-                local part=model:FindFirstChild(name)
-                if part then part.CFrame=delta*part.CFrame end
-            end
-        end
-        for _,side in ipairs({"Left","Right"}) do
-            local upper=model:FindFirstChild(side.."UpperArm")
-            local lower=model:FindFirstChild(side.."LowerArm")
-            if upper then
-                local pivot=upper.CFrame:PointToWorldSpace(Vector3.new(0,upper.Size.Y/2,0))
-                transform({side.."UpperArm",side.."LowerArm",side.."Hand"},pivot,
-                    CFrame.Angles(0,0,math.rad(side=="Left" and -9 or 9)))
-            end
-            if lower then
-                local pivot=lower.CFrame:PointToWorldSpace(Vector3.new(0,lower.Size.Y/2,0))
-                transform({side.."LowerArm",side.."Hand"},pivot,CFrame.Angles(math.rad(12),0,0))
-            end
-        end
-        frame.Ambient=Color3.new(0.55,0.55,0.55)
-        frame.LightColor=Color3.new(0.85,0.85,0.85)
-        frame.LightDirection=Vector3.new(-1,-1,-2)
+        local ok,previews=pcall(getPreviews)
+        if ok and previews and previews.poseThumbnail then previews.poseThumbnail(frame) end
     end
     local function frameCamera(frame, image)
         local world=frame:FindFirstChild("CharacterPreview")
@@ -292,6 +269,10 @@ function M.create(player, getPreviews)
         if not (model and camera) then return end
         local source=tostring(read(image,"Image") or ""):lower()
         local full=fullPortrait(image)
+        if full then
+            local ok,previews=pcall(getPreviews)
+            if ok and previews and previews.frameThumbnail then previews.frameThumbnail(frame);return end
+        end
         local bust=source:find("avatarbust",1,true) or source:find("bust-thumbnail",1,true)
             or tostring(read(image,"Name") or ""):lower()=="charactericon"
         local min,max

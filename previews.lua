@@ -376,6 +376,62 @@ return function(player)
         camera.CFrame = CFrame.lookAt and CFrame.lookAt(position, center) or CFrame.new(position, center)
         return true
     end
+    -- Static presentation shared by native People cards and avatar inspection.
+    function api.poseThumbnail(frame)
+        local model=frame:FindFirstChild("Avatar",true)
+        if not model then return end
+        local function transform(names,pivot,rotation)
+            local delta=CFrame.new(pivot)*rotation*CFrame.new(-pivot)
+            for _,name in ipairs(names) do
+                local part=model:FindFirstChild(name)
+                if part then part.CFrame=delta*part.CFrame end
+            end
+        end
+        for _,side in ipairs({"Left","Right"}) do
+            local upper=model:FindFirstChild(side.."UpperArm")
+            local lower=model:FindFirstChild(side.."LowerArm")
+            if upper then
+                local pivot=upper.CFrame:PointToWorldSpace(Vector3.new(0,upper.Size.Y/2,0))
+                transform({side.."UpperArm",side.."LowerArm",side.."Hand"},pivot,
+                    CFrame.Angles(0,0,math.rad(side=="Left" and -9 or 9)))
+            end
+            if lower then
+                local pivot=lower.CFrame:PointToWorldSpace(Vector3.new(0,lower.Size.Y/2,0))
+                transform({side.."LowerArm",side.."Hand"},pivot,CFrame.Angles(math.rad(12),0,0))
+            end
+        end
+        frame.Ambient=Color3.new(0.55,0.55,0.55)
+        frame.LightColor=Color3.new(0.85,0.85,0.85)
+        frame.LightDirection=Vector3.new(-1,-1,-2)
+    end
+    function api.frameThumbnail(frame)
+        local model=frame:FindFirstChild("Avatar",true)
+        local camera=frame.CurrentCamera
+        if not (model and camera) then return end
+        local min,max
+        local bodyParts={Head=true,Torso=true,UpperTorso=true,LowerTorso=true,
+            ["Left Arm"]=true,["Right Arm"]=true,["Left Leg"]=true,["Right Leg"]=true,
+            LeftUpperArm=true,LeftLowerArm=true,LeftHand=true,RightUpperArm=true,RightLowerArm=true,RightHand=true,
+            LeftUpperLeg=true,LeftLowerLeg=true,LeftFoot=true,RightUpperLeg=true,RightLowerLeg=true,RightFoot=true}
+        for _,part in ipairs(model:GetChildren()) do
+            if part:IsA("BasePart") and bodyParts[part.Name] then
+                for x=-1,1,2 do for y=-1,1,2 do for z=-1,1,2 do
+                    local point=part.CFrame:PointToWorldSpace(Vector3.new(part.Size.X*x/2,part.Size.Y*y/2,part.Size.Z*z/2))
+                    min=min and Vector3.new(math.min(min.X,point.X),math.min(min.Y,point.Y),math.min(min.Z,point.Z)) or point
+                    max=max and Vector3.new(math.max(max.X,point.X),math.max(max.Y,point.Y),math.max(max.Z,point.Z)) or point
+                end end end
+            end
+        end
+        if not min then return end
+        local center=(min+max)/2
+        local size=max-min
+        local absolute=frame.AbsoluteSize
+        local aspect=absolute.Y>0 and math.max(absolute.X/absolute.Y,0.1) or 1
+        camera.FieldOfView=35
+        local distance=math.max(size.Y/2,size.X/(2*aspect),0.5)/math.tan(math.rad(camera.FieldOfView/2))*1.15+size.Z/2
+        local direction=Vector3.new(math.sin(math.rad(18)),0.06,-math.cos(math.rad(18))).Unit
+        camera.CFrame=CFrame.lookAt(center+direction*distance,center)
+    end
     function api.destroy()
         alive=false
         for _,source in pairs(meshSources)do source:Destroy()end
