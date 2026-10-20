@@ -60,7 +60,8 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     end
     local function peerApis(player)
         local playerGui
-        pcall(function()playerGui=player:FindFirstChildOfClass("PlayerGui")end)
+        -- Other players' names are displayed in this client's GUI.
+        pcall(function()playerGui=localPlayer:FindFirstChildOfClass("PlayerGui")end)
         local function callback(message)status("Shared appearance for "..player.Name..": "..tostring(message))end
         return {
             avatar=createAvatar(player,callback),
