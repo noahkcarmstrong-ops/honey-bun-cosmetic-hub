@@ -118,6 +118,7 @@ end)
 local gui = Instance.new("ScreenGui")
 trace("Building menu")
 gui.Name = "HoneyBunCosmeticHub"
+gui:SetAttribute("LarpbloxIgnoreNameOverride", true)
 gui.DisplayOrder = 100
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling

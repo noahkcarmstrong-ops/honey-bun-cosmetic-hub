@@ -1,250 +1,216 @@
--- Local-only username/display-name cosmetic. It never changes Roblox identity.
+-- Local presentation only. Identity comes from real players, never UI paths.
 local function trim(value) return tostring(value or ""):match("^%s*(.-)%s*$") end
-local function validUsername(value)
-    return value == "" or (#value >= 3 and #value <= 20 and value:match("^[A-Za-z0-9_]+$"))
+local function pattern(value) return value:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1") end
+local function escape(value) return value:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;") end
+local function plain(value, rich)
+    if not rich then return value end
+    return value:gsub("<[^>]*>", ""):gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&quot;", '"'):gsub("&apos;", "'"):gsub("&amp;", "&")
 end
-local function validDisplay(value)
-    return value == "" or (#value >= 1 and #value <= 50 and not value:find("[%c]"))
+local controllers, identities, usernames, displays = {}, {}, {}, {}
+local entries = setmetatable({}, {__mode="k"})
+local buckets, rootConnections, rosterConnections = {}, {}, {}
+local coreGui, players
+pcall(function() coreGui=game:GetService("CoreGui") end)
+pcall(function() players=game:GetService("Players") end)
+
+local function addName(index, name, id)
+    if index[name] == nil then index[name]=id elseif index[name] ~= id then index[name]=false end
 end
-local function pattern(value) return tostring(value):gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1") end
-local function isTextObject(object)
-    return object and object.IsA and (object:IsA("TextLabel") or object:IsA("TextButton"))
-end
-local function ancestors(object)
-    local result = {}; local current = object
-    while current do result[#result + 1] = current; current = current.Parent end
-    return result
-end
-local function hasOwnId(object, player)
-    local id = tostring(player.UserId or "")
-    if id == "" then return false end
-    for _, item in ipairs(ancestors(object)) do
-        local name = tostring(item.Name or "")
-        if name == id or name == "PlayerEntry_" .. id or name == "p_" .. id or name=="PlayerLabel"..player.Name then return true end
-        for _, key in ipairs({"UserId", "UserID", "PlayerId", "playerId"}) do
-            local ok, value = pcall(function() return item:GetAttribute(key) end)
-            if ok and tostring(value or "") == id then return true end
+local function rebuildIdentities(leavingId)
+    usernames, displays = {}, {}
+    local roster = {}
+    if players then pcall(function() roster=players:GetPlayers() end) end
+    for _, player in ipairs(roster) do
+        if player.UserId~=leavingId and not identities[player.UserId] then
+            identities[player.UserId]={username=player.Name, display=player.DisplayName}
         end
     end
-    return false
+    local present={}
+    for _, player in ipairs(roster) do if player.UserId~=leavingId then present[player.UserId]=true end end
+    for id, identity in pairs(identities) do
+        if present[id] or controllers[id] then
+            addName(usernames, identity.username, id)
+            addName(displays, identity.display, id)
+        else identities[id]=nil end
+    end
 end
-local function isHubOwned(object)
-    for _, item in ipairs(ancestors(object)) do if tostring(item.Name or "") == "HoneyBunCosmeticHub" then return true end end
-    return false
+local function resolve(entry)
+    local text=plain(entry.source,entry.object.RichText==true):gsub(" %(You%)$", "")
+    local name=text:match("^@(.+)$") or text:match("^(.-)'s%s") or text
+    local id=usernames[name]
+    if id==nil then id=displays[name] end
+    if id==nil then return nil end
+    -- Explicit conflicting identity wins over coincidentally matching text.
+    local ancestor=entry.object
+    local explicitId
+    while ancestor do
+        local ok, ignored=pcall(function() return ancestor:GetAttribute("LarpbloxIgnoreNameOverride") end)
+        if ok and ignored then return nil end
+        for _, key in ipairs({"UserId","UserID","PlayerId","playerId"}) do
+            local success,value=pcall(function() return ancestor:GetAttribute(key) end)
+            local found=success and tonumber(value)
+            if found then
+                if explicitId and explicitId~=found then return nil end
+                explicitId=found
+            end
+        end
+        ancestor=ancestor.Parent
+    end
+    if explicitId then
+        local identity=identities[explicitId]
+        if identity and (name==identity.username or name==identity.display) then return explicitId end
+        return nil
+    end
+    return id or nil
 end
-local function walk(root, fn)
-    if not root then return end
-    pcall(function() fn(root) end)
-    local descendants
-    pcall(function() descendants = root:GetDescendants() end)
-    for _, item in ipairs(descendants or {}) do pcall(fn, item) end
+local function replacement(entry, controller)
+    if not controller or not controller.settings.enabled then return entry.source end
+    local identity=identities[controller.id]
+    local settings=controller.settings
+    local username=settings.username~="" and settings.username or identity.username
+    local display=settings.displayName~="" and settings.displayName or identity.display
+    if entry.object.RichText then username,display=escape(username),escape(display) end
+    -- Rewrite text segments only, preserving markup and its attributes.
+    local function segment(text)
+        -- One substitution pass prevents aliases from being substituted again.
+        local matches={}
+        for _,pair in ipairs({{identity.username,username},{identity.display,display}}) do
+            local cursor=1
+            while true do
+                local first,last=text:find("%f[%w_]"..pattern(pair[1]).."%f[^%w_]",cursor)
+                if not first then break end
+                matches[#matches+1]={first,last,pair[2]};cursor=last+1
+            end
+        end
+        table.sort(matches,function(a,b) return a[1]<b[1] or (a[1]==b[1] and a[2]>b[2]) end)
+        local out,cursor={},1
+        for _,match in ipairs(matches) do
+            if match[1]>=cursor then out[#out+1]=text:sub(cursor,match[1]-1);out[#out+1]=match[3];cursor=match[2]+1 end
+        end
+        out[#out+1]=text:sub(cursor);return table.concat(out)
+    end
+    if not entry.object.RichText then return segment(entry.source) end
+    local out,cursor={},1
+    while true do
+        local first,last=entry.source:find("<[^>]*>",cursor)
+        if not first then out[#out+1]=segment(entry.source:sub(cursor));break end
+        out[#out+1]=segment(entry.source:sub(cursor,first-1));out[#out+1]=entry.source:sub(first,last);cursor=last+1
+    end
+    return table.concat(out)
+end
+local function render(entry)
+    local value=replacement(entry,controllers[entry.id])
+    if entry.object.Text==value then return end
+    entry.written=value
+    pcall(function() entry.object.Text=value end)
+end
+local function bind(entry)
+    if entry.id and buckets[entry.id] then buckets[entry.id][entry]=nil end
+    entry.id=resolve(entry)
+    if entry.id then
+        buckets[entry.id]=buckets[entry.id] or setmetatable({}, {__mode="k"})
+        buckets[entry.id][entry]=true
+    end
+    render(entry)
+end
+local function unwatch(object)
+    local entry=entries[object]
+    if not entry then return end
+    if entry.id and buckets[entry.id] then buckets[entry.id][entry]=nil end
+    for _,connection in ipairs(entry.connections) do connection:Disconnect() end
+    entries[object]=nil
+end
+local function watch(object)
+    if entries[object] or not (object:IsA("TextLabel") or object:IsA("TextButton")) then return end
+    local entry={object=object,source=object.Text,connections={}}
+    entries[object]=entry
+    entry.connections[#entry.connections+1]=object:GetPropertyChangedSignal("Text"):Connect(function()
+        if object.Text==entry.written then return end
+        entry.written=nil;entry.source=object.Text;bind(entry)
+    end)
+    entry.connections[#entry.connections+1]=object:GetPropertyChangedSignal("RichText"):Connect(function() bind(entry) end)
+    bind(entry)
+end
+local function watchRoot(root)
+    if not root or rootConnections[root] then return end
+    local ok, descendants=pcall(function() return root:GetDescendants() end)
+    if not ok then return end
+    local connections={}
+    rootConnections[root]=connections
+    connections[#connections+1]=root.DescendantAdded:Connect(watch)
+    connections[#connections+1]=root.DescendantRemoving:Connect(unwatch)
+    for _,object in ipairs(descendants) do watch(object) end
+end
+local function refreshRoster(leavingId)
+    rebuildIdentities(leavingId)
+    for _,entry in pairs(entries) do bind(entry) end
 end
 
 return function(player, playerGui, gameObject)
-    local settings = {enabled = false, username = "", displayName = ""}
-    local originals, watchedObjects, connections, roots = {}, {}, {}, {}
-    local writtenText = setmetatable({}, {__mode="k"})
-    local alive, applying, builtInAvailable = true, false, false
-    local coreGuiRoot, coreGuiChanges = nil, 0
-    local originalUsername = tostring(player.Name or "")
-    local originalDisplay = tostring(player.DisplayName or originalUsername)
-    local characterChanged, watchedRoots = nil, {}
-    local status = "Names are local only."
-
-    -- Browser relay is the only source of name settings. Ignore older menu saves.
-    local function targetUsername() return settings.username ~= "" and settings.username or originalUsername end
-    local function targetDisplay() return settings.displayName ~= "" and settings.displayName or originalDisplay end
-    local function visibleText(text) return tostring(text or ""):gsub("<[^>]->", "") end
-    local function escapeRich(value) return tostring(value):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;") end
-    local function matchesName(text, name)
-        return text == name or text == "@" .. name or text:match("^" .. pattern(name) .. "'s%f[^%w_]") ~= nil
+    local id=player.UserId
+    assert(not controllers[id],"Name presentation already exists for this player")
+    local knownIdentity=identities[id]~=nil
+    local controller={id=id,settings={enabled=false,username="",displayName=""}}
+    controllers[id]=controller
+    identities[id]=identities[id] or {username=player.Name,display=player.DisplayName or player.Name}
+    local originalDisplay=identities[id].display
+    rebuildIdentities()
+    if not knownIdentity then
+        -- Only a new identity can change existing labels' resolution.
+        for _,entry in pairs(entries) do bind(entry) end
     end
-    local function replaceText(text, rich)
-        if type(text) ~= "string" then return text end
-        local username, display = targetUsername(), targetDisplay()
-        if rich then username, display = escapeRich(username), escapeRich(display) end
-        if text == "@"..originalUsername then return "@"..username end
-        if text == originalUsername then return username end
-        if text == originalDisplay then return display end
-        local plain=visibleText(text):gsub(" %(You%)$", "")
-        if not matchesName(plain, originalUsername) and not matchesName(plain, originalDisplay) then return text end
-        -- Replace only text between tags; this preserves RichText attributes and tags.
-        local out, cursor = {}, 1
-        while true do
-            local start, finish, tag = text:find("<[^>]*>", cursor)
-            if not start then
-                local chunk = text:sub(cursor):gsub("%f[%w_]" .. pattern(originalUsername) .. "%f[^%w_]", function() return username end)
-                out[#out + 1] = chunk:gsub("%f[%w_]" .. pattern(originalDisplay) .. "%f[^%w_]", function() return display end); break
-            end
-            local chunk = text:sub(cursor, start - 1):gsub("%f[%w_]" .. pattern(originalUsername) .. "%f[^%w_]", function() return username end)
-            out[#out + 1] = chunk:gsub("%f[%w_]" .. pattern(originalDisplay) .. "%f[^%w_]", function() return display end)
-            out[#out + 1] = text:sub(start, finish); cursor = finish + 1
-        end
-        return table.concat(out)
+    if #rosterConnections==0 and players then
+        rosterConnections[#rosterConnections+1]=players.PlayerAdded:Connect(function() refreshRoster() end)
+        rosterConnections[#rosterConnections+1]=players.PlayerRemoving:Connect(function(leaving)
+            identities[leaving.UserId]=nil
+            -- PlayerRemoving fires before GetPlayers drops the player.
+            local identity=controllers[leaving.UserId]
+            if identity then identity.settings.enabled=false end
+            refreshRoster(leaving.UserId)
+        end)
     end
-    local function inCore(object)
-        for _, ancestor in ipairs(ancestors(object)) do if ancestor == coreGuiRoot then return true end end
-        return false
+    watchRoot(coreGui);watchRoot(playerGui);watchRoot(gameObject);watchRoot(game.Workspace)
+    local humanoids={}
+    local function applyHumanoid(character)
+        local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+        if not humanoid then return end
+        if humanoids[humanoid]==nil then humanoids[humanoid]=humanoid.DisplayName end
+        local settings=controller.settings
+        pcall(function()
+            humanoid.DisplayName=settings.enabled and (settings.displayName~="" and settings.displayName or originalDisplay) or humanoids[humanoid]
+        end)
     end
-    -- Roblox Client Tracker: TeamListView keys rows as PlayerEntry_<userId>.
-    -- PlayerNameTag renders PlayerName from the user-profile name service;
-    -- PlayerListDisplayView uses TitlePlayer for the local mobile entry.
-    local function nativeName(object)
-        if object.Name ~= "PlayerName" or not inCore(object) then return false end
-        if hasOwnId(object,player) then return true end
-        local title,list=false,false
-        for _,ancestor in ipairs(ancestors(object)) do
-            if ancestor.Name=="TitlePlayer" then title=true end
-            if ancestor.Name=="PlayerList" then list=true end
-        end
-        return title and list
-    end
-    local function ownMenuRow(object)
-        if not inCore(object) then return false end
-        local current=object.Parent
-        for depth=1,5 do
-            if not current then break end
-            local ok,children=pcall(function()return current:GetDescendants()end)
-            if not ok or #children>120 then break end
-            local own,other,texts=false,false,0
-            for _,child in ipairs(children)do
-                if isTextObject(child)then
-                    texts=texts+1
-                    local text=originals[child] or child.Text
-                    if text=="@"..originalUsername then own=true
-                    elseif type(text)=="string" and text:match("^@[%w_]+$")then other=true end
-                end
-            end
-            if own and not other and texts<=8 then return true end
-            current=current.Parent
-        end
-        return false
-    end
-    local function inspectName(object)
-        -- MM2 reuses this panel for every selected player without an identity
-        -- attribute. Only its dedicated name slot is eligible; candidate() still
-        -- requires the selected player's original name before replacing it.
-        if object.Name ~= "Username" then return false end
-        local container = object.Parent
-        local inspect = container and container.Parent
-        local leaderboard = inspect and inspect.Parent
-        if not container or container.Name ~= "Container"
-            or not inspect or inspect.Name ~= "Inspect"
-            or not leaderboard or leaderboard.Name ~= "Leaderboard" then return false end
-        if not container:FindFirstChild("Profile") or not container:FindFirstChild("Trade") then return false end
-        for _, ancestor in ipairs(ancestors(leaderboard)) do
-            if ancestor == playerGui then return true end
-        end
-        return false
-    end
-    local function owned(object)
-        if inspectName(object) then return true end
-        if hasOwnId(object,player) or nativeName(object) or ownMenuRow(object) then return true end
-        for _,item in ipairs(ancestors(object)) do
-            if item==player.Character or item.Name==originalUsername then return true end
-        end
-        return false
-    end
-    local function candidate(object)
-        if not isTextObject(object) or isHubOwned(object) or not owned(object) then return false end
-        if nativeName(object) then return true end
-        local plain=visibleText(object.Text):gsub(" %(You%)$", "")
-        return matchesName(plain, originalUsername) or matchesName(plain, originalDisplay)
-    end
-    local function applyText(object)
-        local original=originals[object]
-        if not original or not owned(object) then return end
-        local replacement
-        if nativeName(object) and (settings.displayName~="" or settings.username~="") then
-            replacement=settings.displayName~="" and settings.displayName or settings.username
-            if object.RichText then replacement=escapeRich(replacement) end
-        else replacement=replaceText(original,object.RichText==true) end
-        if replacement==object.Text then return end
-        writtenText[object]=replacement
-        applying=true
-        local ok=pcall(function() object.Text=replacement end)
-        applying=false
-        if ok and inCore(object) then coreGuiChanges=coreGuiChanges+1 end
-    end
-    local function watch(object)
-        if not isTextObject(object) or isHubOwned(object) then return end
-        if watchedObjects[object] then
-            if not originals[object] and candidate(object) then originals[object]=object.Text end
-            if settings.enabled then applyText(object) end
-            return
-        end
-        watchedObjects[object]=true
-        if candidate(object) then originals[object]=object.Text end
-        local changed
-        pcall(function() changed=object:GetPropertyChangedSignal("Text"):Connect(function()
-            if not alive or applying or not settings.enabled then return end
-            -- Property events may be deferred until after our write guard resets.
-            if object.Text==writtenText[object] then return end
-            writtenText[object]=nil
-            if not candidate(object) then originals[object]=nil;return end
-            originals[object]=object.Text
-            if settings.enabled then
-                applyText(object)
-            end
-        end) end)
-        if changed then connections[#connections+1]=changed end
-        if settings.enabled then applyText(object) end
-    end
-    local function restoreText()
-        applying = true
-        for object, original in pairs(originals) do if owned(object) then pcall(function() object.Text = original end) end end
-        applying = false
-    end
-    local function humanoid(character)
-        local h; pcall(function() h = character and character:FindFirstChildOfClass("Humanoid") end)
-        if not h then return end
-        local original = h.DisplayName
-        if settings.enabled then pcall(function() h.DisplayName = targetDisplay() end) end
-        if not roots[h] then roots[h] = original end
-    end
-    local function restoreHumanoids()
-        for h, original in pairs(roots) do pcall(function() h.DisplayName = original end) end
-        roots = {}
-    end
-    local function scan(root)
-        walk(root, watch)
-        if root and not watchedRoots[root] then
-            watchedRoots[root] = true
-            pcall(function() connections[#connections + 1] = root.DescendantAdded:Connect(watch) end)
-        end
-    end
-    local ok = pcall(function() coreGuiRoot = game:GetService("CoreGui") end)
-    if ok and coreGuiRoot then
-        builtInAvailable=pcall(function() coreGuiRoot:GetDescendants() end)
-        if builtInAvailable then scan(coreGuiRoot) end
-    end
-    if not builtInAvailable then status="Names are local only. Built-in player list is unavailable." end
-    scan(playerGui); scan(gameObject)
-    local workspaceRoot; pcall(function() workspaceRoot = game.Workspace end); scan(workspaceRoot)
-    pcall(function() characterChanged = player.CharacterAdded:Connect(function(character) restoreHumanoids(); humanoid(character); scan(character) end) end)
-    humanoid(player.Character)
+    local characterConnection=player.CharacterAdded:Connect(applyHumanoid)
     local function refresh()
-        if not settings.enabled then restoreText(); restoreHumanoids(); return end
-        scan(coreGuiRoot); scan(playerGui); scan(gameObject); scan(workspaceRoot); humanoid(player.Character)
-        for object in pairs(originals) do applyText(object) end
+        local settings=controller.settings
+        -- Prefer the player's local presentation property for future UI reads.
+        -- Keep immutable real names in the identity index and never change Name.
+        local display=settings.enabled and settings.displayName~="" and settings.displayName or originalDisplay
+        pcall(function() if player.DisplayName~=display then player.DisplayName=display end end)
+        for entry in pairs(buckets[id] or {}) do render(entry) end
+        applyHumanoid(player.Character)
     end
-    local api = {}
-    function api.set(username, displayName)
-        username, displayName = trim(username), trim(displayName)
-        assert(validUsername(username), "Username must be 3-20 ASCII letters, numbers, or underscores.")
-        assert(validDisplay(displayName), "Display name must be 1-50 characters without control characters.")
-        settings.username, settings.displayName = username, displayName; settings.enabled = true; refresh()
-        return api.report()
+    local api={}
+    function api.set(username,displayName)
+        username,displayName=trim(username),trim(displayName)
+        assert(username=="" or (#username>=3 and #username<=20 and username:match("^[A-Za-z0-9_]+$")),"Username must be 3-20 ASCII letters, numbers, or underscores.")
+        assert(#displayName<=50 and not displayName:find("[%c]"),"Display name must be 1-50 characters without control characters.")
+        controller.settings={enabled=true,username=username,displayName=displayName};refresh();return api.report()
     end
-    function api.setEnabled(value) settings.enabled = value == true; refresh(); return api.report() end
-    function api.getSettings() return {enabled=settings.enabled, username=settings.username, displayName=settings.displayName} end
-    function api.restore() settings.username, settings.displayName = "", ""; settings.enabled = false; refresh(); return "Original names restored locally." end
-    function api.report() return status .. (settings.enabled and " Override enabled locally; Roblox interface text changes: " .. tostring(coreGuiChanges) .. "." or " Override disabled.") end
+    function api.setEnabled(value) controller.settings.enabled=value==true;refresh();return api.report() end
+    function api.getSettings() local s=controller.settings;return {enabled=s.enabled,username=s.username,displayName=s.displayName} end
+    function api.restore() controller.settings={enabled=false,username="",displayName=""};refresh();return "Original names restored locally." end
+    function api.report() return "Names are local only. "..(controller.settings.enabled and "Override enabled locally." or "Override disabled.") end
     function api.destroy()
-        if not alive then return end
-        alive = false; if characterChanged then characterChanged:Disconnect() end
-        for _, connection in ipairs(connections) do pcall(function() connection:Disconnect() end) end
-        restoreText(); restoreHumanoids()
+        if controllers[id]~=controller then return end
+        api.restore();characterConnection:Disconnect();controllers[id]=nil
+        for humanoid,original in pairs(humanoids) do pcall(function() humanoid.DisplayName=original end) end
+        if next(controllers)==nil then
+            for object in pairs(entries) do unwatch(object) end
+            for _,connections in pairs(rootConnections) do for _,connection in ipairs(connections) do connection:Disconnect() end end
+            for _,connection in ipairs(rosterConnections) do connection:Disconnect() end
+            rootConnections,rosterConnections,buckets,identities={},{},{},{}
+        end
     end
     return api
 end
