@@ -199,7 +199,7 @@ content.Parent = panel
 local layout = Instance.new("UIListLayout", content)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
-local avatarAPI,motionAPI,animationAPI,clothesAPI,charactersAPI,previewsAPI,browserOutfitAPI,gameBrowserSyncAPI
+local avatarAPI,motionAPI,animationAPI,clothesAPI,previewsAPI,browserOutfitAPI,gameBrowserSyncAPI
 local refresh = Instance.new("TextButton")
 refresh.Position = UDim2.new(1, -126, 0, 62)
 refresh.Size = UDim2.fromOffset(98, 26)
@@ -280,7 +280,7 @@ if crosshairSize~=crosshairSize or crosshairSize<8 or crosshairSize>200 then cro
 local crosshairInput=crosshairImage
 local alive, busy, activePage = true, false, uiSetting("page","Accessories")
 local actionRunning=false
-if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" and activePage~="Characters" and activePage~="Atmosphere" and not (isMM2 and activePage=="MM2") then activePage="Accessories" end
+if activePage~="Accessories" and activePage~="Clothes" and activePage~="Skin" and activePage~="Body" and activePage~="Emotes" and activePage~="Animations" and activePage~="Atmosphere" and not (isMM2 and activePage=="MM2") then activePage="Accessories" end
 local statusText = "Local avatar editor. Saved selections reapply automatically."
 local statusLabel, render,lastRenderedPage
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
@@ -315,10 +315,6 @@ local function storeSkies(entries)
 end
 local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animationBundle","")
 local shirtInput,pantsInput=uiSetting("shirt",""),uiSetting("pants","")
-local characterName=uiSetting("characterName","")
-local deleteCharacter,characterMenu,characterDialog
-local characterMenuAction=0
-local characterSearch=""
 local bodyPartRegions={"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"}
 local bodyPartNames={"Head","Torso","Left arm","Right arm","Left leg","Right leg"}
 local bodyPartInputs={}
@@ -337,7 +333,6 @@ local function saveUI()
     local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,browserOutfit=browserOutfitInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animationBundle=animationInput,emoteSlot=emoteSlot,shirt=shirtInput,pants=pantsInput}
     values.skybox=skyboxInput
     values.bodyPartsOpen=bodyPartsOpen
-    values.characterName=characterName
     values.copyPlayer=copyPlayerInput
     values.mm2KnifeSide=knifeSide
     values.mm2Crosshair=crosshairImage
@@ -491,16 +486,14 @@ local function localNames()
     localNamesAPI=chunk()(Players.LocalPlayer,playerGui)
     return localNamesAPI
 end
-local function characterModules()
+local function previews()
+    if previewsAPI then return previewsAPI end
     api()
-    local function load(name)
-        local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/"..name..".lua",false)
-        local chunk,message=loadstring(source);assert(chunk,message)
-        assert(alive,"Menu was closed.")
-        return chunk()
-    end
-    if not charactersAPI then charactersAPI=load("characters")(playerGui) end
-    if not previewsAPI then previewsAPI=load("previews")(Players.LocalPlayer) end
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/previews.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    assert(alive,"Menu was closed.")
+    previewsAPI=chunk()(Players.LocalPlayer)
+    return previewsAPI
 end
 local function nativeViews()
     if nativeViewsAPI then return nativeViewsAPI end
@@ -508,14 +501,12 @@ local function nativeViews()
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_avatar_views.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     local portraits=chunk().create(Players.LocalPlayer,function()
-        if not previewsAPI then characterModules()end
-        return previewsAPI
+        return previews()
     end)
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inspection.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     local inspection=chunk().create(Players.LocalPlayer,function()
-        if not previewsAPI then characterModules()end
-        return previewsAPI
+        return previews()
     end)
     nativeViewsAPI={}
     function nativeViewsAPI.update(options)
@@ -550,29 +541,6 @@ local function reapplyAll(editor)
         if ok and type(message)=="string" and message:find("some could not load",1,true) then failures[#failures+1]=message end
     end
     return #failures==0 and "Saved selections restored." or ("Some saved selections could not load: "..failures[1]),#failures==0
-end
-local characterKeys={"HoneyBunCosmeticSettings","HoneyBunCosmeticEmotes","HoneyBunCosmeticClothes","HoneyBunCosmeticAnimationBundle"}
-local function currentCharacterValues()
-    local values={}
-    for _,key in ipairs(characterKeys) do values[key]=playerGui:GetAttribute(key) end
-    return values
-end
-local function loadCharacterValues(values)
-    -- Recreate editors so their cached settings and original appearance agree.
-    for _,editor in pairs({clothesAPI,motionAPI,animationAPI}) do editor.destroy() end
-    if avatarAPI then avatarAPI.destroy() end
-    avatarAPI,motionAPI,animationAPI,clothesAPI=nil,nil,nil,nil
-    for _,key in ipairs(characterKeys) do playerGui:SetAttribute(key,values[key]) end
-    return reapplyAll(api())
-end
-local function equipCharacter(id)
-    local saved=charactersAPI.get(id)
-    assert(saved,"That saved character is no longer available.")
-    local previous=currentCharacterValues()
-    local ok,message,complete=pcall(loadCharacterValues,saved.values)
-    if ok and complete then return "Equipped "..saved.name..". This is now your saved look for resets and rejoining." end
-    local restored,_,all=pcall(loadCharacterValues,previous)
-    error((ok and message or tostring(message))..((restored and all) and " Your previous look was restored." or " Use Reapply saved cosmetics after your avatar finishes loading."))
 end
 local function action(callback,independent)
     if busy or not alive then return end
@@ -733,7 +701,7 @@ local function enableMM2Emotes()
 end
 render=function()
     if not alive then return end
-    local savedScroll=(activePage=="Characters" or activePage=="Atmosphere") and lastRenderedPage==activePage and content.CanvasPosition
+    local savedScroll=(activePage=="Atmosphere") and lastRenderedPage==activePage and content.CanvasPosition
     local pageChanged=lastRenderedPage~=activePage
     lastRenderedPage=activePage
     if pageChanged then
@@ -751,13 +719,11 @@ render=function()
         item.TextColor3=selected and Color3.fromRGB(255,255,255) or theme.ink
         smooth(item,{BackgroundColor3=state.over and state.hover or state.base})
     end
-    if activePage~="Characters" then limits.MaxSize=Vector2.new(520,760) end
+    limits.MaxSize=Vector2.new(520,760)
     statusLabel,persistenceLabel=nil,nil
-    if activePage~="Characters" then
-        statusLabel=caption(statusText,56)
-        statusLabel.AutomaticSize=Enum.AutomaticSize.Y
-        persistenceLabel=caption(persistence and persistence.status() or persistenceNotice,44)
-    end
+    statusLabel=caption(statusText,56)
+    statusLabel.AutomaticSize=Enum.AutomaticSize.Y
+    persistenceLabel=caption(persistence and persistence.status() or persistenceNotice,44)
     if activePage=="MM2" and isMM2 then
         caption(mm2MenuOpen and "MM2 MENU" or "MURDER MYSTERY 2",24)
         if mm2MenuOpen then
@@ -977,153 +943,6 @@ render=function()
             caption("Open your dedicated MM2 menu below.",40)
             button("Open MM2 menu",function() mm2MenuOpen=true;render() end)
         end
-    elseif activePage=="Characters" then
-        limits.MaxSize=Vector2.new(1050,850)
-        local toolbar=row("Frame",34)
-        local search=Instance.new("TextBox",toolbar)
-        search.Name="CharacterSearch";search.Size=UDim2.new(1,-176,1,0)
-        search.BackgroundColor3=Color3.fromRGB(255,255,255);search.BorderSizePixel=1;search.BorderColor3=theme.edge
-        search.Font=Enum.Font.SourceSans;search.TextSize=13;search.TextColor3=theme.ink
-        search.PlaceholderText="Search by name...";search.PlaceholderColor3=theme.muted
-        search.Text=characterSearch;search.ClearTextOnFocus=false
-        Instance.new("UICorner",search).CornerRadius=UDim.new(0,2)
-        local create=Instance.new("TextButton",toolbar)
-        create.Position=UDim2.new(1,-166,0,0);create.Size=UDim2.fromOffset(166,34)
-        styleButton(create,"Create New Character")
-        create.Activated:Connect(function()
-            if busy then return end
-            characterDialog={kind="create"};characterMenu=nil;characterName="";render()
-        end)
-        if characterDialog then
-            local rename=characterDialog.kind=="rename"
-            caption(rename and "Rename Character" or "Create New Character",24)
-            local field=input("Character name",characterName,function(value) characterName=value end)
-            button(rename and "Save Name" or "Create",function()
-                if busy then return end
-                characterName=field.Text;saveUI()
-                local dialog=characterDialog
-                action(function()
-                    characterModules()
-                    local saved
-                    if dialog.kind=="rename" then saved=charactersAPI.rename(dialog.id,characterName)
-                    else saved=charactersAPI.save(characterName,previewsAPI.capture()) end
-                    characterName="";characterDialog=nil;characterSearch="";saveUI()
-                    return "Saved "..saved.name.."."
-                end)
-            end)
-            button("Cancel",function() if not busy then characterDialog=nil;render() end end)
-        end
-        if charactersAPI then
-            local saved=charactersAPI.list()
-            local grid=row("Frame",0);grid.Name="CharacterGrid"
-            local arrangement=Instance.new("UIGridLayout",grid)
-            arrangement.SortOrder=Enum.SortOrder.LayoutOrder;arrangement.CellPadding=UDim2.fromOffset(10,20)
-            local cards={}
-            local empty=caption(#saved==0 and "No characters yet. Choose Create New Character to save your current look." or "No characters found.",44)
-            local function fitGrid()
-                local width=grid.AbsoluteSize and grid.AbsoluteSize.X or 440
-                if width<=0 then width=440 end
-                local columns=math.max(1,math.floor((width+10)/134))
-                local cell=(width-(columns-1)*10)/columns
-                arrangement.FillDirectionMaxCells=columns
-                arrangement.CellSize=UDim2.new(1/columns,-10*(columns-1)/columns,0,cell+38)
-                local count=0
-                for _,entry in ipairs(cards) do
-                    entry.card.Visible=entry.name:lower():find(characterSearch:lower(),1,true)~=nil
-                    if entry.card.Visible then count=count+1 end
-                end
-                local rows=math.ceil(count/columns)
-                grid.Size=UDim2.new(1,-8,0,rows>0 and rows*(cell+58)-20 or 0)
-                empty.Visible=count==0
-            end
-            for index,entry in ipairs(saved) do
-                local id,name=entry.id,entry.name
-                local card=Instance.new("Frame",grid)
-                card.Name="CharacterCard_"..id;card.BackgroundTransparency=1;card.LayoutOrder=index
-                cards[#cards+1]={card=card,name=name}
-                local image=Instance.new("TextButton",card)
-                image.Name="EquipCharacter_"..id;image.Text="";image.BorderSizePixel=0
-                image.Size=UDim2.new(1,0,1,-38);image.BackgroundColor3=theme.button
-                animateButton(image)
-                Instance.new("UICorner",image).CornerRadius=UDim.new(0,2)
-                image.Activated:Connect(function() action(function() return equipCharacter(id) end) end)
-                local viewport=Instance.new("ViewportFrame",image)
-                viewport.Name="CharacterPreview_"..id;viewport.Position=UDim2.new(0.06,0,0.04,0);viewport.Size=UDim2.new(0.88,0,0.92,0)
-                viewport.BackgroundTransparency=1;viewport.Active=false
-                local previewData,previewAPI=entry.preview,previewsAPI
-                task.spawn(function()
-                    local shown,result=false,false
-                    if previewAPI then shown,result=pcall(previewAPI.show,viewport,previewData) end
-                    if alive and image.Parent and (not shown or not result) then
-                        local missing=text(image,"Preview unavailable",UDim2.new(0,4,0.4,0),UDim2.new(1,-8,0,30),10,190)
-                        missing.TextWrapped=true
-                    end
-                end)
-                local title=text(card,name,UDim2.new(0,0,1,-32),UDim2.new(1,-2,0,32),16,235)
-                title.Font=Enum.Font.SourceSansBold;title.TextWrapped=true;title.TextTruncate=Enum.TextTruncate.AtEnd;title.TextYAlignment=Enum.TextYAlignment.Top
-                local cog=Instance.new("TextButton",image)
-                cog.Name="CharacterOptions_"..id;cog.Text="⚙";cog.Font=Enum.Font.SourceSans;cog.TextSize=20
-                cog.Size=UDim2.fromOffset(30,30);cog.Position=UDim2.new(1,-31,0,1)
-                cog.BackgroundTransparency=1;cog.TextColor3=theme.ink;cog.Rotation=0
-                animateButton(cog);cog.ZIndex=5
-                cog.Activated:Connect(function()
-                    if busy then return end
-                    if characterMenu==id then characterMenu=nil else characterMenu=id end
-                    deleteCharacter=nil;characterMenuAction=characterMenuAction+1
-                    local actionId=characterMenuAction
-                    smooth(cog,{Rotation=90},0.26)
-                    local scale=cog:FindFirstChild("UIScale")
-                    if scale then
-                        smooth(scale,{Scale=0.84},0.08)
-                        task.delay(0.08,function()
-                            if alive and actionId==characterMenuAction then smooth(scale,{Scale=1},0.14) end
-                        end)
-                    end
-                    task.delay(0.26,function()
-                        if alive and not busy and actionId==characterMenuAction and cog.Parent then render() end
-                    end)
-                end)
-                if characterMenu==id then
-                    local menu=Instance.new("Frame",image)
-                    menu.Name="CharacterMenu_"..id;menu.Size=UDim2.new(1,0,1,0)
-                    menu.Active=true;menu.BackgroundColor3=theme.paper;menu.BackgroundTransparency=0.04;menu.BorderSizePixel=0;menu.ZIndex=3
-                    Instance.new("UICorner",menu).CornerRadius=UDim.new(0,2)
-                    local function option(label,position,callback)
-                        local item=Instance.new("TextButton",menu)
-                        item.Text=label;item.Font=Enum.Font.SourceSansSemibold;item.TextSize=12
-                        item.TextColor3=theme.ink;item.BackgroundTransparency=0
-                        item.BackgroundColor3=theme.button;animateButton(item)
-                        item.Position=UDim2.new(0,0,position,0);item.Size=UDim2.new(1,0,0.20,0);item.ZIndex=4
-                        item.Activated:Connect(callback)
-                    end
-                    if deleteCharacter==id then
-                        option("Confirm delete",0.34,function() action(function()
-                            charactersAPI.delete(id);deleteCharacter=nil;characterMenu=nil
-                            return "Deleted "..name..". Your equipped look stays on."
-                        end) end)
-                        option("Cancel",0.56,function() if not busy then deleteCharacter=nil;characterMenu=nil;render() end end)
-                    else
-                        option("Update",0.17,function() action(function()
-                            local saved=charactersAPI.update(id,previewsAPI.capture());characterMenu=nil
-                            return "Updated "..saved.name.." with your current look."
-                        end) end)
-                        option("Rename",0.37,function()
-                            if busy then return end
-                            characterDialog={kind="rename",id=id};characterName=name;characterMenu=nil;render()
-                        end)
-                        option("Delete",0.57,function() if not busy then deleteCharacter=id;render() end end)
-                        option("Cancel",0.77,function() if not busy then characterMenu=nil;render() end end)
-                    end
-                end
-            end
-            search:GetPropertyChangedSignal("Text"):Connect(function() characterSearch=search.Text;fitGrid() end)
-            grid:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitGrid)
-            fitGrid()
-        else
-            caption("Open this tab again to load your saved characters.",40)
-        end
-        caption(statusText,44)
-        caption(persistence and persistence.status() or persistenceNotice,44)
     elseif activePage=="Accessories" then
         caption("ACCESSORIES",24)
         caption("BROWSER CONNECTION",24)
@@ -1558,7 +1377,7 @@ render=function()
         button("Restore original body",function() action(function(editor) return editor.restoreBody() end) end)
         caption("R6 and R15 use different body parts. Unsupported packages show a message instead of changing your avatar rig.",48)
     end
-    if activePage~="Characters" and activePage~="MM2" and activePage~="Atmosphere" then
+    if activePage~="MM2" and activePage~="Atmosphere" then
     button("Reapply saved cosmetics",function() action(reapplyAll) end)
     button("Restore original appearance",function() action(function(editor)
         if motionAPI then motionAPI.restore() end
@@ -1569,21 +1388,20 @@ render=function()
     end
     if savedScroll then content.CanvasPosition=savedScroll end
 end
-local pages={"Accessories", "Clothes", "Skin", "Body", "Emotes", "Animations", "Characters", "Atmosphere"}
+local pages={"Accessories", "Clothes", "Skin", "Body", "Emotes", "Animations", "Atmosphere"}
 if isMM2 then table.insert(pages,"MM2") end
 for index,name in ipairs(pages) do
     local page=name
     local item=Instance.new("TextButton")
     item.Name=page
-    item.Size=UDim2.fromOffset((page=="Accessories" or page=="Animations" or page=="Characters" or page=="Atmosphere") and 96 or 64,32)
+    item.Size=UDim2.fromOffset((page=="Accessories" or page=="Animations" or page=="Atmosphere") and 96 or 64,32)
     item.LayoutOrder=index
     item.Parent=tabs
     styleButton(item,string.upper(page))
     item.Activated:Connect(function()
         if busy then return end
-        activePage=page;deleteCharacter=nil;characterMenu=nil;characterDialog=nil;saveUI()
-        if page=="Characters" and not charactersAPI then action(function() characterModules();return "Save a look or equip one from your wardrobe below." end)
-        else render() end
+        activePage=page;saveUI()
+        render()
     end)
     tabButtons[page]=item
 end
@@ -1637,7 +1455,6 @@ action(function()
     end
     if not atmosphereLoaded then message=message.." Your saved atmosphere could not fully load: "..tostring(atmosphereError) end
     if not soundsLoaded then message=message.." Hat sounds could not load; try their control in Accessories." end
-    if activePage=="Characters" then characterModules() end
     if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticGuns") then mm2();savedNativeMM2().enable() end
     if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticEffects") then effectsMM2();nativeEffectsMM2().enable() end
     return message

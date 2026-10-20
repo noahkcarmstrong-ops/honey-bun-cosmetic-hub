@@ -290,54 +290,11 @@ local function named(root,name)
     for _,child in ipairs(root:GetChildren())do local found=named(child,name);if found then return found end end
 end
 local function clickNamed(name)assert(named(gui(),name),'Missing button '..name).Activated:Fire()end
-local function cog()clickNamed('CharacterOptions_1')end
-local function tile()clickNamed('EquipCharacter_1')end
-
-guiRoot:SetAttribute('HoneyBunCosmeticSettings','saved-cat-look')
-guiRoot:SetAttribute('HoneyBunCosmeticClothes','saved-shirt')
-guiRoot:SetAttribute('HoneyBunCosmeticAnimationBundle',82)
-click('CHARACTERS')
-assert(named(gui(),'CharacterGrid'),'Characters uses a thumbnail grid')
-assert(not find(gui(),'TextButton','Equip') and not find(gui(),'TextButton','Delete'),'No equip/delete buttons beneath previews')
-click('Create New Character');click('Create')
-assert(not named(gui(),'CharacterCard_1'),'Blank name cannot create a character')
-field('Character name').Text='Cat outfit';click('Create')
-assert(named(gui(),'CharacterCard_1') and calls.characterPreview,'Created character includes preview')
-local grid=named(gui(),'CharacterGrid')
-grid.AbsoluteSize={X=940,Y=300}
-assert(grid:FindFirstChild('UIGridLayout').FillDirectionMaxCells==7,'Wide layout fits reference-sized square cards')
-grid.AbsoluteSize={X=300,Y=300}
-assert(grid:FindFirstChild('UIGridLayout').FillDirectionMaxCells==2,'Narrow layout keeps cards in two columns')
-field('Search by name...').Text='missing'
-assert(not named(gui(),'CharacterCard_1').Visible,'Search hides unmatched characters live')
-field('Search by name...').Text='CAT'
-assert(named(gui(),'CharacterCard_1').Visible,'Search matches names without case sensitivity')
-field('Search by name...').Text=''
-cog();assert(find(gui(),'TextButton','Update') and find(gui(),'TextButton','Rename') and find(gui(),'TextButton','Delete') and find(gui(),'TextButton','Cancel'),'Cog shows all four Roblox menu labels')
-cog();assert(not named(gui(),'CharacterMenu_1'),'Cog closes an open menu')
-guiRoot:SetAttribute('HoneyBunCosmeticSettings','different-look')
-guiRoot:SetAttribute('HoneyBunCosmeticEmotes','different-wheel')
-guiRoot:SetAttribute('HoneyBunCosmeticAnimationBundle',99)
-tile()
-assert(calls.loadedCharacterSettings=='saved-cat-look','Clicking thumbnail equips the saved look')
-assert(guiRoot:GetAttribute('HoneyBunCosmeticClothes')=='saved-shirt' and guiRoot:GetAttribute('HoneyBunCosmeticAnimationBundle')==82,'Equip restores all saved categories')
-assert(guiRoot:GetAttribute('HoneyBunCosmeticEmotes')==nil,'Equip clears categories absent from the saved character')
-cog();click('Rename');field('Character name').Text='Pumpkin dude';click('Save Name')
-assert(find(gui(),'TextLabel','Pumpkin dude'),'Renamed character label appears beneath the preview')
-guiRoot:SetAttribute('HoneyBunCosmeticSettings','updated-cat-look')
-cog();click('Update');guiRoot:SetAttribute('HoneyBunCosmeticSettings','other-look');tile()
-assert(calls.loadedCharacterSettings=='updated-cat-look','Update stores current look without creating a duplicate')
-guiRoot:SetAttribute('HoneyBunCosmeticSettings','previous-look')
-calls.failReplay=true;tile();calls.failReplay=false
-assert(guiRoot:GetAttribute('HoneyBunCosmeticSettings')=='previous-look','Failed equip restores previous selections')
-tile()
-cog();click('Delete');assert(find(gui(),'TextButton','Confirm delete'),'Delete asks for confirmation')
-click('Cancel');assert(named(gui(),'CharacterCard_1'),'Cancelled deletion keeps character')
+assert(not find(gui(),'TextButton','CHARACTERS'),'Characters tab is removed from the game menu')
+guiRoot:SetAttribute('HoneyBunCosmeticUI_page','Characters')
 click('Refresh')
-assert(find(gui(),'TextLabel','Pumpkin dude'),'Renamed and updated character survives Refresh')
-cog();click('Delete');click('Confirm delete')
-assert(not named(gui(),'CharacterCard_1'),'Confirmed deletion removes the card')
-assert(guiRoot:GetAttribute('HoneyBunCosmeticSettings')=='updated-cat-look','Deleting character leaves equipped look on')
+assert(find(gui(),'TextButton','Add accessories'),'Previously saved Characters page falls back to Accessories')
+assert(not named(gui(),'CharacterGrid'),'Character menu is not rendered')
 assert(not find(gui(),'TextButton','MM2'),'Other games do not show the MM2 entry')
 game.GameId=66654135
 dofile('loader.lua')
@@ -424,7 +381,7 @@ assert(not calls.effectsRestored and calls.nativeEffectsEnabled,'Saved effects s
 click('Remove saved weapon appearances');assert(calls.mm2Restored,'Explicit remove clears only equipped weapon appearances')
 click('Back');assert(find(gui(),'TextButton','Open MM2 menu'),'Back returns to the MM2 entry')
 click('ATMOSPHERE')
-assert(findName(gui(),'Atmosphere').LayoutOrder==findName(gui(),'Characters').LayoutOrder+1,'Atmosphere tab follows Characters in all games')
+assert(findName(gui(),'Atmosphere').LayoutOrder==findName(gui(),'Animations').LayoutOrder+1,'Atmosphere tab follows Animations in all games')
 assert(not find(gui(),'TextButton','Shader: OFF') and not find(gui(),'TextButton','Shader: ON'),'Shader controls are removed')
 click('Time: Game');assert(calls.environment.time==8,'Time styles apply in any game without a custom sky')
 click('Time: Morning');assert(calls.environment.time==14,'Time cycles through simple named choices')
