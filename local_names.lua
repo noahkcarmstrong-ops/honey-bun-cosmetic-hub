@@ -7,16 +7,23 @@ local function plain(value, rich)
     return value:gsub("<[^>]*>", ""):gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&quot;", '"'):gsub("&apos;", "'"):gsub("&amp;", "&")
 end
 local controllers, identities, usernames, displays = {}, {}, {}, {}
+local chatAliases={}
 local entries = setmetatable({}, {__mode="k"})
 local buckets, rootConnections, rosterConnections = {}, {}, {}
 local coreGui, players
-local chatService, chatPrevious, chatHook
+local chatService
+local chatBindings={}
 local chatStatus="Chat names are unavailable."
 pcall(function() coreGui=game:GetService("CoreGui") end)
 pcall(function() players=game:GetService("Players") end)
 
 local function addName(index, name, id)
     if index[name] == nil then index[name]=id elseif index[name] ~= id then index[name]=false end
+end
+local function rememberChatName(id,name,field)
+    if not name or name=="" then return end
+    chatAliases[id]=chatAliases[id] or {}
+    chatAliases[id][name]=field
 end
 local function rebuildIdentities(leavingId)
     usernames, displays = {}, {}
@@ -33,10 +40,53 @@ local function rebuildIdentities(leavingId)
         if present[id] or controllers[id] then
             addName(usernames, identity.username, id)
             addName(displays, identity.display, id)
+            rememberChatName(id,identity.display,"displayName")
+            rememberChatName(id,identity.username,"username")
         else identities[id]=nil end
     end
 end
+local function chatSpan(entry)
+    if not entry.source:find(":",1,true) then return end
+    -- Roblox keys native message records by sender ID and message GUID. Use
+    -- that identity without depending on any chat window path or game layout.
+    local ancestor=entry.object
+    local senderId,inCore
+    while ancestor do
+        if ancestor==coreGui then inCore=true end
+        local id=tostring(ancestor.Name):match("^(%d+)%-%{%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x%}$")
+        if id then senderId=tonumber(id) end
+        ancestor=ancestor.Parent
+    end
+    if not inCore or not senderId or not identities[senderId] then return end
+    local rich=entry.object.RichText==true
+    local text=plain(entry.source,rich)
+    local offset=1
+    -- Role/channel tags precede the sender; they are not part of the name.
+    while true do
+        local finish=text:sub(offset):match("^%s*%b[]%s*()")
+        if not finish then break end
+        offset=offset+finish-1
+    end
+    local leading=text:sub(1,offset-1)
+    for name,field in pairs(chatAliases[senderId] or {}) do
+        if text:sub(offset,offset+#name)==name..":" then
+            local encoded=rich and escape(name) or name
+            local cursor=1
+            while true do
+                local first,last=entry.source:find(encoded..":",cursor,true)
+                if not first then break end
+                if plain(entry.source:sub(1,first-1),rich)==leading then
+                    return senderId,{first=first,last=last-1,field=field}
+                end
+                cursor=last+1
+            end
+        end
+    end
+end
 local function resolve(entry)
+    local sender,span=chatSpan(entry)
+    entry.chatSpan=span
+    if sender then return sender end
     local text=plain(entry.source,entry.object.RichText==true):gsub(" %(You%)$", "")
     local name=text:match("^@(.+)$") or text:match("^(.-)'s%s") or text
     local id=usernames[name]
@@ -66,6 +116,18 @@ local function resolve(entry)
     return id or nil
 end
 local function replacement(entry, controller)
+    if entry.chatSpan then
+        local span=entry.chatSpan
+        local identity=identities[entry.id]
+        if not identity then return entry.source end
+        local value=span.field=="username" and identity.username or identity.display
+        if controller and controller.settings.enabled then
+            local configured=controller.settings[span.field]
+            if configured and configured~="" then value=configured end
+        end
+        if entry.object.RichText then value=escape(value) end
+        return entry.source:sub(1,span.first-1)..value..entry.source:sub(span.last+1)
+    end
     if not controller or not controller.settings.enabled then return entry.source end
     local identity=identities[controller.id]
     local settings=controller.settings
@@ -100,49 +162,54 @@ local function replacement(entry, controller)
     end
     return table.concat(out)
 end
-local function readCallback(service)
+local function readCallback(service,member)
     if type(getcallbackvalue)=="function" then
-        return pcall(getcallbackvalue,service,"OnChatWindowAdded")
+        return pcall(getcallbackvalue,service,member)
     end
-    return pcall(function() return service.OnChatWindowAdded end)
+    return pcall(function() return service[member] end)
 end
 local function bindChat()
-    if chatHook then return end
+    if next(chatBindings) then return end
     local ok, service=pcall(function() return game:GetService("TextChatService") end)
     if not ok or not service then return end
-    local readable, previous=readCallback(service)
-    -- A callback cannot normally be read through Roblox properties. Do not
-    -- overwrite game formatting unless the prior callback can be preserved.
-    if not readable or (previous~=nil and type(previous)~="function") then return end
     local config=service:FindFirstChildOfClass("ChatWindowConfiguration")
-    if not config then return end
-    local hook=function(message)
-        local properties=previous and previous(message) or nil
-        local source=message.TextSource
-        local controller=source and controllers[source.UserId]
-        if not controller or not controller.settings.enabled then return properties end
-        local prefix=properties and properties.PrefixText
-        if not prefix or prefix=="" then prefix=message.PrefixText end
-        if type(prefix)~="string" or prefix=="" then return properties end
-        local value=replacement({source=prefix,object={RichText=true}},controller)
-        if value==prefix then return properties end
-        properties=properties or config:DeriveNewMessageProperties()
-        properties.PrefixText=value
-        return properties
+    for _,member in ipairs({"OnIncomingMessage","OnChatWindowAdded"}) do
+        local member=member
+        local readable,previous=readCallback(service,member)
+        -- Preserve the game's callback and its filtering/status/formatting.
+        if readable and (previous==nil or type(previous)=="function") and (member~="OnChatWindowAdded" or config) then
+            local hook=function(message)
+                local properties=previous and previous(message) or nil
+                local source=message.TextSource
+                local controller=source and controllers[source.UserId]
+                if not controller or not controller.settings.enabled then return properties end
+                local prefix=properties and properties.PrefixText
+                if not prefix or prefix=="" then prefix=message.PrefixText end
+                if type(prefix)~="string" or prefix=="" then return properties end
+                local value=replacement({source=prefix,object={RichText=true}},controller)
+                if value==prefix then return properties end
+                if not properties then
+                    properties=member=="OnIncomingMessage" and Instance.new("TextChatMessageProperties") or config:DeriveNewMessageProperties()
+                end
+                properties.PrefixText=value
+                return properties
+            end
+            if pcall(function() service[member]=hook end) then
+                chatBindings[member]={previous=previous,hook=hook}
+            end
+        end
     end
-    local installed=pcall(function() service.OnChatWindowAdded=hook end)
-    if installed then
-        chatService,chatPrevious,chatHook=service,previous,hook
-        chatStatus="New chat messages use Larp names."
-    end
+    chatService=service
+    if next(chatBindings) then chatStatus="Chat sender names use Larp names." end
 end
 local function unbindChat()
-    if not chatHook then return end
-    local readable,current=readCallback(chatService)
-    if readable and current==chatHook then
-        pcall(function() chatService.OnChatWindowAdded=chatPrevious end)
+    for member,binding in pairs(chatBindings) do
+        local readable,current=readCallback(chatService,member)
+        if readable and current==binding.hook then
+            pcall(function() chatService[member]=binding.previous end)
+        end
     end
-    chatService,chatPrevious,chatHook=nil,nil,nil
+    chatService=nil;chatBindings={}
     chatStatus="Chat names are unavailable."
 end
 local function render(entry)
@@ -243,6 +310,7 @@ return function(player, playerGui, gameObject)
         username,displayName=trim(username),trim(displayName)
         assert(username=="" or (#username>=3 and #username<=20 and username:match("^[A-Za-z0-9_]+$")),"Username must be 3-20 ASCII letters, numbers, or underscores.")
         assert(#displayName<=50 and not displayName:find("[%c]"),"Display name must be 1-50 characters without control characters.")
+        rememberChatName(id,username,"username");rememberChatName(id,displayName,"displayName")
         controller.settings={enabled=true,username=username,displayName=displayName};refresh();return api.report()
     end
     function api.setEnabled(value) controller.settings.enabled=value==true;refresh();return api.report() end
@@ -258,7 +326,7 @@ return function(player, playerGui, gameObject)
             for object in pairs(entries) do unwatch(object) end
             for _,connections in pairs(rootConnections) do for _,connection in ipairs(connections) do connection:Disconnect() end end
             for _,connection in ipairs(rosterConnections) do connection:Disconnect() end
-            rootConnections,rosterConnections,buckets,identities={},{},{},{}
+            rootConnections,rosterConnections,buckets,identities,chatAliases={},{},{},{},{}
         end
     end
     return api
