@@ -316,7 +316,9 @@ function M.create(player, getPreviews)
             pending[image]=nil
             if staged.connection then staged.connection:Disconnect();staged.connection=nil end
             overlays[image]=overlay;overlayKeys[image]=staged.key
-            overlay.Visible=true;hideImage(image)
+            -- Claim the mask before exposing the new portrait. Visibility
+            -- listeners must never observe both the fallback and replacement.
+            hideImage(image);overlay.Visible=true
             if previous then previous:Destroy() end
             renderedCount=renderedCount+1
         end
