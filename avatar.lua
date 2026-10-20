@@ -12,6 +12,7 @@ local r15={"Head","UpperTorso","LowerTorso","LeftUpperArm","LeftLowerArm","LeftH
     "RightUpperArm","RightLowerArm","RightHand","LeftUpperLeg","LeftLowerLeg","LeftFoot",
     "RightUpperLeg","RightLowerLeg","RightFoot"}
 local outfits={Girl=131929545,["Robloxian 2.0"]=131929576}
+local azurelightAccessoryId=14565851673
 local bodyRegions={Head=true,Torso=true,LeftArm=true,RightArm=true,LeftLeg=true,RightLeg=true}
 local r6BodyPartNames={Head="Head",Torso="Torso",LeftArm="LeftArm",RightArm="RightArm",LeftLeg="LeftLeg",RightLeg="RightLeg"}
 local function regionNames(region)
@@ -49,7 +50,7 @@ local function bodyClone(part)
     for _,item in ipairs(clone:GetDescendants()) do if item:IsA("JointInstance") then item:Destroy() end end
     return clone
 end
-return function(player,onStatus)
+return function(player,onStatus,readAsset)
     local alive,generation=true,0
     local snapshot,added,skin,hidden=nil,{},{},{}
     local gear=nil
@@ -365,7 +366,14 @@ return function(player,onStatus)
         local ctx=context()
         local id=idFrom(value,"catalog")
         assert(#added<20,"Remove an added accessory before adding more (20 maximum).")
-        local ok,objects=pcall(function() return game:GetObjects("rbxassetid://"..string.format("%.0f",id)) end)
+        local ok,objects=pcall(function()
+            if id==azurelightAccessoryId then
+                assert(type(readAsset)=="function","Dominus Azurelight's visual effects need local asset loading support in this executor.")
+                return readAsset("assets/dominus-azurelight.rbxm")
+            end
+            return game:GetObjects("rbxassetid://"..string.format("%.0f",id))
+        end)
+        if not ok and id==azurelightAccessoryId then error(tostring(objects)) end
         assert(ok and type(objects)=="table" and #objects>0,"Roblox could not load that accessory. It may be private or unavailable.")
         if not valid(ctx) then dispose(objects);check(ctx) end
         local accessory

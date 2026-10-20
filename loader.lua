@@ -452,13 +452,31 @@ local function api()
     local source=readSource("avatar.lua", sha)
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Avatar editor failed to load.")
-    avatarFactory=create
     assert(alive,"Menu was closed.")
+    local function readAsset(path)
+        assert(path=="assets/dominus-azurelight.rbxm","Unsupported local avatar asset.")
+        assert(type(writefile)=="function" and type(customAsset)=="function",
+            "This executor cannot load Dominus Azurelight's visual effects locally.")
+        local file="larpblox-dominus-azurelight.rbxm"
+        local bytes=readSource(path,sha)
+        assert(bytes:sub(1,8)=="<roblox!","Invalid Dominus Azurelight visual asset.")
+        local wrote,writeError=pcall(writefile,file,bytes)
+        assert(wrote,writeError)
+        local assetOk,assetUri=pcall(customAsset,file)
+        assert(assetOk and assetUri,"This executor could not prepare Dominus Azurelight's visual asset.")
+        local loaded,objects=pcall(function()return game:GetObjects(assetUri)end)
+        assert(loaded and type(objects)=="table" and #objects>0,"This executor could not load Dominus Azurelight's visual asset.")
+        return objects
+    end
+    local function createAvatar(player,onStatus)
+        return create(player,onStatus,readAsset)
+    end
+    avatarFactory=createAvatar
     avatarAPI=create(Players.LocalPlayer,function(message,working)
         if not alive then return end
         busy=working or actionRunning;statusText=message
         if render then render() end
-    end)
+    end,readAsset)
     return avatarAPI
 end
 local function atmosphere()

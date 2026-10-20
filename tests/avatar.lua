@@ -56,6 +56,20 @@ game={GetService=function(_,n)return({Players=players,HttpService=http,Marketpla
 Enum.InfoType={Asset="Asset"}
 local create=dofile(arg and arg[1] or "avatar.lua");assert(type(create)=="function","module returns create(player)");local api=create(player)
 assert(api.equipAccessory(123):match("Equipped"));local candidate=body:FindFirstChild("Blue Hat");assert(injected.destroyed and candidate,"sanitizing removes inserted script and parents cloned accessory");assert(#api.listAccessories()==1)
+-- Azurelight uses Roblox's modern avatar model format; the callback supplies
+-- that model so its original particle visuals survive script stripping.
+local modern=node("Accessory","Dominus Azurelight");local modernHandle=node("Part","Handle");modernHandle.CFrame=cf();modernHandle.AttachmentPoint=cf();modernHandle.Parent=modern
+local modernAttachment=node("Attachment","HatAttachment");modernAttachment.CFrame=cf();modernAttachment.Parent=modernHandle
+local modernParticles=node("ParticleEmitter","AzurelightParticles");modernParticles.Enabled=true;modernParticles.Parent=modernHandle
+local modernSurface=node("SurfaceAppearance","AzurelightSurface");modernSurface.Parent=modernHandle
+local modernScript=node("Script","AzurelightScript");modernScript.Parent=modern
+local modernRead=false
+local modernApi=create(player,nil,function(path)assert(path=="assets/dominus-azurelight.rbxm");modernRead=true;return{modern}end)
+modernApi.equipAccessory(14565851673)
+local modernWorn=body:FindFirstChild("Dominus Azurelight")
+assert(modernRead and modernWorn and modernWorn:FindFirstChild("AzurelightParticles",true).Enabled,"modern Azurelight keeps its particle effects")
+assert(modernWorn:FindFirstChild("AzurelightSurface",true) and not modernWorn:FindFirstChild("AzurelightScript",true),"modern Azurelight keeps surface appearance and strips scripts")
+modernApi.destroy()
 gameTool.Parent=body;assert(gearAsset:FindFirstChild("Handle"),"gear fixture has handle");assert(api.equipGear(456):match("gear"));local wornGear=api.listGear()[1];assert(gameTool.Parent==body and not body:FindFirstChild("Cosmetic Gear"):FindFirstChild("Gear Script"),"gear weld preserves existing game tools and strips scripts");assert(wornGear.id==456,"hub gear is tracked separately");assert(api.removeGear():match("Removed") and gameTool.Parent==body,"removing hub gear leaves game tools alone");assert(api.equipGear(456));assert(api.getSettings().gear.id==456,"gear selection is saved");local held=body:FindFirstChild("Cosmetic Gear");local gearLoader=game.GetObjects;local badGear=node("Tool","Broken Gear");game.GetObjects=function()return {badGear}end;assert(not pcall(api.equipGear,789),"gear without a Handle is rejected");assert(body:FindFirstChild("Cosmetic Gear")==held and api.listGear()[1].id==456,"failed replacement preserves previous gear");game.GetObjects=gearLoader;api.clearAccessories();assert(api.listGear()[1].id==456,"clearing accessories keeps gear");assert(api.restore():match("restored") and #api.listGear()==0 and gameTool.Parent==body,"restore removes saved hub gear without removing game tools")
 api.setSkin(Color3.new(.5,.4,.3),"All");assert(head.Color.r==.5 and body:FindFirstChild("LeftUpperArm").Color.r==.5 and bc.HeadColor3.r==.5,"R15 grouped skin applies");api.restore();assert(head.Color.r==1 and bc.HeadColor3.r==1,"restore returns original colors")
 assert(api.applyBody("https://www.roblox.com/bundles/555"):match("applied"));assert(players.generated and body:FindFirstChild('Head')==head and not head.destroyed,"bundle outfit generates appearance without replacing live parts")
