@@ -150,11 +150,36 @@ local function signature(value, seen)
 end
 
 local M = {isAvatarImage = isAvatarImage, hasOwnId = hasOwnId}
+-- All subjects share the native image's authored transparency. A second
+-- renderer must never save the first renderer's masking value as its baseline.
+local imageStates = setmetatable({}, {__mode="k"})
+local function authoredTransparency(image)
+    local current=read(image,"ImageTransparency")
+    if current~=1 then return current end
+    local saved=attr(image,"LarpbloxPortraitTransparency")
+    if type(saved)=="number" then return saved end
+    -- Recover a legacy masked value from the matching authored GUI template.
+    -- Resolve the relative path generically; no game or element names are known.
+    local path,ancestor={},image
+    while ancestor and read(ancestor,"ClassName")~="PlayerGui" do
+        table.insert(path,1,read(ancestor,"Name"));ancestor=read(ancestor,"Parent")
+    end
+    if ancestor then
+        local ok,template=pcall(function() return game:GetService("StarterGui") end)
+        if ok then
+            for _,name in ipairs(path) do template=template and template:FindFirstChild(name) end
+            if template and read(template,"ClassName")==read(image,"ClassName") then
+                return read(template,"ImageTransparency")
+            end
+        end
+    end
+    return current
+end
 
 function M.create(player, getPreviews)
     assert(player, "player is required"); assert(type(getPreviews) == "function", "getPreviews is required")
     local alive, enabled, currentName, currentImage, previewSnapshot, effectiveKey = true, false, "", nil, nil, nil
-    local overlays, overlayKeys, originalTransparency, hiddenImages, connections, scanCount, renderedCount = {}, {}, {}, {}, {}, 0, 0
+    local overlays, overlayKeys, hiddenImages, connections, scanCount, renderedCount = {}, {}, {}, {}, 0, 0
     local transparencyConnections,textConnections={},{}
     local pending = {}
     local imageCandidates=setmetatable({}, {__mode="k"})
@@ -164,13 +189,29 @@ function M.create(player, getPreviews)
 
     local function restoreImage(image)
         if hiddenImages[image] then
-            pcall(function() image.ImageTransparency = originalTransparency[image] end)
-            originalTransparency[image] = nil; hiddenImages[image] = nil
+            hiddenImages[image] = nil
+            local state=imageStates[image]
+            if state then
+                state.owners[hiddenImages]=nil
+                if next(state.owners)==nil then
+                    state.writing=true
+                    pcall(function() image.ImageTransparency=state.transparency end)
+                    state.writing=false
+                end
+            end
         end
     end
     local function hideImage(image)
-        if not hiddenImages[image] then originalTransparency[image] = read(image, "ImageTransparency"); hiddenImages[image] = true end
+        local state=imageStates[image]
+        if not state then
+            state={transparency=authoredTransparency(image),owners={}}
+            imageStates[image]=state
+            pcall(function() image:SetAttribute("LarpbloxPortraitTransparency",state.transparency) end)
+        end
+        hiddenImages[image]=true;state.owners[hiddenImages]=true
+        state.writing=true
         pcall(function() image.ImageTransparency = 1 end)
+        state.writing=false
     end
     local function restoreAllImages()
         for image in pairs(hiddenImages) do restoreImage(image) end
@@ -341,7 +382,17 @@ function M.create(player, getPreviews)
             if okTransparency and transparencySignal then
                 local transparencyConnection
                 pcall(function() transparencyConnection = transparencySignal:Connect(function()
-                    if not alive or not enabled then return end
+                    if not alive then return end
+                    local state=imageStates[object]
+                    if state and state.writing then return end
+                    local transparency=read(object,"ImageTransparency")
+                    -- Our deferred masking notification is always 1. A game
+                    -- fade or reveal must update the value restored on removal.
+                    if state and transparency~=1 then
+                        state.transparency=transparency
+                        pcall(function() object:SetAttribute("LarpbloxPortraitTransparency",transparency) end)
+                    end
+                    if not enabled then return end
                     if isAvatarImage(object, player, {name = currentName}) then
                         if overlays[object] then hideImage(object) end
                     else destroyOverlay(object) end
