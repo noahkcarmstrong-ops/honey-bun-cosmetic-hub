@@ -329,7 +329,11 @@ function M.create(player, getPreviews)
         if connection then textConnections[object] = connection end
     end
     local ok = pcall(function() coreGui = game:GetService("CoreGui"); coreGui:GetDescendants() end)
-    pcall(function() playerGui = player:FindFirstChildOfClass("PlayerGui") end)
+    -- Portraits of every player are rendered in the viewing client's UI.
+    -- The subject player supplies identity/appearance, not the GUI root.
+    local viewer = player
+    pcall(function() viewer = game:GetService("Players").LocalPlayer or player end)
+    pcall(function() playerGui = viewer:FindFirstChildOfClass("PlayerGui") end)
     roots = {}
     if ok and coreGui then roots[#roots + 1] = coreGui end
     if playerGui then roots[#roots + 1] = playerGui end
