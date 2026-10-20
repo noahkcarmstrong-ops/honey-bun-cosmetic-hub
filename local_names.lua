@@ -120,7 +120,25 @@ return function(player, playerGui, gameObject)
         end
         return false
     end
+    local function inspectName(object)
+        -- MM2 reuses this panel for every selected player without an identity
+        -- attribute. Only its dedicated name slot is eligible; candidate() still
+        -- requires the selected player's original name before replacing it.
+        if object.Name ~= "Username" then return false end
+        local container = object.Parent
+        local inspect = container and container.Parent
+        local leaderboard = inspect and inspect.Parent
+        if not container or container.Name ~= "Container"
+            or not inspect or inspect.Name ~= "Inspect"
+            or not leaderboard or leaderboard.Name ~= "Leaderboard" then return false end
+        if not container:FindFirstChild("Profile") or not container:FindFirstChild("Trade") then return false end
+        for _, ancestor in ipairs(ancestors(leaderboard)) do
+            if ancestor == playerGui then return true end
+        end
+        return false
+    end
     local function owned(object)
+        if inspectName(object) then return true end
         if hasOwnId(object,player) or nativeName(object) or ownMenuRow(object) then return true end
         for _,item in ipairs(ancestors(object)) do
             if item==player.Character or item.Name==originalUsername then return true end
