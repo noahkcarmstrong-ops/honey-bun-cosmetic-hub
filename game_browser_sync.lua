@@ -40,6 +40,10 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     end
     local function product(id,fallback)
         if cache[id]then return cache[id]end
+        -- Browser commands carry validated names and asset types.  Keep that
+        -- metadata authoritative for this sync so a slow marketplace lookup
+        -- cannot delay applying the outfit.
+        if fallback and assetTypes[id] then cache[id]=fallback;return fallback end
         local name=fallback or tostring(id);local ok,info=pcall(function()return MarketplaceService:GetProductInfo(id,Enum.InfoType.Asset)end)
         if ok and type(info)=="table" then if type(info.Name)=="string" then name=info.Name end;assetTypes[id]=tonumber(info.AssetTypeId) end
         cache[id]=name;return name
@@ -131,6 +135,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         local avatar,clothes=getAvatar(),getClothes();local failed={};local loadErrors={};local desired={};local current={};local desiredGear
         for _,item in ipairs(value.items)do
             assetTypes[item.id]=item.assetType
+            cache[item.id]=item.name
             if accessoryTypes[item.assetType] then desired[item.id]=true end
             if item.assetType==19 then desiredGear=item end
         end
@@ -223,8 +228,8 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if relay and relay.instanceId and relay.instanceId~=api.instanceId then
                     lastRevision=0;lastJson=nil;lastNameState=nil;api.instanceId=relay.instanceId
                 end
-                applyNameState(call("GET","/v1/names/"..player.UserId,token))
                 local command=call("GET","/v1/browser/"..player.UserId,token);if generation==mine and connected and command and command.revision then applyCommand(command)end
+                applyNameState(call("GET","/v1/names/"..player.UserId,token))
                 local made,value=pcall(snapshot)
                 if made then
                     lastSnapshot=value
@@ -234,7 +239,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if getViews then getViews().update({enabled=larpEnabled,name=larpName,snapshot=lastSnapshot}) end
             end)
             if not ok then status("Browser relay: "..tostring(err):gsub("^.-:%d+:%s*",""))end
-            task.wait(0.75)
+            task.wait(0.25)
         end
     end
     function api.connect(code)

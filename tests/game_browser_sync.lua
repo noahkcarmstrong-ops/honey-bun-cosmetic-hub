@@ -34,8 +34,8 @@ function clothing.removePants()clothes.Pants=0 end
 local http={}
 function http:JSONEncode(v)return v end
 function http:JSONDecode(v)return v end
-local extraTypes={}
-game={GetService=function(_,name)if name=="HttpService"then return http end;if name=="MarketplaceService"then return {GetProductInfo=function(_,id)return {Name="Asset"..id,AssetTypeId=extraTypes[id] or ({[101]=11,[202]=12,[301]=17,[302]=18,[303]=27,[304]=29,[305]=28,[306]=30,[307]=31,[308]=2})[id] or 8}end}end end}
+local extraTypes={};local productCalls={}
+game={GetService=function(_,name)if name=="HttpService"then return http end;if name=="MarketplaceService"then return {GetProductInfo=function(_,id)productCalls[id]=(productCalls[id] or 0)+1;return {Name="Asset"..id,AssetTypeId=extraTypes[id] or ({[101]=11,[202]=12,[301]=17,[302]=18,[303]=27,[304]=29,[305]=28,[306]=30,[307]=31,[308]=2})[id] or 8}end}end end}
 Enum={InfoType={Asset={}},HumanoidRigType={R6={},R15={}}};Color3={fromRGB=function(r,g,b)return color(r,g,b)end};humanoid.RigType=Enum.HumanoidRigType.R15
 local posted;local command={version=1,userId="7",revision=1,definition={assets={},bodyColors={headColor="ff0000",torsoColor="00ff00",leftArmColor="0000ff",rightArmColor="ffff00",leftLegColor="ff00ff",rightLegColor="00ffff"},scales={},playerAvatarType={playerAvatarType="R15"}},items={{id=11,name="Original Hat",itemType="Asset",assetType=8},{id=13,name="New Hat",itemType="Asset",assetType=8},{id=101,name="Shirt",itemType="Asset",assetType=11}}}
 function request(o)if o.Method=="GET" and o.Url:find("status")then return {StatusCode=200,Body={version=1,connected=true}}end;if o.Method=="GET"then return {StatusCode=200,Body=command}end;posted=o.Body;return {StatusCode=200,Body={}}end
@@ -45,6 +45,7 @@ sync.connect(string.rep("a",32));local snapshot=sync.publish();local hasGraphic=
 extraTypes[1900]=19;gearEntry={id=1900,name="Blaster"};snapshot=sync.publish();local hasGear=false;for _,item in ipairs(snapshot.items)do if item.id==1900 and item.assetType==19 then hasGear=true end end;assert(hasGear,"hub gear is published as asset type 19");gearEntry=nil
 task.wait=function()sync.disconnect()end
 jobs[1]();assert(#localHats==1 and localHats[1].id==13,"new hat equips without reloading an unchanged unavailable original")
+assert((productCalls[13] or 0)==0,"browser hat metadata avoids a marketplace lookup while applying")
 local keptOriginal=false;for _,item in ipairs(posted.items)do if item.id==11 then keptOriginal=true end end;assert(keptOriginal,"unchanged original remains visible")
 for _,item in ipairs(posted.items)do assert(item.id~=12,"same sync cycle publishes the completed removal instead of the previous outfit")end
 command.revision=2;command.items={{id=13,name="New Hat",itemType="Asset",assetType=8}};jobs[1]=nil;task.wait=function()sync.disconnect()end;sync.connect(string.rep("a",32));jobs[1]();assert(#localHats==1 and localHats[1].id==13,"command removes an original hat without duplication")
