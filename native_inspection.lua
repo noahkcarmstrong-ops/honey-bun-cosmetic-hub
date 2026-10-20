@@ -89,17 +89,53 @@ function M.create(player,getPreviews)
     end
     local function panelVisibility(root,show)
         local targets={}
-        if root:IsA("GuiObject")then targets[1]=root
-        else
-            for _,object in ipairs(root:GetDescendants())do
-                if object:IsA("GuiObject")then
-                    local ancestor=object.Parent
-                    while ancestor and ancestor~=root and not ancestor:IsA("GuiObject")do ancestor=ancestor.Parent end
-                    if ancestor==root then targets[#targets+1]=object end
+        local itemNames={}
+        for _,item in ipairs(currentSnapshot and currentSnapshot.items or {})do
+            if type(item.name)=="string" then itemNames[item.name]=true end
+        end
+        local function larpItems(object)
+            local labels={object}
+            for _,child in ipairs(object:GetDescendants())do labels[#labels+1]=child end
+            local found=false
+            for _,label in ipairs(labels)do
+                if label:IsA("TextLabel") and string.lower(label.Name or "")=="itemname" then
+                    found=true
+                    if not itemNames[label.Text] then return false end
+                end
+            end
+            return found
+        end
+        -- Keep the native panel shell (including close/back navigation) alive.
+        -- Only quarantine avatar/item content until the redirected inspector is ready.
+        for _,object in ipairs(root:GetDescendants())do
+            if object:IsA("GuiObject")then
+                local name=string.lower(object.Name or "")
+                local itemContent=name=="itemdetails" or name=="itemcontent" or name=="itemname"
+                if itemContent and not object:IsA("TextLabel") then
+                    -- A layout may reuse an item-related name for the whole page.
+                    -- Never hide a container that also owns the avatar or navigation.
+                    local hasItem=false
+                    for _,child in ipairs(object:GetDescendants())do
+                        local childName=string.lower(child.Name or "")
+                        if childName=="itemname" then hasItem=true end
+                        if child:IsA("ViewportFrame") or (child:IsA("TextLabel") and child.Text:match("'s Avatar$")) or childName=="close" or childName=="closebutton" or childName=="back" or childName=="backbutton" then itemContent=false;break end
+                    end
+                    itemContent=itemContent and hasItem
+                    if not itemContent and panels[object] then
+                        local entry=panels[object]
+                        if entry.connection then entry.connection:Disconnect()end
+                        mutatingPanel=true;object.Visible=entry.original;mutatingPanel=false
+                        panels[object]=nil
+                    end
+                end
+                if object:IsA("ViewportFrame") or (object:IsA("TextLabel") and object.Text:match("'s Avatar$")) or itemContent then
+                    targets[#targets+1]={object=object,itemContent=itemContent}
                 end
             end
         end
-        for _,object in ipairs(targets)do
+        for _,target in ipairs(targets)do
+            local object=target.object
+            local reveal=show and (not target.itemContent or larpItems(object))
             local entry=panels[object]
             if not entry then
                 entry={original=object.Visible,root=root,ready=false};panels[object]=entry
@@ -109,8 +145,8 @@ function M.create(player,getPreviews)
                     end
                 end)end)
             end
-            entry.ready=show
-            mutatingPanel=true;object.Visible=show and entry.original or false;mutatingPanel=false
+            entry.ready=reveal
+            mutatingPanel=true;object.Visible=reveal and entry.original or false;mutatingPanel=false
         end
     end
     local function restorePanels(root)
