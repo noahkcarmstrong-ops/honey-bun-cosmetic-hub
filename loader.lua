@@ -2,6 +2,10 @@
 local launchOptions = ...
 if type(launchOptions) ~= "table" then launchOptions = {} end
 local sourceBranch = launchOptions.branch or "main"
+local startupComplete=false
+local function trace(stage)
+    if not startupComplete and type(launchOptions.trace)=="function" then launchOptions.trace(stage)end
+end
 local function resolveRevision()
     if launchOptions.readSource then return "local" end
     if launchOptions.revision then return launchOptions.revision end
@@ -14,9 +18,14 @@ local function resolveRevision()
     return sha
 end
 local function readSource(file, revision)
-    if launchOptions.readSource then return launchOptions.readSource(file) end
-    return game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/" .. revision .. "/" .. file, false)
+    trace("Loading module: "..file)
+    local source
+    if launchOptions.readSource then source=launchOptions.readSource(file)
+    else source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/" .. revision .. "/" .. file, false)end
+    trace("Loaded module: "..file)
+    return source
 end
+trace("Waiting for client player")
 local Players = game:GetService("Players")
 local Input = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -81,6 +90,7 @@ local accessorySoundsAPI
 local mm2Enabled=false
 local mm2EmotesShown=false
 local playerGui = localPlayer:WaitForChild("PlayerGui")
+trace("Cleaning up previous menu")
 for _, name in ipairs({"HoneyBunCosmeticHub"}) do
     local old = playerGui:FindFirstChild(name)
     if old then
@@ -93,6 +103,7 @@ for _, name in ipairs({"HoneyBunCosmeticHub"}) do
 end
 
 local moduleRevision,persistence,persistenceLabel
+trace("Restoring saved settings")
 local persistenceNotice="Auto-save: session only. Saved-settings support could not load."
 pcall(function()
     local sha=resolveRevision()
@@ -105,6 +116,7 @@ pcall(function()
 end)
 
 local gui = Instance.new("ScreenGui")
+trace("Building menu")
 gui.Name = "HoneyBunCosmeticHub"
 gui.DisplayOrder = 100
 gui.ResetOnSpawn = false
@@ -1520,18 +1532,26 @@ gui.Destroying:Connect(function()
     if clothesAPI then clothesAPI.destroy() end
     if previewsAPI and previewsAPI.destroy then previewsAPI.destroy() end
 end)
+trace("Showing menu")
 panelScale.Scale=0.975
 panel.GroupTransparency=1
 panel.Position=UDim2.new(1,-12,0.5,0)
 showMenu(not hideOnStart)
+trace("Rendering menu")
 render()
+trace("Menu rendered; starting saved cosmetics")
 action(function()
+    trace("Restoring atmosphere")
     if isMM2 and crosshairImage~="" then pcall(function()customCrosshair().set(crosshairImage)end) end
     local atmosphereLoaded,atmosphereError=pcall(reapplyAtmosphere)
     local editor=api()
+    trace("Restoring accessory sounds")
     local soundsLoaded=pcall(hatSounds)
+    trace("Restoring saved cosmetics")
     local message=reapplyAll(editor)
-    pcall(gameBrowserSync)
+    trace("Starting browser connection")
+    local syncOk,syncError=pcall(gameBrowserSync)
+    if not syncOk then trace("Browser startup error: "..tostring(syncError))end
     if isMM2 and mm2EmotesShown then
         local ok,err=pcall(enableMM2Emotes)
         if not ok then message=message.." Saved MM2 emotes could not load: "..tostring(err) end
@@ -1540,5 +1560,7 @@ action(function()
     if not soundsLoaded then message=message.." Hat sounds could not load; try their control in Accessories." end
     if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticGuns") then mm2();savedNativeMM2().enable() end
     if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticEffects") then effectsMM2();nativeEffectsMM2().enable() end
+    trace("Startup complete")
+    startupComplete=true
     return message
 end,true)
