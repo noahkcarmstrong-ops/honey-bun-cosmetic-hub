@@ -40,6 +40,14 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local loadingImageUrl
     local lastDefinition,imageAssetDefinition
     local commandSnapshotPending=false
+    local snapshotListeners,sharingListeners={},{}
+    local desiredSharing,socketSupportsSharing=nil,false
+    local function notifySnapshot()
+        for callback in pairs(snapshotListeners)do pcall(callback,lastSnapshot)end
+    end
+    local function notifySharing(value)
+        for callback in pairs(sharingListeners)do pcall(callback,value)end
+    end
     local file="larpblox-browser-pair-"..tostring(player.UserId)..".txt"
     local cache,assetTypes,bodyCache={},{},{}
     local function status(message)if onStatus and isAlive() then onStatus(message)end end
@@ -106,6 +114,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         if type(url)~="string" or #url>2048 or not (url:match("^https://tr%.rbxcdn%.com/[%w%-%._~/]+$") or url:match("^https://t%d%.rbxcdn%.com/[%w%-%._~/]+$")) then return end
         if type(value.definition)~="table" then return end
         imageValue=value
+        notifySnapshot()
         if imageUrl==url and imageAsset then imageAssetDefinition=value.definition;updateViews();return end
         local custom=getcustomasset or getsynasset
         if type(custom)~="function" or type(writefile)~="function" then return end
@@ -331,9 +340,10 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         end
         if getViews then getViews().update({enabled=larpEnabled,name=larpName,image=currentImage()})end
         lastNameState=state
+        notifySnapshot()
     end
     local function closeSocket()
-        socketMine=socketMine+1;socketReady=false
+        socketMine=socketMine+1;socketReady=false;socketSupportsSharing=false
         local previous=socket;socket=nil
         if previous then pcall(function()previous:Close()end)end
     end
@@ -360,6 +370,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             if encoded~=lastJson then send("game",value);lastJson=encoded end
         end
         updateViews()
+        if made then notifySnapshot()end
     end
     local scheduleSnapshot
     local function disconnectAll(connections)
@@ -508,9 +519,17 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             if not read or type(value)~="table" then return end
             if value.type=="ready" then
                 socketReady=true;lastJson=nil;nextSocketPing=0;nextCommandCheck=0
+                socketSupportsSharing=value.sharing==true
+                if desiredSharing and socketSupportsSharing then
+                    pcall(function()candidate:Send(HttpService:JSONEncode({type="sharing",value=desiredSharing}))end)
+                elseif desiredSharing and desiredSharing.enabled then
+                    notifySharing({type="status",message="Update Larpblox Desktop to use shared appearances."})
+                end
                 if value.instanceId~=api.instanceId then lastRevision=0;lastNameState=nil;api.instanceId=value.instanceId end
                 scheduleSnapshot()
                 status("Browser connected via WebSocket.")
+            elseif value.type=="state" and value.channel=="shared" then
+                notifySharing(value.value)
             elseif value.type=="state" and (value.channel=="browser" or value.channel=="names" or value.channel=="image") then
                 incoming[value.channel]={value=value.value};task.spawn(pump)
             elseif value.type=="error" then closeSocket()end
@@ -579,6 +598,24 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     function api.status()return connected and (socketReady and "Browser connected via WebSocket." or "Browser connected (HTTP fallback).") or "Browser disconnected."end
     function api.publish()assert(connected,"Connect the browser first.");local value=snapshot();local encoded=HttpService:JSONEncode(value);if encoded~=lastJson then send("game",value);lastJson=encoded end;return value end
     function api.snapshot()return snapshot()end
+    function api.onSnapshot(callback)
+        snapshotListeners[callback]=true
+        return function()snapshotListeners[callback]=nil end
+    end
+    function api.onShared(callback)
+        sharingListeners[callback]=true
+        return function()sharingListeners[callback]=nil end
+    end
+    function api.setSharing(value)
+        if value.enabled then
+            assert(connected and socketReady,"Connect Larpblox Desktop before enabling sharing.")
+            assert(socketSupportsSharing,"Update Larpblox Desktop to use shared appearances.")
+        end
+        desiredSharing=value
+        if socketReady and socketSupportsSharing then
+            socket:Send(HttpService:JSONEncode({type="sharing",value=value}))
+        end
+    end
     function api.sharedImageUrl()
         if not connected or not larpEnabled or not imageValue or not lastDefinition then return nil end
         if definitionKey(imageValue.definition)~=definitionKey(lastDefinition) then return nil end

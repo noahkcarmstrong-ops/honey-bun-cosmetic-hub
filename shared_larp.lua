@@ -1,9 +1,6 @@
 -- Opt-in, local rendering of Larpblox appearances shared by clients in the same Roblox server.
 local Players=game:GetService("Players")
 local HttpService=game:GetService("HttpService")
-local RELAY="https://larp.3xjn.dev"
-local POLL_SECONDS=3
-local PUBLISH_SECONDS=10
 local ACCESSORY_TYPES={[8]=true,[41]=true,[42]=true,[43]=true,[44]=true,[45]=true,[46]=true,[47]=true,[64]=true,[65]=true,[66]=true,[67]=true,[68]=true,[69]=true,[70]=true,[71]=true,[72]=true,[76]=true,[77]=true}
 local BODY_TYPES={[17]="Head",[27]="Torso",[28]="RightArm",[29]="LeftArm",[30]="LeftLeg",[31]="RightLeg",[79]="Head"}
 local CLOTHES_TYPES={[2]="ShirtGraphic",[11]="Shirt",[12]="Pants"}
@@ -33,26 +30,21 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     local generation=0
     local peers={}
     local imageSerial=0
-    local lastSent,lastPublished="",0
+    local lastSent
+    local transport=presentation.transport
+    local latestRecords,pending,connections={},{},{}
+    local processing=false
     local nextStatus=0
     local function status(message)
         if onStatus and os.clock()>=nextStatus then nextStatus=os.clock()+4;onStatus(message)end
     end
-    local function roomPath()
+    local function roomContext()
         local placeId=tonumber(game.PlaceId)
         local jobId=tostring(game.JobId or "")
         assert(placeId and placeId>0 and placeId%1==0,"Join a live Roblox server before enabling shared Larp mode.")
         assert(jobId~="" and jobId~="00000000-0000-0000-0000-000000000000","Shared Larp mode is available in live game servers, not Studio.")
         assert(jobId:match("^[A-Za-z0-9%-]+$"),"This game server has an unsupported instance ID.")
-        return "/v1/rooms/"..string.format("%.0f",placeId).."/"..jobId
-    end
-    local function callRelay(method,path,body)
-        local fn=request or http_request or (syn and syn.request)
-        assert(type(fn)=="function","This executor does not provide an HTTPS request function.")
-        local response=fn({Url=RELAY..path,Method=method,Headers={ ["Content-Type"]="application/json" },Body=body and HttpService:JSONEncode(body) or nil,Timeout=6})
-        local code=tonumber(response and (response.StatusCode or response.Status))
-        assert(code and code>=200 and code<300,"Shared Larp relay returned HTTP "..tostring(code or "unknown"))
-        return response.Body and HttpService:JSONDecode(response.Body) or {}
+        return string.format("%.0f",placeId),jobId
     end
     local function cleanupPeer(userId)
         local entry=peers[userId]
@@ -205,8 +197,8 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             status("Could not apply a shared appearance: "..tostring(err))
         end
     end
-    local function publish()
-        local snapshot=getSnapshot()
+    local function publish(snapshot)
+        snapshot=snapshot or getSnapshot()
         local settings=getNameSettings and getNameSettings() or {}
         local name={enabled=false,username="",displayName=""}
         local username,displayName=settings.username,settings.displayName
@@ -220,54 +212,98 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             local url=presentation.getImageUrl()
             if safeImageUrl(url) then record.imageUrl=url end
         end
-        local encoded=HttpService:JSONEncode(record)
-        if encoded==lastSent and os.clock()-lastPublished<PUBLISH_SECONDS then return end
-        callRelay("PUT",roomPath().."/players/"..tostring(localPlayer.UserId),record)
-        lastSent=encoded;lastPublished=os.clock()
+        if sameValue(record,lastSent)then return end
+        assert(transport and transport.setSharing,"Update Larpblox Desktop and the game script to share appearances.")
+        local placeId,jobId=roomContext()
+        transport.setSharing({enabled=true,placeId=placeId,jobId=jobId,record=record})
+        lastSent=record
     end
-    local function loop(mine)
-        while sharing and generation==mine and isAlive() do
-            local published,publishError=pcall(publish)
-            if not published then status("Shared Larp publish: "..tostring(publishError):gsub("^.-:%d+:%s*",""))end
-            if not sharing or generation~=mine or not isAlive() then return end
-            local ok,err=pcall(function()
-                local result=callRelay("GET",roomPath().."/players?excludeUserId="..tostring(localPlayer.UserId))
-                if not sharing or generation~=mine or not isAlive() then return end
-                assert(type(result.players)=="table","Shared Larp relay returned an invalid player list.")
-                local seen={}
-                for _,record in ipairs(result.players)do
-                    if validRecord(record) and record.userId~=tostring(localPlayer.UserId) then
-                        seen[record.userId]=true
-                        local applied,reason=pcall(applyRecord,record)
-                        if not applied then status("Shared appearance: "..tostring(reason))end
-                    end
+    local processPending
+    processPending=function()
+        if processing or not sharing or not isAlive()then return end
+        processing=true
+        local mine=generation
+        task.spawn(function()
+            while sharing and generation==mine and isAlive()and next(pending)do
+                local userId,record=next(pending);pending[userId]=nil
+                if record==false then cleanupPeer(userId)
+                else
+                    local ok,reason=pcall(applyRecord,record)
+                    if not ok then status("Shared appearance: "..tostring(reason))end
                 end
-                for userId in pairs(peers)do if not seen[userId]or not Players:GetPlayerByUserId(tonumber(userId))then cleanupPeer(userId)end end
-            end)
-            if not ok then status("Shared Larp relay: "..tostring(err):gsub("^.-:%d+:%s*",""))end
-            task.wait(POLL_SECONDS)
-        end
+            end
+            processing=false
+            if sharing and next(pending)then processPending()end
+        end)
     end
+    local function receive(event)
+        if not sharing or not isAlive()or type(event)~="table"then return end
+        if event.type=="status"then status(tostring(event.message));return end
+        if event.type=="snapshot"and type(event.players)=="table"then
+            local seen={}
+            for _,record in ipairs(event.players)do
+                if validRecord(record)and record.userId~=tostring(localPlayer.UserId)then
+                    seen[record.userId]=true;latestRecords[record.userId]=record;pending[record.userId]=record
+                end
+            end
+            for userId in pairs(latestRecords)do if not seen[userId]then latestRecords[userId]=nil;pending[userId]=false end end
+        elseif event.type=="upsert"and validRecord(event.record)then
+            local record=event.record
+            if record.userId~=tostring(localPlayer.UserId)then latestRecords[record.userId]=record;pending[record.userId]=record end
+        elseif event.type=="remove"and type(event.userId)=="string"then
+            latestRecords[event.userId]=nil;pending[event.userId]=false
+        end
+        processPending()
+    end
+    if transport and transport.onShared then connections[#connections+1]=transport.onShared(receive)end
+    if transport and transport.onSnapshot then
+        connections[#connections+1]=transport.onSnapshot(function(snapshot)
+            if sharing and isAlive()then
+                local ok,reason=pcall(publish,snapshot)
+                if not ok then status("Shared appearance: "..tostring(reason))end
+            end
+        end)
+    end
+    local function watchPlayer(player)
+        if player==localPlayer then return end
+        local ok,connection=pcall(function()return player.CharacterAdded:Connect(function()
+            local key=tostring(player.UserId)
+            if latestRecords[key]then pending[key]=latestRecords[key];processPending()end
+        end)end)
+        if ok then connections[#connections+1]=function()connection:Disconnect()end end
+    end
+    for _,player in ipairs(Players:GetPlayers())do watchPlayer(player)end
+    pcall(function()
+        local added=Players.PlayerAdded:Connect(watchPlayer)
+        local removed=Players.PlayerRemoving:Connect(function(player)
+            local key=tostring(player.UserId);pending[key]=false;processPending()
+        end)
+        connections[#connections+1]=function()added:Disconnect();removed:Disconnect()end
+    end)
     local api={}
     function api.setEnabled(value)
         value=value==true
         if sharing==value then return api.status()end
-        sharing=value;generation=generation+1;lastSent="";lastPublished=0
-        local mine=generation
+        generation=generation+1;lastSent=nil
         if sharing then
-            status("Sharing your Larp appearance with users in this Roblox server.")
-            task.spawn(function()loop(mine)end)
-        else
-            pcall(function()callRelay("DELETE",roomPath().."/players/"..tostring(localPlayer.UserId))end)
-            cleanupAll();status("Shared Larp mode is off.")
+            sharing=false
+            if transport then pcall(transport.setSharing,{enabled=false})end
+            pending={};latestRecords={};cleanupAll();status("Shared Larp mode is off.")
+        elseif value then
+            sharing=true
+            local ok,reason=pcall(publish)
+            if not ok then sharing=false;error(reason,0)end
+            status("Sharing your Larp appearance through desktop.")
         end
         return api.status()
     end
     function api.isEnabled()return sharing end
     function api.status()return sharing and "Shared Larp mode: ON" or "Shared Larp mode: OFF"end
     function api.destroy()
-        if sharing then pcall(function()callRelay("DELETE",roomPath().."/players/"..tostring(localPlayer.UserId))end)end
+        if sharing and transport then pcall(transport.setSharing,{enabled=false})end
         sharing=false;generation=generation+1;cleanupAll()
+        for _,disconnect in ipairs(connections)do pcall(disconnect)end
+        connections={};pending={};latestRecords={}
     end
     return api
 end

@@ -565,7 +565,7 @@ local function sharedLarp()
             if not alive then return end
             statusText=message
             if statusLabel then statusLabel.Text=message end
-        end,{getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews})
+        end,{getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews,transport=gameBrowserSync()})
     return sharedLarpAPI
 end
 local function previews()

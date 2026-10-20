@@ -1,75 +1,43 @@
-local calls={}
-local localPlayer={UserId=1,Name="Self",DisplayName="Self"}
-local peer={UserId=2,Name="Other",DisplayName="Other"}
-local Players={GetPlayerByUserId=function(_,id)return id==2 and peer or nil end}
-local peerRecord={version=1,userId="2",name={enabled=true,username="LarpTwo",displayName="Larp Two"},snapshot={
-    version=1,userId="2",definition={assets={},bodyColors={headColor="ff0000",torsoColor="00ff00",leftArmColor="0000ff",rightArmColor="ffffff",leftLegColor="000000",rightLegColor="888888"},scales={},playerAvatarType={playerAvatarType="R15"}},
-    items={{id=200,name="Hat",assetType=8},{id=300,name="Shirt",assetType=11},{id=400,name="Head",assetType=17}},
-}}
-local http={JSONEncode=function(_,value)return value end,JSONDecode=function(_,value)return value end}
-Color3={fromRGB=function(r,g,b)return {r=r,g=g,b=b}end}
-game={PlaceId=123,JobId="abc-123",GetService=function(_,name)if name=="Players"then return Players end;if name=="HttpService"then return http end end}
-request=function(value)
-    calls[#calls+1]=value
-    if value.Method=="GET"then return {StatusCode=200,Body={players={peerRecord}}}end
-    return {StatusCode=200,Body={ok=true}}
+-- Shared appearance transport is local, event-driven, and incremental.
+local calls,jobs={},{}
+local self={UserId=1,Name='Self',DisplayName='Self'}
+local peer={UserId=2,Name='Other',DisplayName='Other',Character={}}
+local players={GetPlayers=function()return {self,peer}end,GetPlayerByUserId=function(_,id)return id==2 and peer end}
+game={PlaceId=123,JobId='abc-123',GetService=function(_,name)return name=='Players' and players or {}end}
+Color3={fromRGB=function(r,g,b)return {r,g,b}end}
+request=function()error('Shared appearances must not call a public HTTP endpoint from the game')end
+task={spawn=function(fn)jobs[#jobs+1]=fn end}
+local function drain()while #jobs>0 do table.remove(jobs,1)()end end
+local destroyed,equipped=0,{}
+local function avatar()
+ return {destroy=function()destroyed=destroyed+1 end,removeCurrentAccessories=function()calls[#calls+1]='hide' end,
+ listAccessories=function()local out={}for id in pairs(equipped)do out[#out+1]={id=id,key=id}end;return out end,
+ equipAccessory=function(id)equipped[id]=true;calls[#calls+1]='equip:'..id end,
+ removeAccessory=function(id)equipped[id]=nil;calls[#calls+1]='remove:'..id end,
+ applyBodyPart=function()calls[#calls+1]='body' end,restoreBodyPart=function()end,
+ setSkin=function()end,applyFace=function()end,restoreFace=function()end,removeGear=function()end}
 end
-local jobs={}
-task={spawn=function(fn)jobs[#jobs+1]=fn end,wait=function()end}
-local destroyed=0
-local function api()
-    return {
-        restore=function()calls[#calls+1]={Method="RESTORE"}end,
-        destroy=function()destroyed=destroyed+1 end,
-        removeCurrentAccessories=function()calls[#calls+1]={Method="HIDE_ACCESSORIES"}end,
-        equipAccessory=function(id)calls[#calls+1]={Method="ACCESSORY",Id=id}end,
-        applyBodyPart=function(region,id)calls[#calls+1]={Method="BODY",Region=region,Id=id}end,
-        applyFace=function(id)calls[#calls+1]={Method="FACE",Id=id}end,
-        setSkin=function(_,region)calls[#calls+1]={Method="SKIN",Region=region}end,
-        equipGear=function(id)calls[#calls+1]={Method="GEAR",Id=id}end,
-    }
-end
-local function clothes()
-    return {restore=function()end,destroy=function()destroyed=destroyed+1 end,equipTShirt=function()end,equipShirt=function()calls[#calls+1]={Method="SHIRT"}end,equipPants=function()end,removeTShirt=function()end,removeShirt=function()end,removePants=function()end}
-end
-local function animations()
-    return {restore=function()end,destroy=function()destroyed=destroyed+1 end,equipAssets=function()calls[#calls+1]={Method="ANIMATIONS"}end}
-end
-local names={restore=function()end,destroy=function()destroyed=destroyed+1 end,set=function(username,displayName)calls[#calls+1]={Method="NAME",Username=username,DisplayName=displayName}end}
-local module=dofile("shared_larp.lua")
-local apiInstance
-local nameSettings={enabled=false,username="",displayName=""}
-apiInstance=module(localPlayer,function()return {version=1,userId="1",definition={assets={},bodyColors={}},items={}}end,function()return nameSettings end,
-    function()return api()end,function()return clothes()end,function()return animations()end,function()return names end,function()return true end,function()end)
-task.wait=function()apiInstance.setEnabled(false)end
-apiInstance.setEnabled(true)
-assert(#jobs==1,"enabling sharing starts a relay poll loop")
-jobs[1]()
-local function called(method)for _,entry in ipairs(calls)do if entry.Method==method then return true end end;return false end
-assert(called("PUT"),"the local Larp record is published")
-assert(called("GET"),"the current Roblox server roster is polled")
-assert(called("ACCESSORY") and called("BODY") and called("SHIRT"),"peer appearance items are applied locally")
-assert(called("SKIN") and called("NAME"),"peer colors and Larp name are applied locally")
-assert(called("DELETE"),"disabling sharing removes the local relay record")
-assert(destroyed==4,"disabling sharing restores and destroys the peer overlay APIs")
-print("Shared Larp opt-in publish, peer rendering, cleanup and relay removal passed.")
-
-for _,fixture in ipairs({
-    {value={enabled=true,username="",displayName=""},enabled=false},
-    {value={enabled=true,username="Valid_Name",displayName=""},enabled=false},
-    {value={enabled=true,username="Invalid Name",displayName="Display"},enabled=false},
-    {value={enabled=true,username="Valid_Name",displayName="Display"},enabled=true},
-})do
-    nameSettings=fixture.value;calls={};jobs={}
-    apiInstance.setEnabled(true);jobs[1]()
-    local published
-    for _,entry in ipairs(calls)do if entry.Method=="PUT"then published=entry.Body end end
-    assert(published and published.snapshot,"avatar still publishes without a custom name")
-    assert(published.name.enabled==fixture.enabled,"only valid custom names are shared")
-    if not fixture.enabled then
-        assert(published.name.username=="" and published.name.displayName=="","disabled name has empty fields")
-    else
-        assert(published.name.username==fixture.value.username,"valid custom name is preserved")
-    end
-end
-print("Empty or invalid custom names do not block avatar sharing.")
+local function clothes()return {destroy=function()destroyed=destroyed+1 end,equipShirt=function()calls[#calls+1]='shirt'end,equipPants=function()end,equipTShirt=function()end,removeShirt=function()end,removePants=function()end,removeTShirt=function()end}end
+local function animations()return {destroy=function()destroyed=destroyed+1 end,restore=function()end,equipAssets=function()end}end
+local function names()return {destroy=function()destroyed=destroyed+1 end,restore=function()end,set=function()calls[#calls+1]='name'end}end
+local receive,onSnapshot,published
+local transport={setSharing=function(value)published=value end,onShared=function(fn)receive=fn;return function()receive=nil end end,onSnapshot=function(fn)onSnapshot=fn;return function()onSnapshot=nil end end}
+local setting={enabled=false,username='',displayName=''}
+local function snapshot(user,id)return {version=1,userId=user,items={{id=id,name='Hat',assetType=8,itemType='Asset'}},definition={assets={{id=id}},bodyColors={},scales={}}}end
+local sync=dofile('shared_larp.lua')(self,function()return snapshot('1',10)end,function()return setting end,avatar,clothes,animations,names,function()return true end,function()end,{transport=transport})
+sync.setEnabled(true)
+assert(published.enabled and published.placeId=='123' and published.jobId=='abc-123','sharing uses local desktop transport')
+assert(#jobs==0,'enabling creates no polling loop')
+local record={version=1,userId='2',snapshot=snapshot('2',20),name={enabled=true,username='OtherAlias',displayName='Other Alias'}}
+receive({type='snapshot',players={record}});drain()
+assert(equipped[20] and destroyed==0,'initial peer appearance applies')
+local before=#calls;receive({type='upsert',record=record});drain();assert(#calls==before,'identical push does no rendering work')
+local changed={version=1,userId='2',snapshot=snapshot('2',21),name=record.name}
+receive({type='upsert',record=changed});drain()
+assert(equipped[21] and not equipped[20] and destroyed==0,'changed accessories update without teardown')
+setting={enabled=true,username='Valid_Name',displayName='Display'};onSnapshot(snapshot('1',11))
+assert(published.record.snapshot.items[1].id==11 and published.record.name.enabled,'appearance events publish immediately')
+receive({type='remove',userId='2'});drain();assert(destroyed==4,'peer removal cleans the local overlay')
+sync.setEnabled(false);assert(published.enabled==false,'disabling tells desktop to disconnect')
+sync.destroy();assert(receive==nil and onSnapshot==nil,'destroy disconnects event subscriptions')
+print('Shared desktop transport, push updates, incremental application and cleanup passed.')

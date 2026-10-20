@@ -19,6 +19,8 @@ For a selectable branch, use `autoexec.lua` and change its first-line `branch` v
 > [!NOTE]
 > Enable **Connection → Share Larp appearance** to share supported looks and Larp names with other Larpblox users in the same server. Both clients must have sharing enabled.
 
+Use **Larpblox Desktop 0.1.3 or newer**. Sharing travels from the game to desktop over localhost WebSocket, then through the public WebSocket relay. Changes are pushed as they happen instead of polling every three seconds. Desktop owns reconnects and presence; no browser extension update is needed for this transport. If desktop is older, update it before enabling sharing.
+
 Your own name, portrait, and appearance come from the paired local browser connection and work without the shared relay. Other players' shared names, portraits, and appearances come from the relay while sharing is enabled.
 
 Set an optional **Larp name** in the browser's **Robux** dropdown and enable **Larp mode**. An empty custom name keeps your original name and does not prevent avatar sharing. A paired browser connection sends it to the game automatically. There is no Names tab in the in-game menu. Disabling Larp mode or restoring the browser name restores the real in-game names when connected.
