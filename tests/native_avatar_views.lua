@@ -24,6 +24,7 @@ end
 local core=node("CoreGui","CoreGui")
 local row=add(core,"Frame","PlayerEntry_123")
 local thumb=add(row,"ImageLabel","AvatarImage");thumb.ZIndex=2;thumb.ImageTransparency=0.25;thumb.Image="rbxthumb://type=AvatarHeadShot&id=123&w=48&h=48"
+local nativeCorner=add(thumb,"UICorner","UICorner");nativeCorner.CornerRadius={Scale=0.5,Offset=0}
 local rowIcon=add(row,"ImageLabel","Icon");rowIcon.Image="rbxassetid://inspect"
 local other=add(core,"Frame","PlayerEntry_456")
 local otherThumb=add(other,"ImageLabel","AvatarImage");otherThumb.Image="rbxthumb://type=AvatarHeadShot&id=456&w=48&h=48"
@@ -33,6 +34,8 @@ local peopleThumb=add(ownPeopleRow,"ImageButton","AvatarThumbnail");peopleThumb.
 local otherPeopleRow=add(list,"Frame","OtherPeopleRow");local otherPeopleLabel=add(otherPeopleRow,"TextLabel","Name");otherPeopleLabel.Text="@OtherUser"
 local otherPeopleThumb=add(otherPeopleRow,"ImageButton","AvatarThumbnail");otherPeopleThumb.Image="rbxassetid://static"
 local static=add(core,"ImageLabel","Icon");static.Image="rbxassetid://icon"
+local UDimOld=UDim
+UDim={new=function(scale,offset)return {Scale=scale,Offset=offset}end}
 local InstanceOld, gameOld, taskOld, UDim2Old = Instance, game, task, UDim2
 Instance={new=function(class) return node(class,class) end}
 UDim2={fromScale=function(x,y)return{x=x,y=y}end}
@@ -71,6 +74,11 @@ assert(thumb.ImageTransparency==1,"original image is hidden only after a success
 local portraitOverlay
 for _,child in ipairs(thumb.children)do if child.Name=="LarpbloxOwnAvatarPreview" then portraitOverlay=child end end
 assert(portraitOverlay and portraitOverlay.ZIndex==thumb.ZIndex,"portrait must preserve the native image layer below level badges")
+local copiedCorner=portraitOverlay.children[1]
+assert(copiedCorner and copiedCorner.ClassName=="UICorner" and copiedCorner.CornerRadius==nativeCorner.CornerRadius,"replacement portrait copies the exact native rounding")
+local peopleOverlay=peopleThumb.children[1]
+assert(peopleOverlay.children[1].CornerRadius.Scale==0.5,"People portraits remain circular even when the source uses a baked image mask")
+
 
 api.update({enabled=true,name="LocalAlias",snapshot={version=1}})
 assert(shows==4 and captures==2,"a changed effective snapshot refreshes overlays once")
@@ -115,3 +123,5 @@ assert(thumb.ImageTransparency==1,"render failure keeps the original avatar blan
 failed.update({enabled=false,name="LocalAlias",snapshot=effective});failed.destroy()
 Instance,game,task,UDim2=InstanceOld,gameOld,taskOld,UDim2Old
 print("Native avatar ownership and overlay lifecycle passed.")
+
+UDim=UDimOld

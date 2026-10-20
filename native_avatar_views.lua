@@ -209,6 +209,15 @@ function M.create(player, getPreviews)
         overlay.BackgroundTransparency = 1; overlay.BorderSizePixel = 0
         overlay.Visible = false
         overlay.ZIndex = read(image, "ZIndex") or 1; overlay.Parent = image
+        -- Child previews do not inherit the native portrait's rounded mask.
+        local radius
+        for _,child in ipairs(image:GetDescendants()) do
+            if child.Parent==image and read(child,"ClassName")=="UICorner" then radius=child.CornerRadius;break end
+        end
+        if not radius and uniquePeopleRow(image,player,{name=currentName}) then radius=UDim.new(0.5,0) end
+        if radius then
+            local corner=Instance.new("UICorner");corner.CornerRadius=radius;corner.Parent=overlay
+        end
         if imageSource then overlay.Image = imageSource end
         overlays[image] = overlay
         return overlay
