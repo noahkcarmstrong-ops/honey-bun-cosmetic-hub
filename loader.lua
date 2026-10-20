@@ -91,6 +91,7 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = playerGui
 
 local panel = Instance.new("CanvasGroup")
+panel.Visible=false
 panel.GroupTransparency=0
 panel.AnchorPoint = Vector2.new(1, 0.5)
 panel.Position = UDim2.new(1, -24, 0.5, 0)
@@ -271,6 +272,7 @@ local function uiSetting(key,default)
     local value=playerGui:GetAttribute("HoneyBunCosmeticUI_"..key)
     return type(value)==type(default) and value or default
 end
+local hideOnStart=uiSetting("hideOnStart",false)
 local copyPlayerInput=uiSetting("copyPlayer","")
 mm2EmotesShown=uiSetting("mm2EmotesShown",false)
 local knifeSide=uiSetting("mm2KnifeSide",false)
@@ -331,6 +333,7 @@ if regionIndex<1 or regionIndex>#regions or regionIndex%1~=0 then regionIndex=1 
 local paletteOpen=uiSetting("palette",false)
 local function saveUI()
     local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,browserOutfit=browserOutfitInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animationBundle=animationInput,emoteSlot=emoteSlot,shirt=shirtInput,pants=pantsInput}
+    values.hideOnStart=hideOnStart
     values.skybox=skyboxInput
     values.bodyPartsOpen=bodyPartsOpen
     values.copyPlayer=copyPlayerInput
@@ -724,6 +727,10 @@ render=function()
     statusLabel=caption(statusText,56)
     statusLabel.AutomaticSize=Enum.AutomaticSize.Y
     persistenceLabel=caption(persistence and persistence.status() or persistenceNotice,44)
+    local startupToggle=button("Hide on start: "..(hideOnStart and "ON" or "OFF"),function()
+        hideOnStart=not hideOnStart;saveUI();render()
+    end)
+    startupToggle.Name="HideOnStart"
     if activePage=="MM2" and isMM2 then
         caption(mm2MenuOpen and "MM2 MENU" or "MURDER MYSTERY 2",24)
         if mm2MenuOpen then
@@ -1440,7 +1447,7 @@ end)
 panelScale.Scale=0.975
 panel.GroupTransparency=1
 panel.Position=UDim2.new(1,-12,0.5,0)
-showMenu(true)
+showMenu(not hideOnStart)
 render()
 action(function()
     if isMM2 and crosshairImage~="" then pcall(function()customCrosshair().set(crosshairImage)end) end
