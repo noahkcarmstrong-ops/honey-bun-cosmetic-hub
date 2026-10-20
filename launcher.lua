@@ -4,6 +4,39 @@ local function trace(stage)
     if type(writefile)=="function" then pcall(writefile,"larpblox-startup.log",stage)end
 end
 trace("Resolving branch: "..branch)
+-- Autoexec may run before the character/appearance exists, even after Loaded.
+-- Start cosmetic and native-UI work only after the initial avatar is ready.
+trace("Waiting for game and avatar readiness")
+if not game:IsLoaded() then game.Loaded:Wait() end
+local Players=game:GetService("Players")
+while not Players.LocalPlayer do Players:GetPropertyChangedSignal("LocalPlayer"):Wait() end
+local player=Players.LocalPlayer
+local readySignal=Instance.new("BindableEvent")
+local connections={}
+local characterConnection
+local finished,timedOut=false,false
+local function checkReady()
+    local character=player.Character
+    local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.Health>0 and character:FindFirstChild("HumanoidRootPart") and player:HasAppearanceLoaded()then
+        finished=true;readySignal:Fire()
+    end
+end
+local function watchCharacter(character)
+    if characterConnection then characterConnection:Disconnect()end
+    characterConnection=character and character.ChildAdded:Connect(checkReady)or nil
+    checkReady()
+end
+connections[#connections+1]=player.CharacterAdded:Connect(watchCharacter)
+connections[#connections+1]=player.CharacterAppearanceLoaded:Connect(checkReady)
+watchCharacter(player.Character)
+task.delay(30,function()if not finished then timedOut=true;finished=true;readySignal:Fire()end end)
+if not finished then readySignal.Event:Wait()end
+for _,connection in ipairs(connections)do connection:Disconnect()end
+if characterConnection then characterConnection:Disconnect()end
+readySignal:Destroy()
+if timedOut then trace("Avatar readiness timed out; run Larpblox after spawning.");warn("Larpblox: avatar is not ready yet. Run the script again after spawning.");return end
+trace("Avatar ready; resolving branch: "..branch)
 local Http=game:GetService("HttpService")
 local stamp=tostring(DateTime.now().UnixTimestampMillis)
 local revision=Http:JSONDecode(game:HttpGet("https://api.github.com/repos/noahkcarmstrong-ops/larpblox/commits/"..Http:UrlEncode(branch).."?refresh="..stamp,false))
