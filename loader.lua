@@ -200,7 +200,8 @@ content.Parent = panel
 local layout = Instance.new("UIListLayout", content)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
-local avatarAPI,motionAPI,animationAPI,clothesAPI,previewsAPI,browserOutfitAPI,gameBrowserSyncAPI
+local avatarAPI,motionAPI,animationAPI,clothesAPI,previewsAPI,browserOutfitAPI,gameBrowserSyncAPI,sharedLarpAPI
+local avatarFactory,animationFactory,clothesFactory,nameFactory
 local refresh = Instance.new("TextButton")
 refresh.Position = UDim2.new(1, -126, 0, 62)
 refresh.Size = UDim2.fromOffset(98, 26)
@@ -418,6 +419,7 @@ local function api()
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..sha.."/avatar.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Avatar editor failed to load.")
+    avatarFactory=create
     assert(alive,"Menu was closed.")
     avatarAPI=create(Players.LocalPlayer,function(message,working)
         if not alive then return end
@@ -450,7 +452,8 @@ local function animations()
     api()
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/animations.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
-    animationAPI=chunk()(Players.LocalPlayer,function(message)
+    animationFactory=chunk()
+    animationAPI=animationFactory(Players.LocalPlayer,function(message)
         if not alive then return end
         statusText=message
         if statusLabel then statusLabel.Text=message end
@@ -462,7 +465,8 @@ local function clothes()
     api()
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/clothes.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
-    clothesAPI=chunk()(Players.LocalPlayer,function(message)
+    clothesFactory=chunk()
+    clothesAPI=clothesFactory(Players.LocalPlayer,function(message)
         if not alive then return end
         statusText=message
         if statusLabel then statusLabel.Text=message end
@@ -486,8 +490,28 @@ local function localNames()
     api()
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/local_names.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
-    localNamesAPI=chunk()(Players.LocalPlayer,playerGui)
+    nameFactory=chunk()
+    localNamesAPI=nameFactory(Players.LocalPlayer,playerGui)
     return localNamesAPI
+end
+local gameBrowserSync
+local function sharedLarp()
+    if sharedLarpAPI then return sharedLarpAPI end
+    api();clothes();animations();localNames()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/shared_larp.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    local create=chunk();assert(type(create)=="function","Shared Larp sync failed to load.")
+    sharedLarpAPI=create(Players.LocalPlayer,function()return gameBrowserSync().snapshot()end,function()return localNames().getSettings()end,
+        function(player,onStatus)return avatarFactory(player,onStatus)end,
+        function(player,onStatus)return clothesFactory(player,onStatus)end,
+        function(player,onStatus)return animationFactory(player,onStatus)end,
+        function(player,gui)return nameFactory(player,gui)end,
+        function()return alive end,function(message)
+            if not alive then return end
+            statusText=message
+            if statusLabel then statusLabel.Text=message end
+        end)
+    return sharedLarpAPI
 end
 local function previews()
     if previewsAPI then return previewsAPI end
@@ -518,7 +542,7 @@ local function nativeViews()
     function nativeViewsAPI.destroy()portraits.destroy();inspection.destroy()end
     return nativeViewsAPI
 end
-local function gameBrowserSync()
+gameBrowserSync=function()
     if gameBrowserSyncAPI then return gameBrowserSyncAPI end
     api();clothes()
     local names=localNames()
@@ -965,6 +989,16 @@ render=function()
             end)
         end)
         caption("Sync publishes your live local avatar, including added accessories, current shirt and pants, skin overrides, and hidden originals. Unsupported game-only items are reported.",48)
+        local sharing=sharedLarpAPI and sharedLarpAPI.isEnabled()
+        button(sharing and "Share Larp appearance: ON" or "Share Larp appearance: OFF",function()
+            if busy then return end
+            action(function()
+                local sync=sharedLarp()
+                sync.setEnabled(not sync.isEnabled())
+                return sync.status()
+            end)
+        end)
+        caption("Sharing is opt-in and only shows your current supported outfit to other Larpblox users in this same Roblox server. The relay removes inactive players automatically.",56)
         caption("IMPORT FROM BROWSER",24)
         caption("Paste the JSON exported by the Larpblox browser extension. This equips supported accessories, classic shirts, and classic pants locally; it does not grant ownership or purchase anything.",64)
         local browserOutfitBox=input("Paste browser outfit JSON",browserOutfitInput,function(value) browserOutfitInput=value end)
@@ -1434,6 +1468,7 @@ gui.Destroying:Connect(function()
     if mm2API then mm2API.destroy() end
     if crosshairAPI then crosshairAPI.destroy() end
     if accessorySoundsAPI then accessorySoundsAPI.destroy() end
+    if sharedLarpAPI then sharedLarpAPI.destroy() end
     if gameBrowserSyncAPI then gameBrowserSyncAPI.destroy() end
     if nativeViewsAPI then nativeViewsAPI.destroy() end
     if localNamesAPI then localNamesAPI.destroy() end
