@@ -191,3 +191,46 @@ assert(clothes.Shirt==333 and clothes.Pants==444,"saved outfit replaces the prev
 assert(posted.definition.bodyColors.headColor=="123456","game confirms the new outfit color instead of the old one")
 colorSync.destroy()
 print("Saved character body colors replace the previous outfit colors.")
+
+-- WebSocket auth, pushed outfit/mode state, snapshot publishing and disconnect.
+local sent,closed={},false
+local messageHandler,closeHandler
+local ws={OnMessage={Connect=function(_,fn)messageHandler=fn end},OnClose={Connect=function(_,fn)closeHandler=fn end}}
+function ws:Close()closed=true;if closeHandler then closeHandler()end end
+function ws:Send(value)
+    sent[#sent+1]=value
+    if value.type=="auth" then
+        messageHandler({type="ready",instanceId="ws-test"})
+        messageHandler({type="state",channel="names",value={version=1,userId="7",enabled=true,name="Socket_7"}})
+        command.revision=40;command.items={{id=23,name="Pushed Hat",itemType="Asset",assetType=8}}
+        messageHandler({type="state",channel="browser",value=command})
+        messageHandler({type="state",channel="image",value={version=1,userId="7",definition=command.definition,imageUrl="https://tr.rbxcdn.com/Test-Png/420/420/Avatar/Png/noFilter"}})
+    end
+end
+WebSocket={connect=function(url)assert(url=="ws://127.0.0.1:38261/v1/socket");return ws end}
+request=function(o)
+    assert(o.Url:find("/v1/status"),"WebSocket ready avoids HTTP polling")
+    return {StatusCode=200,Body={version=1,instanceId="ws-test"}}
+end
+local pngWritten=false
+getcustomasset=function(path)assert(path:match("larpblox%-avatar%-7%-%d+.png"));return "rbxasset://custom-avatar.png"end
+game.HttpGet=function()return "\137PNG\r\n\26\nbytes"end
+writefile=function(path,bytes)if path:match("%.png$")then pngWritten=bytes:sub(1,8)=="\137PNG\r\n\26\n"end end
+viewEvents={}
+jobs={};local socketSync=create(player,function()return avatar end,function()return clothing end,function()return true end,function()end,nil,function()return nameApi end,function()return {update=function(value)viewEvents[#viewEvents+1]=value end}end)
+local socketStatus
+task.wait=function()
+    for i=2,#jobs do jobs[i]()end
+    socketStatus=socketSync.status()
+    local received=false;for _,value in ipairs(viewEvents)do if value.image=="rbxasset://custom-avatar.png"then received=true end end
+    assert(pngWritten and received,"browser PNG loads as a custom asset and forwards to native views")
+    socketSync.disconnect()
+end
+socketSync.connect(string.rep("a",32));jobs[1]()
+assert(sent[1].type=="auth" and sent[1].role=="game" and sent[1].userId=="7","WebSocket authenticates account and role")
+assert(socketStatus=="Browser connected via WebSocket.","WebSocket reports active transport")
+assert(#localHats==1 and localHats[1].id==23,"pushed command applies outfit")
+local published=false;for _,value in ipairs(sent)do if value.type=="publish" and value.channel=="game" then published=true end end
+assert(published and closed,"game snapshot publishes over socket and disconnect closes it")
+WebSocket=nil
+print("WebSocket authentication, pushed outfit, snapshot and disconnect passed.")

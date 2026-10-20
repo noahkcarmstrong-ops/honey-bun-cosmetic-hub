@@ -25,6 +25,12 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local generation=0
     local lastNameState=nil
     local larpEnabled,larpName,lastSnapshot=false,"",nil
+    local socket,socketReady,socketMine,nextSocketTry=nil,false,0,0
+    local incoming,pumping={},false
+    local retryCommand,retryAt=nil,0
+    local imageValue,imageAsset,imageUrl,imageSerial=nil,nil,nil,0
+    local loadingImageUrl
+    local lastDefinition
     local file="larpblox-browser-pair-"..tostring(player.UserId)..".txt"
     local cache,assetTypes,bodyCache={},{},{}
     local function status(message)if onStatus and isAlive() then onStatus(message)end end
@@ -68,6 +74,48 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local bodyTypeRegions={[17]="Head",[79]="Head",[27]="Torso",[28]="RightArm",[29]="LeftArm",[30]="LeftLeg",[31]="RightLeg"}
     local browserBody,originalBody={},{ }
     local browserFace=false
+    local function definitionKey(definition)
+        if type(definition)~="table" then return "" end
+        local ids,values={},{}
+        for _,asset in ipairs(definition.assets or {})do ids[#ids+1]=asset.id end
+        table.sort(ids);for _,id in ipairs(ids)do values[#values+1]=tostring(id)end
+        for _,key in ipairs({"headColor","torsoColor","leftArmColor","rightArmColor","leftLegColor","rightLegColor"})do
+            values[#values+1]=tostring((definition.bodyColors or {})[key] or ""):gsub("^#",""):lower()
+        end
+        for _,key in ipairs({"height","width","depth","head","bodyType","proportion"})do values[#values+1]=tostring((definition.scales or {})[key] or "")end
+        return table.concat(values,"|")
+    end
+    local function currentImage()
+        return imageAsset and imageValue and definitionKey(imageValue.definition)==definitionKey(lastDefinition) and imageAsset or nil
+    end
+    local function updateViews()
+        if getViews then getViews().update({enabled=larpEnabled,name=larpName,snapshot=lastSnapshot,image=currentImage()})end
+    end
+    local function applyImage(value)
+        if type(value)~="table" or value.version~=1 or tostring(value.userId)~=tostring(player.UserId) then return end
+        local url=value.imageUrl
+        if type(url)~="string" or #url>2048 or not (url:match("^https://tr%.rbxcdn%.com/[%w%-%._~/]+$") or url:match("^https://t%d%.rbxcdn%.com/[%w%-%._~/]+$")) then return end
+        if type(value.definition)~="table" then return end
+        imageValue=value
+        if imageUrl==url and imageAsset then updateViews();return end
+        local custom=getcustomasset or getsynasset
+        if type(custom)~="function" or type(writefile)~="function" then return end
+        if loadingImageUrl==url then return end
+        loadingImageUrl=url
+        local mine=generation
+        local ok,result=pcall(function()
+            local bytes=game:HttpGet(url,false)
+            assert(type(bytes)=="string" and #bytes<=4*1024*1024 and bytes:sub(1,8)=="\137PNG\r\n\26\n","The avatar image is not a valid PNG.")
+            if mine~=generation or not imageValue or imageValue.imageUrl~=url then return end
+            imageSerial=imageSerial+1
+            local path="larpblox-avatar-"..player.UserId.."-"..imageSerial..".png"
+            writefile(path,bytes)
+            return custom(path)
+        end)
+        if loadingImageUrl==url then loadingImageUrl=nil end
+        if ok and type(result)=="string" and mine==generation and imageValue and imageValue.imageUrl==url then imageAsset=result;imageUrl=url;updateViews()
+        elseif not ok then status("Browser avatar image: "..tostring(result))end
+    end
     local function snapshot()
         local character=player.Character;local humanoid=character and character:FindFirstChildOfClass("Humanoid")
         assert(character and humanoid,"Wait for your avatar to finish spawning.")
@@ -243,7 +291,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             elseif #wantedAnimations>0 then loadErrors[#loadErrors+1]="Reload the connected script to enable movement animations." end
             if #loadErrors>0 then error(table.concat(loadErrors,"; "))end
         end)
-        if ok then lastRevision=revision end
+        if ok then lastRevision=revision;lastDefinition=value.definition end
         if not ok then status("Browser outfit failed: "..tostring(msg)) elseif #failed>0 then status("Browser outfit applied; unsupported items: "..table.concat(failed,", ")) else status("Browser outfit applied locally.") end
     end
     local function applyNameState(value)
@@ -264,26 +312,105 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             local names=getNames()
             if state=="disabled" then names.setEnabled(false) else names.set(name,name) end
         end
-        if getViews then getViews().update({enabled=larpEnabled,name=larpName})end
+        if getViews then getViews().update({enabled=larpEnabled,name=larpName,image=currentImage()})end
         lastNameState=state
+    end
+    local function closeSocket()
+        socketMine=socketMine+1;socketReady=false
+        local previous=socket;socket=nil
+        if previous then pcall(function()previous:Close()end)end
+    end
+    local function send(channel,value)
+        if socketReady and socket then
+            local ok=pcall(function()socket:Send(HttpService:JSONEncode({type="publish",channel=channel,value=value}))end)
+            if ok then return end
+            closeSocket()
+        end
+        return call("POST","/v1/"..(channel=="game" and "game" or channel).."/"..player.UserId,token,value)
+    end
+    local function publishSnapshot()
+        local made,value=pcall(snapshot)
+        if made then
+            lastSnapshot=value
+            local encoded=HttpService:JSONEncode(value)
+            if encoded~=lastJson then send("game",value);lastJson=encoded end
+        end
+        updateViews()
+    end
+    local function pump()
+        if pumping then return end
+        pumping=true;local mine=generation
+        local ok,err=pcall(function()
+            while connected and generation==mine and next(incoming)do
+                local batch=incoming;incoming={}
+                if batch.names then applyNameState(batch.names.value)end
+                if batch.browser and batch.browser.value and batch.browser.value.revision then
+                    local command=batch.browser.value
+                    applyCommand(command)
+                    if lastRevision~=command.revision then retryCommand=command;retryAt=os.clock()+2 else retryCommand=nil end
+                end
+                if batch.image then
+                    local value=batch.image.value
+                    task.spawn(function()if generation==mine and connected then applyImage(value)end end)
+                end
+                publishSnapshot()
+            end
+        end)
+        pumping=false
+        if not ok then status("Browser socket: "..tostring(err))end
+    end
+    local function openSocket()
+        local ws=WebSocket or websocket or (syn and syn.websocket)
+        local connect=ws and (ws.connect or ws.new)
+        if type(connect)~="function" or socket or os.clock()<nextSocketTry then return end
+        nextSocketTry=os.clock()+2
+        local mine=generation;local serial=socketMine
+        local ok,candidate=pcall(connect,"ws://127.0.0.1:"..PORT.."/v1/socket")
+        if not ok or not candidate then return end
+        if mine~=generation then pcall(function()candidate:Close()end);return end
+        socket=candidate
+        candidate.OnClose:Connect(function()
+            if socket==candidate then socket=nil;socketReady=false;lastJson=nil end
+        end)
+        candidate.OnMessage:Connect(function(message)
+            if socket~=candidate or generation~=mine or socketMine~=serial then return end
+            local read,value=pcall(function()return HttpService:JSONDecode(message)end)
+            if not read or type(value)~="table" then return end
+            if value.type=="ready" then
+                socketReady=true;lastJson=nil
+                if value.instanceId~=api.instanceId then lastRevision=0;lastNameState=nil;api.instanceId=value.instanceId end
+                status("Browser connected via WebSocket.")
+            elseif value.type=="state" and (value.channel=="browser" or value.channel=="names" or value.channel=="image") then
+                incoming[value.channel]={value=value.value};task.spawn(pump)
+            elseif value.type=="error" then closeSocket()end
+        end)
+        local sent=pcall(function()candidate:Send(HttpService:JSONEncode({version=1,type="auth",token=token,userId=tostring(player.UserId),role="game"}))end)
+        if not sent then closeSocket()end
     end
     local function loop()
         local mine=generation
         while connected and generation==mine and isAlive() do
             local ok,err=pcall(function()
+                openSocket()
+                if not socketReady then
                 local relay=call("GET","/v1/status",token)
                 if relay and relay.instanceId and relay.instanceId~=api.instanceId then
                     lastRevision=0;lastJson=nil;lastNameState=nil;api.instanceId=relay.instanceId
                 end
-                local command=call("GET","/v1/browser/"..player.UserId,token);if generation==mine and connected and command and command.revision then applyCommand(command)end
-                applyNameState(call("GET","/v1/names/"..player.UserId,token))
-                local made,value=pcall(snapshot)
-                if made then
-                    lastSnapshot=value
-                    local encoded=HttpService:JSONEncode(value)
-                    if encoded~=lastJson then call("POST","/v1/game/"..player.UserId,token,value);lastJson=encoded end
+                local command=call("GET","/v1/browser/"..player.UserId,token)
+                local names=call("GET","/v1/names/"..player.UserId,token)
+                local image=relay and relay.websocket and call("GET","/v1/image/"..player.UserId,token)
+                if generation~=mine or not connected then return end
+                if not socketReady then
+                    if command and command.revision then incoming.browser={value=command}end
+                    incoming.names={value=names}
+                    if image then incoming.image={value=image}end
                 end
-                if getViews then getViews().update({enabled=larpEnabled,name=larpName,snapshot=lastSnapshot}) end
+                end
+                if generation~=mine or not connected then return end
+                if retryCommand and os.clock()>=retryAt and not incoming.browser then incoming.browser={value=retryCommand};retryCommand=nil end
+                pump()
+                if not pumping then publishSnapshot()end
             end)
             if not ok then status("Browser relay: "..tostring(err):gsub("^.-:%d+:%s*",""))end
             task.wait(0.25)
@@ -292,13 +419,13 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     function api.connect(code)
         code=(code and code~="" and code) or readSaved();assert(validToken(code),"Enter the 32-character browser pairing code.")
         local relay=call("GET","/v1/status",code);if relay and relay.instanceId and relay.instanceId~=api.instanceId then lastRevision=0;lastNameState=nil;api.instanceId=relay.instanceId end
-        generation=generation+1;token=code;connected=true;lastJson=nil;save(code);status("Browser connected.")
+        closeSocket();incoming={};retryCommand=nil;generation=generation+1;token=code;connected=true;lastJson=nil;save(code);status("Browser connected.")
         task.spawn(loop);return true
     end
-    function api.disconnect()generation=generation+1;connected=false;token=nil;lastJson=nil;lastNameState=nil;applyNameState(nil);if getViews then getViews().update({enabled=false})end;status("Browser disconnected.")end
+    function api.disconnect()generation=generation+1;closeSocket();incoming={};retryCommand=nil;connected=false;token=nil;lastJson=nil;lastNameState=nil;applyNameState(nil);if getViews then getViews().update({enabled=false})end;status("Browser disconnected.")end
     function api.isConnected()return connected end
-    function api.status()return connected and "Browser connected." or "Browser disconnected."end
-    function api.publish()assert(connected,"Connect the browser first.");local value=snapshot();local encoded=HttpService:JSONEncode(value);if encoded~=lastJson then call("POST","/v1/game/"..player.UserId,token,value);lastJson=encoded end;return value end
+    function api.status()return connected and (socketReady and "Browser connected via WebSocket." or "Browser connected (HTTP fallback).") or "Browser disconnected."end
+    function api.publish()assert(connected,"Connect the browser first.");local value=snapshot();local encoded=HttpService:JSONEncode(value);if encoded~=lastJson then send("game",value);lastJson=encoded end;return value end
     function api.destroy()api.disconnect()end
     local saved=readSaved()
     if saved then

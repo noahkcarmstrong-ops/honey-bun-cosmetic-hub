@@ -50,7 +50,7 @@ function M.create(player,getPreviews)
     local mutatingPanel=false
     local unbindGuard
     local changingMask=false
-    local currentSnapshot,previewData,previewKey
+    local currentSnapshot,currentImage,previewData,previewKey
     local quarantineUnknownPanels,maskPreview
     local overlayName="LarpbloxInspectPreview"
     local fallbackGui,fallbackEntry,previewLabel
@@ -187,22 +187,27 @@ function M.create(player,getPreviews)
     end
     local function renderPreview(entry,parent)
         if entry.overlay then entry.overlay.Visible=false end
-        if currentSnapshot and getPreviews then
-                    local key=game:GetService("HttpService"):JSONEncode(currentSnapshot)..tostring(player.Character)
+        if (currentSnapshot or currentImage) then
+                    local key=(currentSnapshot and game:GetService("HttpService"):JSONEncode(currentSnapshot) or "")..tostring(player.Character).."|"..tostring(currentImage or "")
                     local ok,err=pcall(function()
-                        local previews=getPreviews()
-                        if key~=previewKey or not previewData then
+                        local previews=getPreviews and getPreviews() or nil
+                        if not currentImage and (key~=previewKey or not previewData) then
                             previewData=previews.capture();previewKey=key
                         end
+                        local overlayClass=currentImage and "ImageLabel" or "ViewportFrame"
+                        if entry.overlay and entry.overlay.ClassName~=overlayClass then
+                            entry.overlay:Destroy();entry.overlay=nil;entry.key=nil
+                        end
                         if not entry.overlay then
-                            local overlay=Instance.new("ViewportFrame")
+                            local overlay=Instance.new(overlayClass)
                             overlay.Name=overlayName;overlay.BackgroundTransparency=1;overlay.BorderSizePixel=0
                             overlay.Size=UDim2.fromScale(1,1);overlay.Position=UDim2.fromScale(0,0)
                             overlay.Visible=false;overlay.ZIndex=10
                             entry.overlay=overlay;overlay.Parent=parent
                         end
                         if entry.key~=key then
-                            assert(previews.show(entry.overlay,previewData)~=false,"Local avatar preview could not render.")
+                            if currentImage then entry.overlay.Image=currentImage
+                            else assert(previews and previews.show(entry.overlay,previewData)~=false,"Local avatar preview could not render.") end
                             entry.key=key
                         end
                         if modeEnabled and (entry==fallbackEntry or masked[parent]==entry) then entry.overlay.Visible=true end
@@ -353,6 +358,7 @@ function M.create(player,getPreviews)
         local enabled=options.enabled==true
         modeEnabled=enabled
         currentSnapshot=options.snapshot
+        currentImage=type(options.image)=="string" and options.image~="" and options.image or nil
         if not currentSnapshot then previewData=nil;previewKey=nil end
         local alias=tostring(options.name or "")
         local name=alias~="" and alias or player.Name
@@ -381,7 +387,7 @@ function M.create(player,getPreviews)
     function api.report()return status end
     function api.destroy()
         if unbindGuard then unbindGuard();unbindGuard=nil end
-        previewData=nil;previewKey=nil
+        previewData=nil;previewKey=nil;currentImage=nil
         api.update({enabled=false,name=""})
         for _,connection in ipairs(connections)do connection:Disconnect()end
         connections={}

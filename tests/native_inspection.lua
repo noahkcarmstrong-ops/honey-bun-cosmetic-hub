@@ -112,6 +112,10 @@ assert(viewport.ImageTransparency==1,"opening an existing inspector masks the na
 assert(liveOverlay() and liveOverlay().Visible and captures==1 and shows==1,"live local avatar renders even if the native applied model differs")
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
 assert(viewport.ImageTransparency==1 and liveOverlay().Visible and shows==1,"the live preview is cached and the account model remains hidden")
+api.update({enabled=true,name="LarpAlias",snapshot=snapshot,image="rbxassetid://custom-avatar"})
+assert(liveOverlay().ClassName=="ImageLabel" and liveOverlay().Image=="rbxassetid://custom-avatar" and liveOverlay().Visible,"custom inspection images replace the viewport overlay")
+api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
+assert(liveOverlay().ClassName=="ViewportFrame" and liveOverlay().Visible and shows==2,"inspection switches back to the viewport renderer")
 viewport.ImageTransparency=0;viewport:GetPropertyChangedSignal("ImageTransparency"):Fire()
 assert(viewport.ImageTransparency==1,"native opacity updates cannot reveal the account model")
 local late=child(inspect,"ViewportFrame","LateViewport");late.ImageTransparency=0

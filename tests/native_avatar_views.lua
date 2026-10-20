@@ -60,6 +60,14 @@ assert(overlayGone,"destroying overlays restores the original image children")
 assert(thumb.ImageTransparency==0.25,"disabling restores original image transparency")
 api.update({enabled=true,name="LocalAlias",snapshot={version=1}})
 assert(captures==3 and thumb.ImageTransparency==1,"reenabling captures again and hides the original")
+api.update({enabled=true,name="LocalAlias",image="rbxassetid://custom-avatar"})
+local imageOverlay
+for _,child in ipairs(row:GetDescendants())do if child.Name=="LarpbloxOwnAvatarPreview" and child.Parent then imageOverlay=child end end
+assert(imageOverlay and imageOverlay.ClassName=="ImageLabel" and imageOverlay.Image=="rbxassetid://custom-avatar" and thumb.ImageTransparency==1,"custom avatar images use a full-size image overlay")
+api.update({enabled=true,name="LocalAlias",snapshot={version=1}})
+local viewportOverlay
+for _,child in ipairs(row:GetDescendants())do if child.Name=="LarpbloxOwnAvatarPreview" and child.Parent then viewportOverlay=child end end
+assert(viewportOverlay and viewportOverlay.ClassName=="ViewportFrame" and captures==4,"switching back restores the viewport renderer")
 api.destroy()
 assert(thumb.ImageTransparency==0.25,"destroy restores the native image")
 local retryCaptures, retryShows=0,0

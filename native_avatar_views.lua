@@ -99,7 +99,7 @@ local M = {isAvatarImage = isAvatarImage, hasOwnId = hasOwnId}
 
 function M.create(player, getPreviews)
     assert(player, "player is required"); assert(type(getPreviews) == "function", "getPreviews is required")
-    local alive, enabled, currentName, previewSnapshot, effectiveKey = true, false, "", nil, nil
+    local alive, enabled, currentName, currentImage, previewSnapshot, effectiveKey = true, false, "", nil, nil, nil
     local overlays, overlayKeys, originalTransparency, hiddenImages, connections, scanCount, renderedCount = {}, {}, {}, {}, {}, 0, 0
     local transparencyConnections,textConnections={},{}
     local coreGui, available
@@ -134,22 +134,33 @@ function M.create(player, getPreviews)
         local distance = math.max(size.X, size.Y, size.Z, 1) * 2.5
         pcall(function() camera.CFrame = CFrame.lookAt(position + Vector3.new(0, 0, -distance), position) end)
     end
-    local function makeOverlay(image)
+    local function makeOverlay(image, imageSource)
         local overlay = overlays[image]
-        if overlay and read(overlay, "Parent") == image then return overlay end
-        overlay = Instance.new("ViewportFrame")
+        local class = imageSource and "ImageLabel" or "ViewportFrame"
+        if overlay and (read(overlay, "Parent") ~= image or read(overlay, "ClassName") ~= class) then
+            pcall(function() overlay:Destroy() end); overlays[image] = nil; overlayKeys[image] = nil; overlay = nil
+        end
+        if overlay then return overlay end
+        overlay = Instance.new(class)
         overlay.Name = "LarpbloxOwnAvatarPreview"
         overlay.Position = UDim2.fromScale(0, 0); overlay.Size = UDim2.fromScale(1, 1)
         overlay.BackgroundTransparency = 1; overlay.BorderSizePixel = 0
         overlay.Visible = false
         overlay.ZIndex = (read(image, "ZIndex") or 1) + 1; overlay.Parent = image
+        if imageSource then overlay.Image = imageSource end
         overlays[image] = overlay
         return overlay
     end
     local function render(image)
         hideImage(image)
-        if not previewSnapshot then return end
+        if not previewSnapshot and not currentImage then return end
         if overlays[image] and overlayKeys[image] == effectiveKey then return end
+        if currentImage then
+            local overlay = makeOverlay(image, currentImage)
+            overlay.Image = currentImage; overlayKeys[image] = effectiveKey; renderedCount = renderedCount + 1
+            pcall(function() overlay.Visible = true end)
+            return
+        end
         local ok, previews = pcall(getPreviews)
         if not ok or not previews or type(previews.show) ~= "function" then status = "Preview renderer unavailable."; return end
         local overlay = makeOverlay(image)
@@ -221,10 +232,10 @@ function M.create(player, getPreviews)
 
     local api = {}
     function api.update(options)
-        options = options or {}; enabled = options.enabled == true; currentName = tostring(options.name or "")
+        options = options or {}; enabled = options.enabled == true; currentName = tostring(options.name or ""); currentImage = tostring(options.image or ""); if currentImage == "" then currentImage = nil end
         local character = read(player, "Character")
         local effectiveSnapshot = options.snapshot
-        local nextKey = signature(effectiveSnapshot) .. "|" .. tostring(character)
+        local nextKey = signature(effectiveSnapshot) .. "|" .. tostring(character) .. "|" .. tostring(currentImage or "")
         if enabled and (nextKey~=effectiveKey or effectiveSnapshot==nil)then
             previewSnapshot=nil
             for image,overlay in pairs(overlays)do overlay.Visible=false;hideImage(image)end
@@ -233,7 +244,7 @@ function M.create(player, getPreviews)
             local preflight = {}; pcall(function() preflight = coreGui:GetDescendants() end)
             for _, object in ipairs(preflight) do watch(object); watchPeopleText(object) end
         end
-        if enabled and effectiveSnapshot ~= nil and (nextKey ~= effectiveKey or previewSnapshot == nil) then
+        if enabled and effectiveSnapshot ~= nil and not currentImage and (nextKey ~= effectiveKey or previewSnapshot == nil) then
             previewSnapshot = nil
             for image, overlay in pairs(overlays) do
                 pcall(function() overlay.Visible = false end)
@@ -245,7 +256,7 @@ function M.create(player, getPreviews)
                 if capturedOk then previewSnapshot = captured end
             end
         end
-        if enabled and effectiveSnapshot == nil then
+        if enabled and effectiveSnapshot == nil and not currentImage then
             previewSnapshot = nil
             for image, overlay in pairs(overlays) do
                 pcall(function() overlay.Visible = false end)
