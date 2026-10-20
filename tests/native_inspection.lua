@@ -27,7 +27,7 @@ Instance={new=function(class)
     local x=node(class,class)
     function x:SetAccessories(v,includeRigid)self.accessories=v;self.includeRigid=includeRigid end
     function x:GetAccessories()return self.accessories or {}end
-    function x:Destroy()self.destroyed=true end
+    function x:Destroy()self.destroyed=true;self.Parent=nil end
     return x
 end}
 Enum={AccessoryType={Hat="Hat",Hair="Hair",Back="Back",Jacket="Jacket",Face="Face"}}
