@@ -183,7 +183,8 @@ function M.create(player, getPreviews)
             pcall(function() staged.overlay:Destroy() end)
         end
         local overlay = overlays[image]
-        if overlay then pcall(function() overlay:Destroy() end); overlays[image] = nil; overlayKeys[image] = nil end
+        overlays[image] = nil; overlayKeys[image] = nil
+        if overlay then pcall(function() overlay:Destroy() end) end
         if restore ~= false then restoreImage(image) end
     end
     local function frameCamera(frame, bust)
@@ -227,12 +228,17 @@ function M.create(player, getPreviews)
         if imageSource then overlay.Image = imageSource end
         return overlay
     end
-    local function render(image)
+    local render
+    render=function(image)
         if not previewSnapshot and not currentImage then return end
-        if overlays[image] and overlayKeys[image] == effectiveKey then return end
+        local existing=overlays[image]
+        if existing and read(existing,"Parent")~=image then
+            overlays[image]=nil;overlayKeys[image]=nil;restoreImage(image)
+        elseif existing and overlayKeys[image] == effectiveKey then return end
         local staged = pending[image]
         if staged and staged.key == effectiveKey then return end
         if staged then
+            pending[image]=nil
             if staged.connection then staged.connection:Disconnect() end
             staged.overlay:Destroy()
         end
@@ -240,6 +246,23 @@ function M.create(player, getPreviews)
         local overlay = makeOverlay(image, imageSource)
         staged = {key=effectiveKey, overlay=overlay}
         pending[image] = staged
+        -- Reused game UI can remove our child without destroying the ImageLabel.
+        -- Drop the stale cache entry and reveal the original before rebuilding.
+        overlay.AncestryChanged:Connect(function(_,parent)
+            if parent==image then return end
+            local lost=false
+            if overlays[image]==overlay then
+                overlays[image]=nil;overlayKeys[image]=nil
+                restoreImage(image);lost=true
+            elseif pending[image]==staged then
+                pending[image]=nil;lost=true
+            end
+            if lost and alive and enabled then
+                task.defer(function()
+                    if alive and enabled and read(image,"Parent") and isAvatarImage(image,player,{name=currentName}) then render(image) end
+                end)
+            end
+        end)
         local function discard()
             if staged.connection then staged.connection:Disconnect(); staged.connection=nil end
             if pending[image]==staged then pending[image]=nil end
