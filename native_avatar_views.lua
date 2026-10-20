@@ -68,6 +68,7 @@ local function uniquePeopleRow(object, player, options)
     return false
 end
 
+local nativeImageSources=setmetatable({}, {__mode="k"})
 local function ownThumbnailUrl(image, player)
     local id = tostring(read(player, "UserId") or "")
     local lower = image:lower()
@@ -84,7 +85,7 @@ end
 local function profileOwnImage(object, player, options)
     local name = tostring(read(object, "Name") or ""):lower()
     if name ~= "charactericon" and name ~= "icon" then return false end
-    if tostring(read(object, "Image") or "") == "" then return false end
+    if tostring(nativeImageSources[object] or read(object, "Image") or "") == "" then return false end
     if name == "icon" then
         local parent, grandparent = read(object, "Parent"), read(read(object, "Parent"), "Parent")
         if tostring(read(parent, "Name") or ""):lower() ~= "profile"
@@ -118,7 +119,7 @@ local function profileOwnImage(object, player, options)
 end
 
 local function imageIsAvatar(object, player)
-    local image = tostring(read(object, "Image") or "")
+    local image = tostring(nativeImageSources[object] or read(object, "Image") or "")
     local id = tostring(read(player, "UserId") or "")
     -- AvatarHeadShot thumbnails are unambiguous, even when Roblox changes row names.
     local thumbType = image:lower():find("type=avatarheadshot", 1, true) or image:lower():find("type=avatarbust", 1, true) or image:lower():find("type=avatar&", 1, true)
@@ -182,6 +183,8 @@ function M.create(player, getPreviews)
     local overlays, overlayKeys, hiddenImages, connections, scanCount, renderedCount = {}, {}, {}, {}, 0, 0
     local transparencyConnections,textConnections,geometryConnections={},{},{}
     local pending = {}
+    local directImages={}
+    local stagingFolder
     local imageCandidates=setmetatable({}, {__mode="k"})
     local indexed=false
     local coreGui, playerGui, roots, available
@@ -217,6 +220,12 @@ function M.create(player, getPreviews)
         for image in pairs(hiddenImages) do restoreImage(image) end
     end
     local function destroyOverlay(image, restore)
+        if directImages[image] then
+            directImages[image]=nil
+            local source=nativeImageSources[image]
+            nativeImageSources[image]=nil
+            if source then pcall(function() image.Image=source end) end
+        end
         local staged = pending[image]
         if staged then
             pending[image] = nil
@@ -290,6 +299,7 @@ function M.create(player, getPreviews)
     local render
     render=function(image)
         if not previewSnapshot and not currentImage then return end
+        if directImages[image] and overlayKeys[image]==effectiveKey then return end
         local existing=overlays[image]
         if existing and read(existing,"Parent")~=image then
             overlays[image]=nil;overlayKeys[image]=nil;restoreImage(image)
@@ -303,12 +313,22 @@ function M.create(player, getPreviews)
         end
         local imageSource, snapshot = currentImage, previewSnapshot
         local overlay = makeOverlay(image, imageSource)
+        if imageSource then
+            -- Keep preload images outside the styled native GUI. Image children
+            -- can alter the intrinsic size used by Roblox's automatic layout.
+            if not stagingFolder then
+                stagingFolder=Instance.new("Folder")
+                stagingFolder.Name="LarpbloxPortraitPreloads"
+                stagingFolder.Parent=coreGui or playerGui
+            end
+            overlay.Parent=stagingFolder
+        end
         staged = {key=effectiveKey, overlay=overlay}
         pending[image] = staged
         -- Reused game UI can remove our child without destroying the ImageLabel.
         -- Drop the stale cache entry and reveal the original before rebuilding.
         overlay.AncestryChanged:Connect(function(_,parent)
-            if parent==image then return end
+            if parent==image or (imageSource and parent==stagingFolder) then return end
             local lost=false
             if overlays[image]==overlay then
                 overlays[image]=nil;overlayKeys[image]=nil
@@ -333,6 +353,22 @@ function M.create(player, getPreviews)
             local previous=overlays[image]
             pending[image]=nil
             if staged.connection then staged.connection:Disconnect();staged.connection=nil end
+            if imageSource then
+                nativeImageSources[image]=nativeImageSources[image] or read(image,"Image")
+                directImages[image]=imageSource
+                overlayKeys[image]=staged.key;overlays[image]=nil
+                restoreImage(image)
+                image.Image=imageSource
+                overlay:Destroy()
+                if previous then previous:Destroy() end
+                renderedCount=renderedCount+1
+                return
+            end
+            if directImages[image] then
+                directImages[image]=nil
+                local source=nativeImageSources[image];nativeImageSources[image]=nil
+                if source then image.Image=source end
+            end
             overlays[image]=overlay;overlayKeys[image]=staged.key
             -- Claim the mask before exposing the new portrait. Visibility
             -- listeners must never observe both the fallback and replacement.
@@ -368,7 +404,7 @@ function M.create(player, getPreviews)
             return tostring(read(parent, "Name") or ""):lower() == "profile"
                 and tostring(read(grandparent, "Name") or ""):lower() == "nav"
         end
-        local image = tostring(read(object, "Image") or ""):lower()
+        local image = tostring(nativeImageSources[object] or read(object, "Image") or ""):lower()
         return image:match("^rbxthumb://") ~= nil or image:find("/bust-thumbnail/image?", 1, true) ~= nil
             or image:find("/thumbs/avatar.ashx?", 1, true) ~= nil
     end
@@ -380,6 +416,7 @@ function M.create(player, getPreviews)
             if isAvatarImage(object, player, {name = currentName}) then seen[object] = true;if watch then watch(object)end;render(object) end
         end
         for image in pairs(hiddenImages) do if not seen[image] then destroyOverlay(image) end end
+        for image in pairs(directImages) do if not seen[image] then destroyOverlay(image) end end
     end
     watch=function(object)
         if not watchableImage(object) then return end
@@ -405,6 +442,10 @@ function M.create(player, getPreviews)
                 local connection
                 local connected = pcall(function() connection = signal:Connect(function()
                     if not alive or not enabled then return end
+                    if directImages[object] and read(object,"Image")~=directImages[object] then
+                        nativeImageSources[object]=read(object,"Image")
+                        overlayKeys[object]=nil
+                    end
                     if isAvatarImage(object, player, {name = currentName}) then render(object)
                     else destroyOverlay(object) end
                 end) end)
@@ -479,7 +520,7 @@ function M.create(player, getPreviews)
         for index,root in ipairs(roots)do
             pcall(function()connections["removed"..index]=root.DescendantRemoving:Connect(function(object)
                 imageCandidates[object]=nil
-                if overlays[object] or hiddenImages[object] or pending[object] then destroyOverlay(object)end
+                if overlays[object] or directImages[object] or hiddenImages[object] or pending[object] then destroyOverlay(object)end
                 if geometryConnections[object] then
                     for _,connection in ipairs(geometryConnections[object]) do connection:Disconnect() end
                     geometryConnections[object]=nil
@@ -528,6 +569,7 @@ function M.create(player, getPreviews)
         effectiveKey = nextKey
         if not enabled then
             previewSnapshot = nil
+            for image in pairs(directImages) do destroyOverlay(image) end
             for image in pairs(overlays) do destroyOverlay(image) end
             for image in pairs(pending) do destroyOverlay(image) end
             restoreAllImages()
@@ -545,9 +587,11 @@ function M.create(player, getPreviews)
         end
         for _,group in pairs(geometryConnections) do for _,connection in ipairs(group) do connection:Disconnect() end end
         connections = {};transparencyConnections={};textConnections={};geometryConnections={}
+        for image in pairs(directImages) do destroyOverlay(image) end
         for image in pairs(overlays) do destroyOverlay(image) end
         for image in pairs(pending) do destroyOverlay(image) end
         restoreAllImages()
+        if stagingFolder then stagingFolder:Destroy();stagingFolder=nil end
     end
     return api
 end
