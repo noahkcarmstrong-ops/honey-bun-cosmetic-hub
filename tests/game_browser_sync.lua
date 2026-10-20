@@ -161,6 +161,7 @@ print("Native view mode, effective outfit and disconnect forwarding passed.")
 
 -- Browser body selections apply only changed regions and restore browser-owned removals.
 request=function(o)if o.Url:find("status")then return {StatusCode=200,Body={version=1,connected=true}}end;if o.Method=="GET"then return {StatusCode=200,Body=command}end;posted=o.Body;return {StatusCode=200,Body={}}end
+settings.bodyParts.Head=999
 local bodySync=create(player,function()return avatar end,function()return clothing end,function()return true end,function()end)
 command.revision=20;command.items={{id=999,name="Head",itemType="Asset",assetType=17},{id=303,name="Torso",itemType="Asset",assetType=27},{id=305,name="RightArm",itemType="Asset",assetType=28},{id=304,name="LeftArm",itemType="Asset",assetType=29},{id=9999,name="LeftLeg",itemType="Asset",assetType=30},{id=307,name="RightLeg",itemType="Asset",assetType=31},{id=404,name="Face",itemType="Asset",assetType=18}}
 bodyCalls={};faceCalls={};jobs={};task.wait=function()bodySync.disconnect()end;bodySync.connect(string.rep("a",32));jobs[1]();assert(#bodyCalls==1 and bodyCalls[1][1]=="LeftLeg","browser body selection applies only changed regions");assert(faceCalls[1][1]=="apply" and faceCalls[1][2]==404,"browser face applies through avatar API")
@@ -169,6 +170,16 @@ local beforeRemoval=#bodyCalls
 command.revision=21;command.items={{id=999,name="Head",itemType="Asset",assetType=17},{id=303,name="Torso",itemType="Asset",assetType=27},{id=305,name="RightArm",itemType="Asset",assetType=28},{id=304,name="LeftArm",itemType="Asset",assetType=29},{id=307,name="RightLeg",itemType="Asset",assetType=31}}
 jobs={};bodySync.connect(string.rep("a",32));jobs[1]();assert(#bodyCalls>beforeRemoval and bodyCalls[#bodyCalls][1]=="LeftLeg" and bodyCalls[#bodyCalls][2]=="restore","removed browser body part restores through avatar API");assert(faceCalls[#faceCalls][1]=="restore","removed browser face restores through avatar API")
 bodySync.destroy();print("Game browser body selections apply and restore selectively.")
+settings.bodyParts.LeftLeg=8888
+local restartedBodySync=create(player,function()return avatar end,function()return clothing end,function()return true end,function()end)
+command.revision=25;command.items={};bodyCalls={};jobs={}
+task.wait=function()restartedBodySync.disconnect()end
+restartedBodySync.connect(string.rep("a",32));jobs[1]()
+assert(not settings.bodyParts.LeftLeg,"an outfit without a leg removes an override restored before this sync started")
+local restoredLeg=false;for _,entry in ipairs(bodyCalls)do if entry[1]=="LeftLeg" and entry[2]=="restore" then restoredLeg=true end end
+assert(restoredLeg,"persisted body override is restored instead of retained")
+restartedBodySync.destroy()
+
 
 -- A saved character replaces its skin colors, clothing and accessories in one command,
 -- including the # prefix emitted by the browser preview.

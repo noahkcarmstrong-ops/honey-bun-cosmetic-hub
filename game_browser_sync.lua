@@ -209,13 +209,19 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             local currentBody,desiredBody={},{ }
             for _,item in ipairs(before.items)do local region=bodyTypeRegions[item.assetType];if region then currentBody[region]=item.id end end
             for _,item in ipairs(value.items)do local region=bodyTypeRegions[item.assetType];if region then desiredBody[region]=item.id end end
+            local bodySettings=avatar.getSettings()
+            if bodySettings.body and avatar.restoreBody then
+                local loaded,reason=pcall(avatar.restoreBody)
+                if loaded then currentBody={};browserBody={};originalBody={}
+                else loadErrors[#loadErrors+1]="Body: "..tostring(reason)end
+            end
             for _,entry in ipairs(bodyRegions)do
-                local region=entry[1];local wanted=desiredBody[region];local owned=browserBody[region]
+                local region=entry[1];local wanted=desiredBody[region];local owned=browserBody[region] or (bodySettings.bodyParts or {})[region]
                 if owned and not wanted then
                     local original=originalBody[region]
                     if avatar.restoreBodyPart then
                         local loaded,reason=pcall(avatar.restoreBodyPart,region)
-                        if not loaded then loadErrors[#loadErrors+1]=region..": "..tostring(reason)end
+                        if not loaded then loadErrors[#loadErrors+1]=region..": "..tostring(reason);error(table.concat(loadErrors,"; "))end
                     elseif original then
                         local loaded,reason=pcall(avatar.applyBodyPart,region,original)
                         if not loaded then loadErrors[#loadErrors+1]=region..": "..tostring(reason)end

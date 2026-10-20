@@ -294,11 +294,17 @@ body:FindFirstChildOfClass("Humanoid").RigType=Enum.HumanoidRigType.R15
 accessoryEditor.destroy();game.GetObjects=previousObjects
 print("Accessory head, hair, face, neck, shoulder, front, back, waist and R15 layered attachment passed.")
 
+local generatedParts=0;local generatePart=players.CreateHumanoidModelFromDescriptionAsync
+function players:CreateHumanoidModelFromDescriptionAsync(...)generatedParts=generatedParts+1;return generatePart(self,...)end
 local partRestore=create(player)
 marketplace.assetType=30;partRestore.applyBodyPart("LeftLeg",123)
 marketplace.assetType=28;partRestore.applyBodyPart("RightArm",456)
 partRestore.restoreBodyPart("LeftLeg")
 assert(partRestore.getSettings().bodyParts.LeftLeg==nil and partRestore.getSettings().bodyParts.RightArm==456,"restoring one body region preserves other mixed parts")
+local beforeReequip=generatedParts
+marketplace.assetType=30;partRestore.applyBodyPart("LeftLeg",123)
+assert(generatedParts==beforeReequip,"re-equipping a validated body part reuses its prepared model without another Roblox generation request")
+partRestore.restoreBodyPart("LeftLeg")
 partRestore.destroy()
 local faceHead=body:FindFirstChild("Head")
 local originalFace=node("Decal","face");originalFace.Texture="original-face";originalFace.Parent=faceHead

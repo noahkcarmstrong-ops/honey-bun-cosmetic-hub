@@ -664,6 +664,7 @@ return function(player,onStatus)
         if not reapplying then settings.body=value;settings.bodyParts={};save() end
         return "Body package applied (visible to you)."
     end
+    local bodyPartTemplates,bodyPartOrder={},{}
     function api.applyBodyPart(region,value)
         local ctx=context()
         assert(bodyRegions[region],"Choose a body region.")
@@ -671,9 +672,13 @@ return function(player,onStatus)
         local field=region;local names=regionNames(region)
         local text=tostring(value or ""):match("^%s*(.-)%s*$")
         local isBundle=text:match("^https?://[^/]+/bundles/%d+") ~= nil
-        local id
-        if not isBundle then id=idFrom(value,"catalog") end
-        if isBundle then
+        local cacheKey=tostring(ctx.humanoid.RigType)..":"..region..":"..text
+        local cached=bodyPartTemplates[cacheKey]
+        local id=cached and cached.id
+        if not isBundle and not cached then id=idFrom(value,"catalog") end
+        if cached then
+            -- Reuse only a successfully applied and validated source model.
+        elseif isBundle then
             local bundleId=idFrom(text,"bundles")
             local ok,bundle=pcall(function()
                 return Http:JSONDecode(game:HttpGet("https://catalog.roblox.com/v1/bundles/"..string.format("%.0f",bundleId).."/details",false))
@@ -701,13 +706,25 @@ return function(player,onStatus)
             local expected={Head={[17]=true,[79]=true},Torso={[27]=true},RightArm={[28]=true},LeftArm={[29]=true},LeftLeg={[30]=true},RightLeg={[31]=true}}
             assert(expected[region][info.AssetTypeId],"That catalog item is not a "..region.." body part.")
         end
-        local description=Instance.new("HumanoidDescription")
-        description[field]=id
-        local ok,template=pcall(function() return Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType) end)
-        description:Destroy()
+        local ok,template
+        if cached then ok,template=pcall(function()return cached.model:Clone()end)
+        else
+            local description=Instance.new("HumanoidDescription");description[field]=id
+            ok,template=pcall(function()return Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType)end)
+            description:Destroy()
+        end
         if not valid(ctx) then if ok and template then template:Destroy() end;check(ctx) end
         assert(ok and template,"Roblox blocked generating that body part.")
         strip(template)
+        local function remember()
+            if cached then return end
+            bodyPartTemplates[cacheKey]={id=id,model=template:Clone()}
+            bodyPartOrder[#bodyPartOrder+1]=cacheKey
+            if #bodyPartOrder>12 then
+                local old=table.remove(bodyPartOrder,1)
+                bodyPartTemplates[old].model:Destroy();bodyPartTemplates[old]=nil
+            end
+        end
         if isR6 then
             local applied,message=pcall(function()
                 capture(ctx)
@@ -723,6 +740,7 @@ return function(player,onStatus)
                     for _,mesh in ipairs(meshes) do mesh:Clone().Parent=ctx.character end
                 end
             end)
+            if applied then remember()end
             template:Destroy()
             assert(applied,message)
             snapshot.bodyChanged=true
@@ -732,6 +750,7 @@ return function(player,onStatus)
         local parts={}
         for _,name in ipairs(names) do local part=template:FindFirstChild(name);if part and part:IsA("BasePart") then parts[name]=part end end
         local applied,message=pcall(function() capture(ctx,true);replaceParts(ctx,parts,names) end)
+        if applied then remember()end
         template:Destroy()
         assert(applied,message)
         snapshot.bodyChanged=true
@@ -929,6 +948,8 @@ return function(player,onStatus)
         generation=generation+1
         changed:Disconnect()
         if snapshot and snapshot.character==player.Character then pcall(restoreAppearance) end
+        for _,entry in pairs(bodyPartTemplates)do entry.model:Destroy()end
+        bodyPartTemplates={};bodyPartOrder={}
         forget();alive=false
     end
     return api
