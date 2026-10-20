@@ -20,10 +20,11 @@ local function call(method,path,token,body)
     assert(tonumber(code)==200,"Browser relay returned HTTP "..tostring(code or "unknown"))
     return result.Body and HttpService:JSONDecode(result.Body) or {}
 end
-return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNames)
+return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNames,getViews)
     local api,token,connected,lastJson,lastRevision={},nil,false,nil,0
     local generation=0
     local lastNameState=nil
+    local larpEnabled,larpName,lastSnapshot=false,"",nil
     local file="larpblox-browser-pair-"..tostring(player.UserId)..".txt"
     local cache,assetTypes,bodyCache={},{},{}
     local function status(message)if onStatus and isAlive() then onStatus(message)end end
@@ -191,10 +192,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             if value.enabled==nil and value.name==nil then return end
             assert(type(value)=="table" and value.version==1 and tostring(value.userId)==tostring(player.UserId) and type(value.enabled)=="boolean" and type(value.name)=="string","Browser name is invalid.")
             if value.enabled then
-                assert(value.name:match("^[A-Za-z0-9_]+$") and #value.name>=3 and #value.name<=20,"Browser name is invalid.")
+                assert(value.name=="" or (value.name:match("^[A-Za-z0-9_]+$") and #value.name>=3 and #value.name<=20),"Browser name is invalid.")
                 state="enabled:"..value.name;name=value.name
             end
         end
+        larpEnabled=state~="disabled";larpName=name
         if state==lastNameState then return end
         if getNames then
             local names=getNames()
@@ -214,9 +216,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 local command=call("GET","/v1/browser/"..player.UserId,token);if generation==mine and connected and command and command.revision then applyCommand(command)end
                 local made,value=pcall(snapshot)
                 if made then
+                    lastSnapshot=value
                     local encoded=HttpService:JSONEncode(value)
                     if encoded~=lastJson then call("POST","/v1/game/"..player.UserId,token,value);lastJson=encoded end
                 end
+                if getViews then getViews().update({enabled=larpEnabled,name=larpName,snapshot=lastSnapshot}) end
             end)
             if not ok then status("Browser relay: "..tostring(err):gsub("^.-:%d+:%s*",""))end
             task.wait(0.75)
@@ -228,7 +232,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         generation=generation+1;token=code;connected=true;lastJson=nil;save(code);status("Browser connected.")
         task.spawn(loop);return true
     end
-    function api.disconnect()generation=generation+1;connected=false;token=nil;lastJson=nil;lastNameState=nil;applyNameState(nil);status("Browser disconnected.")end
+    function api.disconnect()generation=generation+1;connected=false;token=nil;lastJson=nil;lastNameState=nil;applyNameState(nil);if getViews then getViews().update({enabled=false})end;status("Browser disconnected.")end
     function api.isConnected()return connected end
     function api.status()return connected and "Browser connected." or "Browser disconnected."end
     function api.publish()assert(connected,"Connect the browser first.");local value=snapshot();local encoded=HttpService:JSONEncode(value);if encoded~=lastJson then call("POST","/v1/game/"..player.UserId,token,value);lastJson=encoded end;return value end

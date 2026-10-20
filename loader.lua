@@ -50,6 +50,7 @@ local mm2EmoteBarAPI
 local mm2EmotesNativeAPI
 local mm2WeaponEditorAPI
 local mm2GunLibraryAPI
+local nativeViewsAPI
 local localNamesAPI
 local accessorySoundsAPI
 local mm2Enabled=false
@@ -490,18 +491,6 @@ local function localNames()
     localNamesAPI=chunk()(Players.LocalPlayer,playerGui)
     return localNamesAPI
 end
-local function gameBrowserSync()
-    if gameBrowserSyncAPI then return gameBrowserSyncAPI end
-    api();clothes()
-    local names=localNames()
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/game_browser_sync.lua",false)
-    local chunk,message=loadstring(source);assert(chunk,message)
-    local create=chunk();assert(type(create)=="function","Game browser sync failed to load.")
-    gameBrowserSyncAPI=select(1,create(Players.LocalPlayer,function()return api()end,function()return clothes()end,function()return alive end,function(message)
-        if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
-    end,function()return animations()end,function()return names end))
-    return gameBrowserSyncAPI
-end
 local function characterModules()
     api()
     local function load(name)
@@ -512,6 +501,38 @@ local function characterModules()
     end
     if not charactersAPI then charactersAPI=load("characters")(playerGui) end
     if not previewsAPI then previewsAPI=load("previews")(Players.LocalPlayer) end
+end
+local function nativeViews()
+    if nativeViewsAPI then return nativeViewsAPI end
+    api()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_avatar_views.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    local portraits=chunk().create(Players.LocalPlayer,function()
+        if not previewsAPI then characterModules()end
+        return previewsAPI
+    end)
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inspection.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    local inspection=chunk().create(Players.LocalPlayer)
+    nativeViewsAPI={}
+    function nativeViewsAPI.update(options)
+        portraits.update(options);inspection.update(options)
+    end
+    function nativeViewsAPI.destroy()portraits.destroy();inspection.destroy()end
+    return nativeViewsAPI
+end
+local function gameBrowserSync()
+    if gameBrowserSyncAPI then return gameBrowserSyncAPI end
+    api();clothes()
+    local names=localNames()
+    local views=nativeViews()
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/game_browser_sync.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message)
+    local create=chunk();assert(type(create)=="function","Game browser sync failed to load.")
+    gameBrowserSyncAPI=select(1,create(Players.LocalPlayer,function()return api()end,function()return clothes()end,function()return alive end,function(message)
+        if alive then statusText=message;if statusLabel then statusLabel.Text=message end end
+    end,function()return animations()end,function()return names end,function()return views end))
+    return gameBrowserSyncAPI
 end
 local function reapplyAll(editor)
     local failures={}
@@ -1586,6 +1607,7 @@ gui.Destroying:Connect(function()
     if crosshairAPI then crosshairAPI.destroy() end
     if accessorySoundsAPI then accessorySoundsAPI.destroy() end
     if gameBrowserSyncAPI then gameBrowserSyncAPI.destroy() end
+    if nativeViewsAPI then nativeViewsAPI.destroy() end
     if localNamesAPI then localNamesAPI.destroy() end
     if persistence then persistence.destroy() end
     if avatarAPI then avatarAPI.destroy() end

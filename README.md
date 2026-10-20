@@ -155,3 +155,9 @@ An inventory entry alone does not guarantee its effect assets are available. Mis
 Distribute the published source files, not your executor workspace or personal save files. Outfits, saved MM2 weapons/effects, cosmetic selections, custom names, and menu preferences are saved locally per Roblox account in `HoneyBunCosmeticHub_<UserId>.json` (plus its `.bak` backup). They are not uploaded by the save system or bundled in the repository. New users start with their own empty saved collections. Existing local save files remain compatible; newly written files also include the owning account ID.
 
 Personal save files are excluded by `.gitignore`. These are local files, not encrypted storage; someone with access to the same computer can read them.
+
+## Larp mode in Roblox menus
+
+While the browser is paired and Larp mode is on, recognized local-player portraits in Roblox's player list and People menu use a live local avatar preview. Opening your own avatar inspector requests Roblox's native inspector with the effective Larp outfit and browser name. Supported catalog accessories, classic clothes, body parts, colors and scales come from the same outfit snapshot as browser sync; hidden originals are excluded. Game-only props without catalog assets cannot appear in the native catalog item list.
+
+Turning mode off or disconnecting restores the original portraits and own inspector. These are local views and do not change account ownership or other players' screens. Inspector detection currently recognizes Roblox's English own-avatar title inside InspectAndBuy; protected or changed native layouts may prevent detection. Automated stand-in tests cover matching, outfit conversion and restoration; live executor compatibility has not been verified.

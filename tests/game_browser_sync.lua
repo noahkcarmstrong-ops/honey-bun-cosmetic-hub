@@ -129,3 +129,19 @@ nameEvents={};nameSync.disconnect();assert(nameEvents[#nameEvents][1]=="enabled"
 request=oldRequest
 player.Character=savedCharacter
 print("Game browser name sync applies, changes, disables and restores without avatar snapshots.")
+
+-- Native views follow mode even without a custom name, and restore on disconnect.
+local viewEvents={}
+nameState={version=1,userId="7",enabled=true,name=""}
+request=function(o)
+ if o.Url:find("/v1/names/")then return {StatusCode=200,Body=nameState}end
+ if o.Url:find("status")then return {StatusCode=200,Body={version=1,connected=true}}end
+ return {StatusCode=200,Body={}}
+end
+jobs={}
+local viewsSync=create(player,function()return avatar end,function()return clothing end,function()return true end,function()end,nil,function()return nameApi end,function()return {update=function(value)viewEvents[#viewEvents+1]=value end}end)
+task.wait=function()viewsSync.disconnect()end
+viewsSync.connect(string.rep("a",32));jobs[1]()
+assert(viewEvents[1].enabled==true and viewEvents[1].name=="" and viewEvents[1].snapshot,"blank name still enables live avatar views")
+assert(viewEvents[#viewEvents].enabled==false,"disconnect restores native views")
+print("Native view mode, effective outfit and disconnect forwarding passed.")
