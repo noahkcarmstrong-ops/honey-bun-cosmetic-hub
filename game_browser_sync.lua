@@ -29,6 +29,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local incoming,pumping={},false
     local retryCommand,retryAt=nil,0
     local imageValue,imageAsset,imageUrl,imageSerial=nil,nil,nil,0
+    local nextSocketPing=0
     local loadingImageUrl
     local lastDefinition
     local file="larpblox-browser-pair-"..tostring(player.UserId)..".txt"
@@ -377,7 +378,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             local read,value=pcall(function()return HttpService:JSONDecode(message)end)
             if not read or type(value)~="table" then return end
             if value.type=="ready" then
-                socketReady=true;lastJson=nil
+                socketReady=true;lastJson=nil;nextSocketPing=0
                 if value.instanceId~=api.instanceId then lastRevision=0;lastNameState=nil;api.instanceId=value.instanceId end
                 status("Browser connected via WebSocket.")
             elseif value.type=="state" and (value.channel=="browser" or value.channel=="names" or value.channel=="image") then
@@ -392,6 +393,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         while connected and generation==mine and isAlive() do
             local ok,err=pcall(function()
                 openSocket()
+                if socketReady and os.clock()>=nextSocketPing then
+                    nextSocketPing=os.clock()+20
+                    local sent=pcall(function()socket:Send(HttpService:JSONEncode({type="ping"}))end)
+                    if not sent then closeSocket()end
+                end
                 if not socketReady then
                 local relay=call("GET","/v1/status",token)
                 if relay and relay.instanceId and relay.instanceId~=api.instanceId then
