@@ -18,7 +18,7 @@ local function node(class,name,parent)
 end
 local function child(parent,class,name)local x=node(class,name);x.Parent=parent;return x end
 
-local old={Instance=Instance,Enum=Enum,Color3=Color3,game=game}
+local old={Instance=Instance,Enum=Enum,Color3=Color3,game=game,UDim2=UDim2,Vector2=Vector2}
 local descriptions,inspectCalls,restoreCalls= {},{},{}
 Instance={new=function(class)
     local x=node(class,class)
@@ -33,6 +33,7 @@ local http={JSONEncode=function(_,v)return v.version..":"..(v.items[1] and v.ite
 local gui={InspectPlayerFromHumanoidDescription=function(_,desc,name)
     inspectCalls[#inspectCalls+1]={description=desc,name=name}
 end,InspectPlayerFromUserId=function(_,id)restoreCalls[#restoreCalls+1]=id end}
+local renderStepped=signal()
 local core=node("CoreGui","CoreGui")
 local inspect=child(core,"Frame","InspectAndBuy")
 local title=child(inspect,"TextLabel","Title");title.Text="Original's Avatar"
@@ -45,11 +46,30 @@ function renderedHumanoid:GetAppliedDescription()return modelDescription end
 local other=child(core,"Frame","OtherInspectAndBuy");local otherTitle=child(other,"TextLabel","Title");otherTitle.Text="Other's Avatar"
 local hidden=child(core,"Frame","HiddenInspectAndBuy");hidden.Visible=false;local hiddenTitle=child(hidden,"TextLabel","Title");hiddenTitle.Text="Original's Avatar"
 game={GetService=function(_,name)
-    if name=="CoreGui"then return core elseif name=="GuiService"then return gui elseif name=="HttpService"then return http end
+    if name=="RunService"then return {RenderStepped=renderStepped} elseif name=="CoreGui"then return core elseif name=="GuiService"then return gui elseif name=="HttpService"then return http end
 end}
 local module=dofile("native_inspection.lua")
 local player={Name="Original",UserId=123}
-local api=module.create(player)
+UDim2={fromScale=function(x,y)return {x,y}end,fromOffset=function(x,y)return {x,y}end,new=function(...)return {...}end}
+Vector2={new=function(x,y)return {x,y}end}
+local captures,shows=0,0
+local failRender=false
+local livePreview={version=1,records={{class="MeshPart",name="LiveLarpHat"}}}
+local api=module.create(player,function()return {
+ capture=function()captures=captures+1;return livePreview end,
+ show=function(frame,data)
+  assert(viewport.ImageTransparency==1,"the real avatar stays hidden while local rendering runs")
+  assert(frame.Visible==false and data==livePreview,"only the captured live character is rendered while hidden")
+  shows=shows+1;return not failRender
+ end,
+}end)
+local function previewGui()
+ for _,object in ipairs(core.children)do if object.Name=="LarpbloxOwnPreview" and not object.destroyed then return object end end
+end
+local function liveOverlay()
+ local parent=previewGui();if not parent then return end
+ for _,object in ipairs(parent.children)do if object.Name=="LarpbloxInspectPreview" and not object.destroyed then return object end end
+end
 local snapshot={version=1,definition={assets={{id=100,meta=nil},{id=200,meta={order=3,puffiness=0.35}}},scales={height=1.1,width=0.9,depth=1.05,head=1.2,proportion=0.4,bodyType=0.7},bodyColors={headColor="#112233",torsoColor="445566"}},items={{id=100,assetType=11},{id=200,assetType=67},{id=301,assetType=8},{id=302,assetType=41},{id=303,assetType=42},{id=304,assetType=79},{id=305,assetType=12},{id=306,assetType=8}}}
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
 assert(#inspectCalls==1 and inspectCalls[1].name=="LarpAlias","local native inspection is requested with the alias")
@@ -63,15 +83,12 @@ assert(d.Shirt==100 and d.accessories[1].AssetId==200 and d.accessories[1].IsLay
 assert(d.HeightScale==1.1 and d.WidthScale==0.9 and d.DepthScale==1.05 and d.HeadScale==1.2 and d.ProportionScale==0.4 and d.BodyTypeScale==0.7,"body scales are preserved")
 assert(d.HeadColor.R==17/255 and d.HeadColor.G==34/255 and d.HeadColor.B==51/255,"body colors are converted")
 title.Text="LarpAlias's Avatar";api.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(#inspectCalls==1,"adopting the redirected title does not reopen in a loop")
--- A model being parented is insufficient: wait for its applied outfit to match.
-modelDescription={GetAccessories=function()return {}end,Destroy=function()end}
+-- Native normalized descriptions must not keep the live Larp preview blank.
+assert(liveOverlay() and liveOverlay().Visible and captures==1 and shows==1,"live local avatar renders even if the native applied model differs")
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
-assert(viewport.ImageTransparency==1,"a stale account model remains blank")
+assert(viewport.ImageTransparency==1 and liveOverlay().Visible and shows==1,"the live preview is cached and the account model remains hidden")
 viewport.ImageTransparency=0;viewport:GetPropertyChangedSignal("ImageTransparency"):Fire()
-assert(viewport.ImageTransparency==1,"native opacity updates cannot reveal a stale model while loading")
-modelDescription=setmetatable({Destroy=function()end},{__index=d})
-api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
-assert(viewport.ImageTransparency==0.2,"matching applied Larp appearance reveals the native preview")
+assert(viewport.ImageTransparency==1,"native opacity updates cannot reveal the account model")
 local late=child(inspect,"ViewportFrame","LateViewport");late.ImageTransparency=0
 core.DescendantAdded:Fire(late)
 assert(late.ImageTransparency==1,"new native previews are hidden immediately without waiting for relay polling")
@@ -79,7 +96,19 @@ title.Text="OtherPerson's Avatar";title:GetPropertyChangedSignal("Text"):Fire()
 assert(viewport.ImageTransparency==0.2 and late.ImageTransparency==0,"a reused inspector restores visibility for another player")
 title.Text="LarpAlias's Avatar";title:GetPropertyChangedSignal("Text"):Fire()
 local changed={version=2,definition=snapshot.definition,items={{id=100,assetType=11},{id=201,assetType=67}}};api.update({enabled=true,name="LarpAlias",snapshot=changed});assert(#inspectCalls==2,"an outfit change requests a fresh native inspection")
-assert(viewport.ImageTransparency==1,"an outfit change blanks the previous preview while loading")
+assert(viewport.ImageTransparency==1 and (not liveOverlay() or not previewGui().Enabled),"an outfit change blanks the previous preview while loading")
+failRender=true
+api.update({enabled=true,name="LarpAlias",snapshot=changed})
+assert(viewport.ImageTransparency==1 and not previewGui().Enabled,"failed local renders stay blank without revealing the account avatar")
+failRender=false
+api.update({enabled=true,name="LarpAlias",snapshot=changed})
+assert(liveOverlay().Visible and previewGui().Enabled,"a successful retry reveals the live Larp avatar")
+viewport.ClassName="Frame";late.ClassName="Frame"
+api.update({enabled=true,name="LarpAlias",snapshot=changed})
+assert(previewGui().Enabled and liveOverlay().Visible,"inspection without a native ViewportFrame still shows the actual Larp avatar")
+title.Visible=false;renderStepped:Fire()
+assert(not previewGui().Enabled,"closing the native menu hides the added preview before the next frame")
+title.Visible=true;api.update({enabled=true,name="LarpAlias",snapshot=changed})
 assert(d.destroyed and not inspectCalls[2].description.destroyed,"new inspection releases the old source and keeps the replacement alive")
 assert(otherTitle.Text=="Other's Avatar" and hiddenTitle.Text=="Original's Avatar","other and hidden inspect screens are untouched")
 api.update({enabled=false,name="LarpAlias"});assert(#restoreCalls==1 and restoreCalls[1]==123,"turning Larp mode off restores the platform avatar even while the redirected alias title is visible")
@@ -88,5 +117,5 @@ assert(inspectCalls[2].description.destroyed,"mode off releases the retained sou
 local blockedGui={InspectPlayerFromHumanoidDescription=function()error("blocked")end,InspectPlayerFromUserId=function()end}
 game.GetService=function(_,name)if name=="CoreGui"then return core elseif name=="GuiService"then return blockedGui elseif name=="HttpService"then return http end end
 local blocked=module.create(player);title.Text="Original's Avatar";blocked.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(blocked.report():find("blocked",1,true),"blocked native API access is reported")
-Instance,Enum,Color3,game=old.Instance,old.Enum,old.Color3,old.game
+Instance,Enum,Color3,game,UDim2,Vector2=old.Instance,old.Enum,old.Color3,old.game,old.UDim2,old.Vector2
 print("Native inspection description, redirect adoption, lifecycle and blocked API checks passed.")

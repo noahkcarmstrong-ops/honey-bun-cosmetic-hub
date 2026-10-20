@@ -36,8 +36,11 @@ end
 
 local function uniquePeopleRow(object, player, options)
     local username = tostring(options and options.name or "")
-    if username == "" then username = tostring(read(player, "Name") or "") end
-    if username == "" then return false end
+    local realUsername = tostring(read(player, "Name") or "")
+    local accepted = {}
+    if username ~= "" then accepted["@" .. username] = true end
+    if realUsername ~= "" then accepted["@" .. realUsername] = true end
+    if next(accepted) == nil then return false end
     local path = ancestors(object)
     local inPeople=false
     for _,ancestor in ipairs(path)do
@@ -54,7 +57,7 @@ local function uniquePeopleRow(object, player, options)
             if class=="TextLabel" or class=="TextButton" then
                 texts=texts+1
                 local text=plainText(read(child,"Text"))
-                if text=="@"..username then found=true
+                if accepted[text] then found=true
                 elseif text:match("^@[%w_]+$")then other=true end
             end
         end

@@ -37,26 +37,17 @@ local function description(snapshot)
     if not ok then desc:Destroy();error(err)end
     return desc
 end
--- Compare the applied model, not just its presence: Roblox parents it before loading ends.
-local function appearanceKey(desc)
-    local out={}
-    for _,field in pairs(fields)do out[#out+1]=field..":"..tostring(desc[field] or 0)end
-    for _,field in pairs(scales)do out[#out+1]=field..":"..tostring(desc[field] or 0)end
-    for _,field in pairs(colors)do
-        local color=desc[field]
-        if color then out[#out+1]=field..string.format(":%.4f:%.4f:%.4f",color.R,color.G,color.B)end
-    end
-    for _,entry in ipairs(desc:GetAccessories(true))do out[#out+1]="Accessory:"..tostring(entry.AssetId)end
-    table.sort(out);return table.concat(out,";")
-end
 local M={description=description}
-function M.create(player)
+function M.create(player,getPreviews)
     local core,gui
     pcall(function() core=game:GetService("CoreGui");gui=game:GetService("GuiService")end)
     local active=false
     local modeEnabled,currentName=false,player.Name
     local masked,connections={},{}
     local changingMask=false
+    local currentSnapshot,previewData,previewKey
+    local overlayName="LarpbloxInspectPreview"
+    local fallbackGui,fallbackEntry,previewLabel
     local activeDescription
     local function releaseDescription()
         if activeDescription then activeDescription:Destroy();activeDescription=nil end
@@ -90,15 +81,44 @@ function M.create(player)
         end
     end
     local function restoreMasks()
+        if fallbackGui then fallbackGui:Destroy();fallbackGui=nil;fallbackEntry=nil end
         for viewport,entry in pairs(masked)do
             if entry.connection then entry.connection:Disconnect()end
+            if entry.overlay then entry.overlay:Destroy()end
             pcall(function()viewport.ImageTransparency=entry.original end)
         end
         masked={}
     end
+    local function renderPreview(entry,parent)
+        if entry.overlay then entry.overlay.Visible=false end
+        if currentSnapshot and getPreviews then
+                    local key=game:GetService("HttpService"):JSONEncode(currentSnapshot)..tostring(player.Character)
+                    local ok,err=pcall(function()
+                        local previews=getPreviews()
+                        if key~=previewKey or not previewData then
+                            previewData=previews.capture();previewKey=key
+                        end
+                        if not entry.overlay then
+                            local overlay=Instance.new("ViewportFrame")
+                            overlay.Name=overlayName;overlay.BackgroundTransparency=1;overlay.BorderSizePixel=0
+                            overlay.Size=UDim2.fromScale(1,1);overlay.Position=UDim2.fromScale(0,0)
+                            overlay.Visible=false;overlay.ZIndex=10
+                            entry.overlay=overlay;overlay.Parent=parent
+                        end
+                        if entry.key~=key then
+                            assert(previews.show(entry.overlay,previewData)~=false,"Local avatar preview could not render.")
+                            entry.key=key
+                        end
+                        if modeEnabled and (entry==fallbackEntry or masked[parent]==entry) then entry.overlay.Visible=true end
+                    end)
+                    if not ok then status="Local inspection preview is loading: "..tostring(err)end
+                end
+    end
     local function maskPreview(allowReady)
+        if fallbackGui then fallbackGui.Enabled=false end
         if not modeEnabled then return end
         local label,_,root=ownTitle(currentName)
+        previewLabel=label
         if not label or not root then
             -- Roblox can reuse the same viewport when inspecting a different player.
             for viewport,entry in pairs(masked)do
@@ -108,6 +128,7 @@ function M.create(player)
                     for _,object in ipairs(ancestor:GetDescendants())do
                         if object:IsA("TextLabel") and object.Text:match("'s Avatar$") and object.Text~=player.Name.."'s Avatar" and object.Text~=currentName.."'s Avatar" and object.Text~=(lastName or "").."'s Avatar"then
                             if entry.connection then entry.connection:Disconnect()end
+                            if entry.overlay then entry.overlay:Destroy()end
                             viewport.ImageTransparency=entry.original;masked[viewport]=nil;break
                         end
                     end
@@ -117,38 +138,45 @@ function M.create(player)
         end
         local objects=root:GetDescendants()
         for _,viewport in ipairs(objects)do
-            if viewport:IsA("ViewportFrame")then
+            if viewport:IsA("ViewportFrame") and viewport.Name~=overlayName then
                 local entry=masked[viewport]
                 if not entry then
-                    entry={original=viewport.ImageTransparency or 0,ready=false};masked[viewport]=entry
+                    entry={original=viewport.ImageTransparency or 0};masked[viewport]=entry
                     pcall(function()entry.connection=viewport:GetPropertyChangedSignal("ImageTransparency"):Connect(function()
-                        if modeEnabled and not changingMask and not entry.ready then
+                        if modeEnabled and not changingMask then
                             changingMask=true;viewport.ImageTransparency=1;changingMask=false
                         end
                     end)end)
                 end
-                local ready=false
-                if allowReady and activeDescription then
-                    local ok,result=pcall(function()
-                        local expected=appearanceKey(activeDescription)
-                        for _,object in ipairs(viewport:GetDescendants())do
-                            if object:IsA("Humanoid")then
-                                local applied=object:GetAppliedDescription()
-                                local matches=appearanceKey(applied)==expected
-                                applied:Destroy()
-                                if matches then return true end
-                            end
-                        end
-                        return false
-                    end)
-                    ready=ok and result
-                end
-                entry.ready=ready
-                changingMask=true;viewport.ImageTransparency=ready and entry.original or 1;changingMask=false
+                -- The native model can normalize body IDs/scales or fail to generate.
+                -- Show the actual local character through the existing preview renderer.
+                changingMask=true;viewport.ImageTransparency=1;changingMask=false
+                if entry.overlay then entry.overlay.Visible=false end
+            end
+        end
+        if allowReady and currentSnapshot then
+            if not fallbackGui then
+                fallbackGui=Instance.new("ScreenGui")
+                fallbackGui.Name="LarpbloxOwnPreview";fallbackGui.ResetOnSpawn=false
+                fallbackGui.IgnoreGuiInset=true;fallbackGui.DisplayOrder=1000
+                fallbackGui.Enabled=false;fallbackGui.Parent=core
+                fallbackEntry={}
+            end
+            renderPreview(fallbackEntry,fallbackGui)
+            local overlay=fallbackEntry.overlay
+            if overlay then
+                -- The native item title marks the bottom of the avatar area.
+                local titleY=label.AbsolutePosition and label.AbsolutePosition.Y or 340
+                local height=math.min(300,math.max(0,titleY-84))
+                overlay.AnchorPoint=Vector2.new(0.5,0)
+                overlay.Position=UDim2.new(0.5,0,0,math.max(64,titleY-height-12))
+                overlay.Size=UDim2.fromOffset(math.min(320,height),height)
+                fallbackGui.Enabled=height>0 and overlay.Visible==true
             end
         end
     end
     local function watchTitle(object)
+        if object.Name==overlayName then return false end
         local ancestor=object.Parent
         local scoped=false
         while ancestor do
@@ -174,10 +202,20 @@ function M.create(player)
             end)
         end)
     end
+    -- Close the added preview in the same frame as the native menu.
+    pcall(function()
+        connections[#connections+1]=game:GetService("RunService").RenderStepped:Connect(function()
+            if fallbackGui and fallbackGui.Enabled and (not modeEnabled or not previewLabel or not previewLabel.Parent or not visible(previewLabel))then
+                fallbackGui.Enabled=false
+            end
+        end)
+    end)
     local api={}
     function api.update(options)
         local enabled=options.enabled==true
         modeEnabled=enabled
+        currentSnapshot=options.snapshot
+        if not currentSnapshot then previewData=nil;previewKey=nil end
         local alias=tostring(options.name or "")
         local name=alias~="" and alias or player.Name
         currentName=name
@@ -204,6 +242,7 @@ function M.create(player)
     end
     function api.report()return status end
     function api.destroy()
+        previewData=nil;previewKey=nil
         api.update({enabled=false,name=""})
         for _,connection in ipairs(connections)do connection:Disconnect()end
         connections={}

@@ -38,6 +38,7 @@ assert(not module.isAvatarImage(rowIcon,player,{name="LocalAlias"}),"unrelated i
 assert(not module.isAvatarImage(otherThumb,player,{name="LocalAlias"}),"another player's thumbnail is excluded")
 assert(module.isAvatarImage(peopleThumb,player,{name="LocalAlias"}),"unique People alias row is owned")
 label.Text="@Original";assert(module.isAvatarImage(peopleThumb,player,{name=""}),"blank alias falls back to the real username");label.Text="@LocalAlias"
+label.Text="@Original";assert(module.isAvatarImage(peopleThumb,player,{name="LocalAlias"}),"real username remains owned while alias rewrite is pending");label.Text="@LocalAlias"
 assert(not module.isAvatarImage(otherPeopleThumb,player,{name="LocalAlias"}),"another People row is excluded")
 assert(not module.isAvatarImage(static,player,{name="LocalAlias"}),"static icons are excluded")
 local captures, shows, shownData=0,0,nil

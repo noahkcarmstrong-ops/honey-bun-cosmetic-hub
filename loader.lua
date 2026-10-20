@@ -513,7 +513,10 @@ local function nativeViews()
     end)
     local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inspection.lua",false)
     local chunk,message=loadstring(source);assert(chunk,message)
-    local inspection=chunk().create(Players.LocalPlayer)
+    local inspection=chunk().create(Players.LocalPlayer,function()
+        if not previewsAPI then characterModules()end
+        return previewsAPI
+    end)
     nativeViewsAPI={}
     function nativeViewsAPI.update(options)
         portraits.update(options);inspection.update(options)
