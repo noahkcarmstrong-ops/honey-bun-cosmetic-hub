@@ -359,3 +359,27 @@ for _,id in ipairs({1474657,123})do
 end
 effectEditor.destroy();game.GetObjects=previousObjects
 print("Dusekkar fire and smoke enable without an owner restriction; other hats remain unchanged.")
+
+-- Smokestack's normal smoke is separate from its disabled holiday emitters.
+local smokestack=create(player)
+game.GetObjects=function()
+    local hat=node("Accessory","RbadamTophat");hat.AttachmentPoint=cf()
+    local handle=node("Part","Handle");handle.CFrame=cf();handle.Parent=hat
+    local attachment=node("Attachment","HatAttachment");attachment.CFrame=cf();attachment.Parent=handle
+    for _,name in ipairs({"ParticleEmitter","Burst","Hallow","Confetti","Smokescreen"})do
+        local effect=node("ParticleEmitter",name);effect.Enabled=false;effect.Parent=attachment
+    end
+    node("Script","HatScript2.0").Parent=attachment
+    return{hat}
+end
+for _,id in ipairs({169444515,123})do
+    smokestack.equipAccessory(id)
+    local hat=body:FindFirstChild("RbadamTophat")
+    assert(hat:FindFirstChild("ParticleEmitter",true).Enabled==(id==169444515),"Smokestack original smoke works for any wearer; other hats stay unchanged")
+    for _,name in ipairs({"Burst","Hallow","Confetti","Smokescreen"})do assert(not hat:FindFirstChild(name,true).Enabled,"Holiday emitters stay off")end
+    assert(not hat:FindFirstChild("HatScript2.0",true),"Smokestack asset script remains removed")
+    smokestack.clearAccessories()
+    assert(not body:FindFirstChild("RbadamTophat"),"Removing Smokestack removes its effects")
+end
+smokestack.destroy();game.GetObjects=previousObjects
+print("Smokestack original smoke enables without holiday effects or asset scripts.")

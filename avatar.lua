@@ -394,6 +394,12 @@ return function(player,onStatus,readAsset)
             for _,effect in ipairs(candidate:GetDescendants()) do
                 if effect:IsA("Fire") or effect:IsA("Smoke") then effect.Enabled=true end
             end
+        elseif id==169444515 then
+            -- Use the original everyday smoke, not the scripted holiday emitters.
+            local handle=candidate:FindFirstChild("Handle")
+            local attachment=handle and handle:FindFirstChild("HatAttachment")
+            local smoke=attachment and attachment:FindFirstChild("ParticleEmitter")
+            if smoke and smoke:IsA("ParticleEmitter") then smoke.Enabled=true end
         end
         for _,item in ipairs(candidate:GetDescendants()) do
             if item:IsA("BasePart") then item.Anchored=false;item.CanCollide=false;item.CanTouch=false;item.Massless=true end
