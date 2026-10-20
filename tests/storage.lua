@@ -263,3 +263,22 @@ _G.characterRejoin = rejoin
 _G.characterFlush = flush
 
 print('Storage restore, precedence, account isolation, removals, backup fallback, and session-only checks passed.')
+
+local namesGui,namesStore = rejoin(1301)
+namesGui:SetAttribute('HoneyBunCosmeticUI_nameUsername','LarpUser')
+namesGui:SetAttribute('HoneyBunCosmeticUI_nameDisplayName','Larp Person')
+namesGui:SetAttribute('HoneyBunCosmeticUI_nameEnabled',true)
+flush();namesStore:destroy()
+local namesReload,namesReloadStore = rejoin(1301)
+assert(value(namesReload,'HoneyBunCosmeticUI_nameUsername')=='LarpUser')
+assert(value(namesReload,'HoneyBunCosmeticUI_nameDisplayName')=='Larp Person')
+assert(value(namesReload,'HoneyBunCosmeticUI_nameEnabled')==true)
+local otherNames,otherNamesStore = rejoin(1302)
+assert(value(otherNames,'HoneyBunCosmeticUI_nameUsername')==nil)
+otherNamesStore:destroy()
+namesReload:SetAttribute('HoneyBunCosmeticUI_nameEnabled',false)
+flush();namesReloadStore:destroy()
+local namesOff,namesOffStore=rejoin(1301)
+assert(value(namesOff,'HoneyBunCosmeticUI_nameEnabled')==false)
+namesOffStore:destroy()
+print('Local names persist per account and remain disabled after rejoin.')

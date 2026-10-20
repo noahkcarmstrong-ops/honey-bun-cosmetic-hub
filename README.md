@@ -10,6 +10,14 @@ Run this in your executor:
 loadstring(game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/main/loader.lua", false))()
 ```
 
+## Local names
+
+1. Open **NAMES**.
+2. Enter a Larp username and display name, then click **Apply Larp names**. A blank field keeps its real name.
+3. Use **Restore real names** to turn the override off.
+
+Names affect your local overhead label and identified name labels in accessible player lists, including the built-in Roblox player list. Your Roblox account identity and other players' views stay unchanged. Settings follow the existing per-account file auto-save. Protected CoreGui or custom game interfaces may prevent replacement; **Copy name report** reports detected access and labels. Native leaderboard behavior still needs live executor verification.
+
 ## Accessories
 
 1. Open **ACCESSORIES**.
