@@ -23,7 +23,7 @@ local function add(parent, class, name)
 end
 local core=node("CoreGui","CoreGui")
 local row=add(core,"Frame","PlayerEntry_123")
-local thumb=add(row,"ImageLabel","AvatarImage");thumb.ImageTransparency=0.25;thumb.Image="rbxthumb://type=AvatarHeadShot&id=123&w=48&h=48"
+local thumb=add(row,"ImageLabel","AvatarImage");thumb.ZIndex=2;thumb.ImageTransparency=0.25;thumb.Image="rbxthumb://type=AvatarHeadShot&id=123&w=48&h=48"
 local rowIcon=add(row,"ImageLabel","Icon");rowIcon.Image="rbxassetid://inspect"
 local other=add(core,"Frame","PlayerEntry_456")
 local otherThumb=add(other,"ImageLabel","AvatarImage");otherThumb.Image="rbxthumb://type=AvatarHeadShot&id=456&w=48&h=48"
@@ -68,6 +68,10 @@ local effective={definition={shirt="effective"},items={1,2}}
 api.update({enabled=true,name="LocalAlias",snapshot=effective})
 assert(shows==2 and captures==1 and shownData ~= effective,"effective outfit signature drives one cached live capture")
 assert(thumb.ImageTransparency==1,"original image is hidden only after a successful render")
+local portraitOverlay
+for _,child in ipairs(thumb.children)do if child.Name=="LarpbloxOwnAvatarPreview" then portraitOverlay=child end end
+assert(portraitOverlay and portraitOverlay.ZIndex==thumb.ZIndex,"portrait must preserve the native image layer below level badges")
+
 api.update({enabled=true,name="LocalAlias",snapshot={version=1}})
 assert(shows==4 and captures==2,"a changed effective snapshot refreshes overlays once")
 local scansBefore=api.report():match("Scans: (%d+)")

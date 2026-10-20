@@ -41,9 +41,16 @@ local otherRow=node("Frame","OtherReactRow");otherRow.Parent=people
 local otherDisplay=node("TextLabel","Text");otherDisplay.Text="Original Display";otherDisplay.Parent=otherRow
 local otherUser=node("TextLabel","Text");otherUser.Text="@OtherUser";otherUser.Parent=otherRow
 local profileName=node("TextLabel","Username");profileName.Text="OriginalUser (You)";profileName.Parent=row
+local weaponsName=node("TextLabel","Section");weaponsName.Text="OriginalUser's Weapons";weaponsName.Parent=row
+local displayWeapons=node("TextLabel","Section");displayWeapons.Text="Original Display's Weapons";displayWeapons.Parent=row
+local richWeapons=node("TextLabel","Section");richWeapons.Text='<font color="#fff">OriginalUser\'s</font> Weapons';richWeapons.RichText=true;richWeapons.Parent=row
+local otherWeapons=node("TextLabel","Section");otherWeapons.Text="OriginalUser's Weapons";otherWeapons.Parent=other
 local api=make(player,gui)
 api.set("Local_User","Local Display")
 assert(profileName.Text=="Local_User (You)","own MM2 profile heading keeps You suffix and shows the Larp name")
+assert(weaponsName.Text=="Local_User's Weapons" and displayWeapons.Text=="Local Display's Weapons","own possessive section headings replace username and display name")
+assert(richWeapons.Text=='<font color="#fff">Local_User\'s</font> Weapons',"possessive replacement preserves RichText tags")
+assert(otherWeapons.Text=="OriginalUser's Weapons","other player's possessive heading stays untouched")
 assert(label.Text=="Local_User" and otherLabel.Text=="OriginalUser","only the local player's native row changes")
 assert(menuDisplay.Text=="Local Display" and menuUser.Text=="@Local_User","People menu own display and username update without row ID")
 assert(otherDisplay.Text=="Original Display" and otherUser.Text=="@OtherUser","People menu shared display name stays untouched")
@@ -64,6 +71,8 @@ label.Text="<font color=\"#fff\">OriginalUser</font>";label:GetPropertyChangedSi
 assert(label.Text=="<font color=\"#fff\">Local_User</font>","RichText tags remain intact")
 api.setEnabled(false)
 assert(menuDisplay.Text=="Original Display" and menuUser.Text=="@OriginalUser","People menu restores original name")
+assert(weaponsName.Text=="OriginalUser's Weapons" and displayWeapons.Text=="Original Display's Weapons","disable restores possessive section headings")
+assert(richWeapons.Text=='<font color="#fff">OriginalUser\'s</font> Weapons',"disable restores RichText possessive heading")
 assert(native.Text=="Refreshed Service Name","disable restores latest native service name")
 assert(label.Text=="<font color=\"#fff\">OriginalUser</font>" and humanoid.DisplayName=="Original Display","disable restores originals")
 api.setEnabled(true);assert(label.Text=="<font color=\"#fff\">Local_User</font>","enable reapplies after an update")

@@ -208,7 +208,7 @@ function M.create(player, getPreviews)
         overlay.Position = UDim2.fromScale(0, 0); overlay.Size = UDim2.fromScale(1, 1)
         overlay.BackgroundTransparency = 1; overlay.BorderSizePixel = 0
         overlay.Visible = false
-        overlay.ZIndex = (read(image, "ZIndex") or 1) + 1; overlay.Parent = image
+        overlay.ZIndex = read(image, "ZIndex") or 1; overlay.Parent = image
         if imageSource then overlay.Image = imageSource end
         overlays[image] = overlay
         return overlay
