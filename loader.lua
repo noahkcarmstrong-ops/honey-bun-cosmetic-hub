@@ -202,7 +202,7 @@ layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
 local avatarAPI,motionAPI,animationAPI,clothesAPI,previewsAPI,browserOutfitAPI,gameBrowserSyncAPI,sharedLarpAPI
 local avatarFactory,animationFactory,clothesFactory,nameFactory
-local previewFactory,portraitFactory
+local previewFactory,portraitFactory,inspectionRouter
 local refresh = Instance.new("TextButton")
 refresh.Position = UDim2.new(1, -126, 0, 62)
 refresh.Size = UDim2.fromOffset(98, 26)
@@ -506,13 +506,23 @@ local function presentationFactories()
         local chunk,message=loadstring(source);assert(chunk,message);portraitFactory=chunk()
     end
 end
+local function sharedInspection()
+    if inspectionRouter then return inspectionRouter end
+    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inspection.lua",false)
+    local chunk,message=loadstring(source);assert(chunk,message);local inspection=chunk()
+    source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inspection_router.lua",false)
+    chunk,message=loadstring(source);assert(chunk,message)
+    inspectionRouter=chunk()(Players.LocalPlayer,inspection.create)
+    return inspectionRouter
+end
 local function peerViews(player)
     presentationFactories()
     local preview=previewFactory(player)
     local portraits=portraitFactory.create(player,function()return preview end)
+    local inspection=sharedInspection().forPlayer(player,function()return preview end)
     return {
-        update=function(options)return portraits.update(options)end,
-        destroy=function()portraits.destroy();preview.destroy()end,
+        update=function(options)portraits.update(options);inspection.update(options)end,
+        destroy=function()inspection.destroy();portraits.destroy();preview.destroy()end,
     }
 end
 local function sharedLarp()
@@ -548,16 +558,17 @@ local function nativeViews()
     local portraits=portraitFactory.create(Players.LocalPlayer,function()
         return previews()
     end)
-    local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/larpblox/"..moduleRevision.."/native_inspection.lua",false)
-    local chunk,message=loadstring(source);assert(chunk,message)
-    local inspection=chunk().create(Players.LocalPlayer,function()
+    local inspection=sharedInspection().forPlayer(Players.LocalPlayer,function()
         return previews()
     end)
     nativeViewsAPI={}
     function nativeViewsAPI.update(options)
         portraits.update(options);inspection.update(options)
     end
-    function nativeViewsAPI.destroy()portraits.destroy();inspection.destroy()end
+    function nativeViewsAPI.destroy()
+        portraits.destroy();inspection.destroy()
+        if inspectionRouter then inspectionRouter.destroy();inspectionRouter=nil end
+    end
     return nativeViewsAPI
 end
 gameBrowserSync=function()
