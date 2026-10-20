@@ -62,7 +62,7 @@ function M.create(player,getPreviews)
     local function visible(object)
         local current=object
         while current do
-            if current:IsA("GuiObject") and not current.Visible and not (panels[current] and not panels[current].ready and panels[current].original) then return false end
+            if current:IsA("GuiObject") and not current.Visible and not (panels[current] and not panels[current].ready) then return false end
             if current:IsA("ScreenGui") and not current.Enabled then return false end
             current=current.Parent
         end
@@ -74,7 +74,7 @@ function M.create(player,getPreviews)
             for object in pairs(knownLabels)do objects[#objects+1]=object end
         else pcall(function()objects=core:GetDescendants()end)end
         for _,object in ipairs(objects)do
-            if object.Parent and object:IsA("TextLabel") and visible(object) then
+            if object.Parent and object:IsA("TextLabel") and visible(object.Parent) then
                 local text=object.Text
                 local scoped=false
                 local scopeRoot
@@ -143,8 +143,9 @@ function M.create(player,getPreviews)
             if not entry then
                 entry={original=object.Visible,root=root,ready=false};panels[object]=entry
                 pcall(function()entry.connection=object:GetPropertyChangedSignal("Visible"):Connect(function()
-                    if modeEnabled and not entry.ready and not mutatingPanel then
-                        mutatingPanel=true;object.Visible=false;mutatingPanel=false
+                    if modeEnabled and not mutatingPanel then
+                        if object.Visible then entry.original=true end
+                        if not entry.ready then mutatingPanel=true;object.Visible=false;mutatingPanel=false end
                     end
                 end)end)
             end
@@ -318,7 +319,8 @@ function M.create(player,getPreviews)
             -- including the reused shell whose Visible changes when reopened.
             if object:IsA("GuiObject") and not rootVisibility[object] then
                 pcall(function() rootVisibility[object]=object:GetPropertyChangedSignal("Visible"):Connect(function()
-                    if modeEnabled and object.Visible and not guardingVisibility then
+                    if modeEnabled and object.Visible and not guardingVisibility and not mutatingPanel then
+                        if panels[object] then panels[object].original=true end
                         guardingVisibility=true
                         local ok,message=pcall(function()quarantineUnknownPanels();maskPreview(false,true)end)
                         guardingVisibility=false
@@ -383,7 +385,7 @@ function M.create(player,getPreviews)
             active=false;lastLabel=nil;lastSignature=nil;adopting=false;lastName=nil
             return
         end
-        if not label then maskPreview(false);lastLabel=nil;lastSignature=nil;adopting=false;return end
+        if not label then maskPreview(false);return end
         maskPreview(false)
         if not options.snapshot then status="Waiting for the local outfit.";return end
         local signature=game:GetService("HttpService"):JSONEncode(options.snapshot)..name

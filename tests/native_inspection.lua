@@ -43,7 +43,7 @@ local core=node("CoreGui","CoreGui")
 local mount=child(core,"Folder","InspectAndBuy")
 local inspect=child(mount,"Frame","ItemDetails")
 local closeButton=child(inspect,"ImageButton","CloseButton")
-local title=child(inspect,"TextLabel","Title");title.Text="Original's Avatar"
+local title=child(inspect,"TextLabel","Title");title.Text="Original's Avatar";title.Visible=false
 local viewport=child(inspect,"ViewportFrame","AvatarViewport");viewport.ImageTransparency=0.2;viewport.AbsolutePosition={X=111,Y=222};viewport.AbsoluteSize={X=200,Y=250}
 local itemContent=child(inspect,"Frame","ItemDetails");local itemLabel=child(itemContent,"TextLabel","ItemName");itemLabel.Text="Original item"
 local world=child(viewport,"WorldModel","WorldModel")
@@ -83,6 +83,7 @@ title.Text="LarpAlias's Avatar"
 api.update({enabled=true,name="LarpAlias"})
 assert(inspect.Visible and closeButton.Visible and not title.Visible and not itemContent.Visible,"missing outfit data leaves the page open while account content stays hidden")
 -- local_names can rewrite the own title before the native redirect starts.
+title.Visible=true;title:GetPropertyChangedSignal("Visible"):Fire()
 title.Text="LarpAlias's Avatar";title:GetPropertyChangedSignal("Text"):Fire()
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
 assert(#inspectCalls==1 and inspectCalls[1].name=="LarpAlias","local native inspection is requested with the alias")
@@ -102,6 +103,11 @@ assert(d.HeadColor.R==17/255 and d.HeadColor.G==34/255 and d.HeadColor.B==51/255
 title.Text="LarpAlias's Avatar";itemLabel.Text="Larp Shirt";api.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(#inspectCalls==1,"adopting the redirected title does not reopen in a loop")
 assert(inspect.Visible==true,"the panel reveals only after its Larp title and local preview are ready")
 assert(title.Visible and itemContent.Visible,"the redirected title and refreshed item content appear only after adoption")
+inspect.Visible=false
+api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
+inspect.Visible=true
+api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
+assert(#inspectCalls==1,"temporary hiding during native remount must not restart inspection")
 -- React can replace the heading instance without changing the inspected player.
 local oldTitle=title;oldTitle.Parent=nil;oldTitle.Visible=false
 for i,v in ipairs(inspect.children)do if v==oldTitle then table.remove(inspect.children,i);break end end
