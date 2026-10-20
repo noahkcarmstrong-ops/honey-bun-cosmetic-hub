@@ -50,7 +50,7 @@ local posted;local command={version=1,userId="7",revision=1,definition={assets={
 function request(o)if o.Method=="GET" and o.Url:find("status")then return {StatusCode=200,Body={version=1,connected=true}}end;if o.Method=="GET"then return {StatusCode=200,Body=command}end;posted=o.Body;return {StatusCode=200,Body={}}end
 local jobs={};task={spawn=function(f)jobs[#jobs+1]=f end,delay=function()end,wait=function()end}
 
-settings.body=nil;settings.bodyParts.RightLeg=139607718
+settings.body=nil;settings.bodyParts.RightLeg=139607718;extraTypes[139607718]=31
 local skinCalls=0
 function avatar.setSkin(value,region)
  skinCalls=skinCalls+1;body[region.."Color3"]=value
