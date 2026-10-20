@@ -346,10 +346,11 @@ function M.create(player,getPreviews)
         panelVisibility(root,preserveLive and ready==true)
         if not ready and fallbackGui then fallbackGui.Enabled=false end
         local objects=root:GetDescendants()
-        local nativeViewport
+        local nativeViewport,nativeThumbnail
         for _,viewport in ipairs(objects)do
             if nativeAvatarVisual(viewport) then
-                if viewport:IsA("ViewportFrame") then nativeViewport=nativeViewport or viewport end
+                if viewport:IsA("ViewportFrame") then nativeViewport=nativeViewport or viewport
+                elseif viewport.Parent and viewport.Parent.Name=="Thumbnail" then nativeThumbnail=viewport.Parent end
                 local entry=masked[viewport]
                 if not entry then
                     entry={original=viewport.ImageTransparency or 0};masked[viewport]=entry
@@ -373,13 +374,17 @@ function M.create(player,getPreviews)
                 fallbackGui.Enabled=false;fallbackGui.Parent=core
                 fallbackEntry={}
             end
-            renderPreview(fallbackEntry,nativeViewport and nativeViewport.Parent or fallbackGui)
+            -- The native layout hides/repositions the 3D container while loading.
+            -- Render outside its UIListLayout, aligned with the visible thumbnail slot.
+            renderPreview(fallbackEntry,fallbackGui)
             local overlay=fallbackEntry.overlay
             if overlay then
-                if nativeViewport then
-                    overlay.AnchorPoint=nativeViewport.AnchorPoint
-                    overlay.Position=nativeViewport.Position
-                    overlay.Size=nativeViewport.Size
+                local bounds=nativeThumbnail or nativeViewport
+                if bounds then
+                    overlay.AnchorPoint=Vector2.new(0,0)
+                    local origin=fallbackGui.AbsolutePosition or Vector2.new(0,0)
+                    overlay.Position=UDim2.fromOffset(bounds.AbsolutePosition.X-origin.X,bounds.AbsolutePosition.Y-origin.Y)
+                    overlay.Size=UDim2.fromOffset(bounds.AbsoluteSize.X,bounds.AbsoluteSize.Y)
                     fallbackGui.Enabled=overlay.Visible==true and larpTitle
                 else
                     -- Older layouts expose no usable viewport bounds; use the title as a fallback.

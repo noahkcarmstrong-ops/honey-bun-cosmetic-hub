@@ -125,7 +125,22 @@ title=child(inspect,"TextLabel","HeaderText");title.Text="LarpAlias's Avatar";co
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
 assert(liveOverlay() and liveOverlay().Visible and previewGui().Enabled,"a remounted alias heading must keep the own avatar rendering")
 
-assert(liveOverlay().Parent==viewport.Parent and liveOverlay().Position==viewport.Position and liveOverlay().Size==viewport.Size,"local preview shares the native viewport parent and exact layout without nested viewport rendering")
+assert(liveOverlay().Parent==previewGui() and liveOverlay().Position[1]==111 and liveOverlay().Position[2]==222,"local preview matches native screen bounds outside its layout")
+-- Roblox can hide the whole native 3D container while its model loads.
+local nativeContainer=child(inspect,"Frame","ViewportContainer");nativeContainer.Visible=false;nativeContainer.AbsolutePosition={X=100,Y=200}
+inspect.AbsolutePosition={X=100,Y=200}
+for i,v in ipairs(inspect.children)do if v==viewport then table.remove(inspect.children,i);break end end
+viewport.Parent=nativeContainer;nativeContainer.children[#nativeContainer.children+1]=viewport
+api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
+assert(liveOverlay().Parent==previewGui() and liveOverlay().Visible,"the replacement must escape Roblox's hidden 3D container")
+assert(liveOverlay().Position[1]==111 and liveOverlay().Position[2]==222,"the replacement keeps the native screen position")
+local inner=child(inspect,"Frame","InnerView")
+local thumbSlot=child(inner,"Frame","Thumbnail");thumbSlot.AbsolutePosition={X=400,Y=300};thumbSlot.AbsoluteSize={X=250,Y=250}
+local thumbImage=child(thumbSlot,"ImageLabel","ImageLabel");thumbImage.ImageTransparency=0
+previewGui().AbsolutePosition={X=0,Y=-58}
+api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
+assert(liveOverlay().Position[1]==400 and liveOverlay().Position[2]==358 and liveOverlay().Size[1]==250,"native thumbnail bounds include the CoreGui inset correction")
+assert(thumbImage.ImageTransparency==1,"the native account thumbnail stays masked")
 itemLabel.Text="Original item";boundGuard()
 assert(not itemContent.Visible,"a stale original item cannot be revealed by the new Larp title")
 itemLabel.Text="Larp Shirt";boundGuard()
