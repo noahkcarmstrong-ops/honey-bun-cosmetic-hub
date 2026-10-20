@@ -50,7 +50,8 @@ function M.create(player,getPreviews)
     local mutatingPanel=false
     local unbindGuard
     local changingMask=false
-    local currentSnapshot,currentImage,previewData,previewKey
+    local currentSnapshot,currentImage,previewData,previewKey,previewCharacter
+    local warmedItems,refreshQueued=nil,false
     local quarantineUnknownPanels,maskPreview
     local overlayName="LarpbloxInspectPreview"
     local fallbackGui,fallbackEntry,previewLabel
@@ -281,10 +282,11 @@ function M.create(player,getPreviews)
                     local key=(currentSnapshot and game:GetService("HttpService"):JSONEncode(currentSnapshot) or "")..tostring(player.Character).."|"..tostring(currentImage or "")
                     local ok,err=pcall(function()
                         local previews=getPreviews and getPreviews() or nil
-                        if not currentImage and (key~=previewKey or not previewData) then
-                            previewData=previews.capture();previewKey=key
+                        if not currentImage and (key~=previewKey or not previewData or previewCharacter~=player.Character) then
+                            previewData=previews.capture();previewKey=key;previewCharacter=player.Character
                         end
                         local overlayClass=currentImage and "ImageLabel" or "ViewportFrame"
+                        if entry.overlay and not entry.overlay.Parent then entry.overlay=nil;entry.key=nil end
                         if entry.overlay and entry.overlay.ClassName~=overlayClass then
                             entry.overlay:Destroy();entry.overlay=nil;entry.key=nil
                         end
@@ -371,13 +373,13 @@ function M.create(player,getPreviews)
                 fallbackGui.Enabled=false;fallbackGui.Parent=core
                 fallbackEntry={}
             end
-            renderPreview(fallbackEntry,nativeViewport or fallbackGui)
+            renderPreview(fallbackEntry,nativeViewport and nativeViewport.Parent or fallbackGui)
             local overlay=fallbackEntry.overlay
             if overlay then
                 if nativeViewport then
-                    overlay.AnchorPoint=Vector2.new(0,0)
-                    overlay.Position=UDim2.fromScale(0,0)
-                    overlay.Size=UDim2.fromScale(1,1)
+                    overlay.AnchorPoint=nativeViewport.AnchorPoint
+                    overlay.Position=nativeViewport.Position
+                    overlay.Size=nativeViewport.Size
                     fallbackGui.Enabled=overlay.Visible==true and larpTitle
                 else
                     -- Older layouts expose no usable viewport bounds; use the title as a fallback.
@@ -393,6 +395,15 @@ function M.create(player,getPreviews)
                 if fallbackGui.Enabled then showLoadingItems(root)end
             end
         end
+    end
+    local function schedulePreview()
+        if refreshQueued or not modeEnabled or not currentSnapshot then return end
+        refreshQueued=true
+        local function refresh()
+            refreshQueued=false
+            if modeEnabled and currentSnapshot then maskPreview(true)end
+        end
+        if task and task.defer then task.defer(refresh)else refreshQueued=false end
     end
     local function watchTitle(object)
         if object.Name==overlayName then return false end
@@ -414,6 +425,7 @@ function M.create(player,getPreviews)
                         local ok,message=pcall(function()quarantineUnknownPanels();maskPreview(false,true)end)
                         guardingVisibility=false
                         if not ok then status="Inspection visibility guard: "..tostring(message) end
+                        schedulePreview()
                     end
                 end);connections[#connections+1]=rootVisibility[object] end)
             end
@@ -423,7 +435,7 @@ function M.create(player,getPreviews)
             local wasTitle=object.Text:match("'s Avatar$")~=nil
             pcall(function()connections[#connections+1]=object:GetPropertyChangedSignal("Text"):Connect(function()
                 local isTitle=object.Text:match("'s Avatar$")~=nil
-                if wasTitle or isTitle then maskPreview(false)end
+                if wasTitle or isTitle then maskPreview(false);schedulePreview()end
                 wasTitle=isTitle
             end)end)
         end
@@ -462,6 +474,14 @@ function M.create(player,getPreviews)
         local enabled=options.enabled==true
         modeEnabled=enabled
         currentSnapshot=options.snapshot
+        if enabled and currentSnapshot and task and task.spawn then
+            local thumbs={};for _,item in ipairs(currentSnapshot.items or {})do thumbs[#thumbs+1]="rbxthumb://type=Asset&id="..tostring(item.id).."&w=150&h=150"end
+            local key=table.concat(thumbs,"|")
+            if warmedItems~=key then
+                warmedItems=key
+                task.spawn(function()pcall(function()game:GetService("ContentProvider"):PreloadAsync(thumbs)end)end)
+            end
+        end
         currentImage=type(options.image)=="string" and options.image~="" and options.image or nil
         if not currentSnapshot then previewData=nil;previewKey=nil end
         local alias=tostring(options.name or "")

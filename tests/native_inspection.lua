@@ -18,8 +18,11 @@ local function node(class,name,parent)
 end
 local function child(parent,class,name)local x=node(class,name);x.Parent=parent;return x end
 
-local old={Instance=Instance,Enum=Enum,Color3=Color3,game=game,UDim2=UDim2,Vector2=Vector2}
+local old={task=task,Instance=Instance,Enum=Enum,Color3=Color3,game=game,UDim2=UDim2,Vector2=Vector2}
 local descriptions,inspectCalls,restoreCalls= {},{},{}
+local deferred={}
+task={defer=function(f)deferred[#deferred+1]=f end}
+local function flushDeferred()local pending=deferred;deferred={};for _,f in ipairs(pending)do f()end end
 Instance={new=function(class)
     local x=node(class,class)
     function x:SetAccessories(v,includeRigid)self.accessories=v;self.includeRigid=includeRigid end
@@ -44,7 +47,7 @@ local mount=child(core,"Folder","InspectAndBuy")
 local inspect=child(mount,"Frame","ItemDetails")
 local closeButton=child(inspect,"ImageButton","CloseButton")
 local title=child(inspect,"TextLabel","Title");title.Text="Original's Avatar";title.Visible=false
-local viewport=child(inspect,"ViewportFrame","AvatarViewport");viewport.ImageTransparency=0.2;viewport.AbsolutePosition={X=111,Y=222};viewport.AbsoluteSize={X=200,Y=250}
+local viewport=child(inspect,"ViewportFrame","AvatarViewport");viewport.ImageTransparency=0.2;viewport.AnchorPoint={0,0};viewport.Position={0.2,0.3};viewport.Size={0.8,0.7};viewport.AbsolutePosition={X=111,Y=222};viewport.AbsoluteSize={X=200,Y=250}
 local itemContent=child(inspect,"Frame","ItemDetails");local itemLabel=child(itemContent,"TextLabel","ItemName");itemLabel.Text="Original item"
 local loadingContainer=child(inspect,"Frame","ViewportContainer")
 local loadingImage=child(loadingContainer,"ImageLabel","AvatarLoadingImage");loadingImage.ImageTransparency=0.3
@@ -105,7 +108,9 @@ assert(nativeIds[200] and nativeIds[301] and nativeIds[302] and nativeIds[303] a
 assert(d.Shirt==100 and d.accessories[1].AssetId==200 and d.accessories[1].IsLayered and d.accessories[1].Order==3 and d.accessories[1].Puffiness==0.35,"clothing and layered accessory metadata are preserved")
 assert(d.HeightScale==1.1 and d.WidthScale==0.9 and d.DepthScale==1.05 and d.HeadScale==1.2 and d.ProportionScale==0.4 and d.BodyTypeScale==0.7,"body scales are preserved")
 assert(d.HeadColor.R==17/255 and d.HeadColor.G==34/255 and d.HeadColor.B==51/255,"body colors are converted")
-title.Text="LarpAlias's Avatar";itemLabel.Text="Larp Shirt";api.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(#inspectCalls==1,"adopting the redirected title does not reopen in a loop")
+title.Text="LarpAlias's Avatar";itemLabel.Text="Larp Shirt";title:GetPropertyChangedSignal("Text"):Fire();flushDeferred()
+assert(liveOverlay() and liveOverlay().Visible,"the alias-ready signal renders the preview without waiting for another relay poll")
+api.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(#inspectCalls==1,"adopting the redirected title does not reopen in a loop")
 assert(inspect.Visible==true,"the panel reveals only after its Larp title and local preview are ready")
 assert(title.Visible and itemContent.Visible,"the redirected title and refreshed item content appear only after adoption")
 inspect.Visible=false
@@ -120,7 +125,7 @@ title=child(inspect,"TextLabel","HeaderText");title.Text="LarpAlias's Avatar";co
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
 assert(liveOverlay() and liveOverlay().Visible and previewGui().Enabled,"a remounted alias heading must keep the own avatar rendering")
 
-assert(liveOverlay().Parent==viewport and liveOverlay().Position[1]==0 and liveOverlay().Position[2]==0 and liveOverlay().Size[1]==1 and liveOverlay().Size[2]==1,"live preview lives inside the native viewport and follows its layout")
+assert(liveOverlay().Parent==viewport.Parent and liveOverlay().Position==viewport.Position and liveOverlay().Size==viewport.Size,"local preview shares the native viewport parent and exact layout without nested viewport rendering")
 itemLabel.Text="Original item";boundGuard()
 assert(not itemContent.Visible,"a stale original item cannot be revealed by the new Larp title")
 itemLabel.Text="Larp Shirt";boundGuard()
@@ -165,6 +170,9 @@ assert(liveOverlay().Visible and previewGui().Enabled,"a successful retry reveal
 viewport.ClassName="Frame";late.ClassName="Frame"
 api.update({enabled=true,name="LarpAlias",snapshot=changed})
 assert(previewGui().Enabled and liveOverlay().Visible,"inspection without a native ViewportFrame still shows the actual Larp avatar")
+local removedOverlay=liveOverlay();removedOverlay:Destroy()
+api.update({enabled=true,name="LarpAlias",snapshot=changed})
+assert(liveOverlay() and liveOverlay()~=removedOverlay and liveOverlay().Visible,"a native remount that destroys the overlay is recovered on the next refresh")
 -- Late native viewport/model insertion with no DescendantAdded callback is
 -- still masked before it can reach a frame, without hiding our ready preview.
 viewport.ClassName="ViewportFrame";viewport.ImageTransparency=0
@@ -195,5 +203,6 @@ local blockedGui={InspectPlayerFromHumanoidDescription=function()error("blocked"
 game.GetService=function(_,name)if name=="CoreGui"then return core elseif name=="GuiService"then return blockedGui elseif name=="HttpService"then return http end end
 local blocked=module.create(player);title.Text="Original's Avatar";blocked.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(blocked.report():find("blocked",1,true),"blocked native API access is reported")
 blocked.destroy()
+task=old.task
 Instance,Enum,Color3,game,UDim2,Vector2=old.Instance,old.Enum,old.Color3,old.game,old.UDim2,old.Vector2
 print("Native inspection description, redirect adoption, lifecycle and blocked API checks passed.")
