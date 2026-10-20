@@ -253,13 +253,45 @@ function M.create(player, getPreviews)
         ["Left Arm"]=true,["Right Arm"]=true,["Left Leg"]=true,["Right Leg"]=true,
         LeftUpperArm=true,LeftLowerArm=true,LeftHand=true,RightUpperArm=true,RightLowerArm=true,RightHand=true,
         LeftUpperLeg=true,LeftLowerLeg=true,LeftFoot=true,RightUpperLeg=true,RightLowerLeg=true,RightFoot=true}
+    local function fullPortrait(image)
+        local source=tostring(read(image,"Image") or ""):lower()
+        return source:find("type=avatar&",1,true) or source:find("/thumbs/avatar.ashx",1,true)
+    end
+    local function posePortrait(frame,image)
+        if not fullPortrait(image) then return end
+        local model=frame:FindFirstChild("Avatar",true)
+        if not model then return end
+        local function transform(names,pivot,rotation)
+            local delta=CFrame.new(pivot)*rotation*CFrame.new(-pivot)
+            for _,name in ipairs(names) do
+                local part=model:FindFirstChild(name)
+                if part then part.CFrame=delta*part.CFrame end
+            end
+        end
+        for _,side in ipairs({"Left","Right"}) do
+            local upper=model:FindFirstChild(side.."UpperArm")
+            local lower=model:FindFirstChild(side.."LowerArm")
+            if upper then
+                local pivot=upper.CFrame:PointToWorldSpace(Vector3.new(0,upper.Size.Y/2,0))
+                transform({side.."UpperArm",side.."LowerArm",side.."Hand"},pivot,
+                    CFrame.Angles(0,0,math.rad(side=="Left" and -9 or 9)))
+            end
+            if lower then
+                local pivot=lower.CFrame:PointToWorldSpace(Vector3.new(0,lower.Size.Y/2,0))
+                transform({side.."LowerArm",side.."Hand"},pivot,CFrame.Angles(math.rad(12),0,0))
+            end
+        end
+        frame.Ambient=Color3.new(0.55,0.55,0.55)
+        frame.LightColor=Color3.new(0.85,0.85,0.85)
+        frame.LightDirection=Vector3.new(-1,-1,-2)
+    end
     local function frameCamera(frame, image)
         local world=frame:FindFirstChild("CharacterPreview")
         local model=world and world:FindFirstChild("Avatar")
         local camera=frame.CurrentCamera
         if not (model and camera) then return end
         local source=tostring(read(image,"Image") or ""):lower()
-        local full=source:find("type=avatar&",1,true) or source:find("/thumbs/avatar.ashx",1,true)
+        local full=fullPortrait(image)
         local bust=source:find("avatarbust",1,true) or source:find("bust-thumbnail",1,true)
             or tostring(read(image,"Name") or ""):lower()=="charactericon"
         local min,max
@@ -281,7 +313,8 @@ function M.create(player, getPreviews)
         local aspect=absolute and absolute.Y>0 and math.max(absolute.X/absolute.Y,0.1) or 1
         camera.FieldOfView=35
         local distance=math.max(size.Y/2,size.X/(2*aspect),0.5)/math.tan(math.rad(camera.FieldOfView/2))*1.15+size.Z/2
-        camera.CFrame=CFrame.lookAt(center+Vector3.new(0,0,-distance),center)
+        local direction=full and Vector3.new(math.sin(math.rad(18)),0.06,-math.cos(math.rad(18))).Unit or Vector3.new(0,0,-1)
+        camera.CFrame=CFrame.lookAt(center+direction*distance,center)
     end
     local function matchPortraitMask(image,overlay)
         local native=image:FindFirstChildOfClass("UICorner")
@@ -403,6 +436,7 @@ function M.create(player, getPreviews)
         local shown, result = pcall(function() return previews.show(overlay, snapshot) end)
         if shown and result ~= false and pending[image]==staged then
             matchPortraitMask(image,overlay)
+            posePortrait(overlay,image)
             frameCamera(overlay,image)
             commit()
         else discard() end
