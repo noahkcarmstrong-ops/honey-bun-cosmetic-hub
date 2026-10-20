@@ -103,6 +103,11 @@ itemLabel.Text="Original item";boundGuard()
 assert(not itemContent.Visible,"a stale original item cannot be revealed by the new Larp title")
 itemLabel.Text="Larp Shirt";boundGuard()
 assert(itemContent.Visible,"matching Larp items reveal after their content arrives")
+-- Reopening an already-mounted native inspector must mask its viewport in the
+-- Visible signal itself, before the render-step guard gets a chance to run.
+inspect.Visible=false;inspect:GetPropertyChangedSignal("Visible"):Fire()
+viewport.ImageTransparency=0;inspect.Visible=true;inspect:GetPropertyChangedSignal("Visible"):Fire()
+assert(viewport.ImageTransparency==1,"opening an existing inspector masks the native avatar synchronously")
 -- Native normalized descriptions must not keep the live Larp preview blank.
 assert(liveOverlay() and liveOverlay().Visible and captures==1 and shows==1,"live local avatar renders even if the native applied model differs")
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})

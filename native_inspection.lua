@@ -45,10 +45,13 @@ function M.create(player,getPreviews)
     local modeEnabled,currentName=false,player.Name
     local masked,connections,knownLabels={},{},{}
     local panels,inspectRoots={},{}
+    local rootVisibility={}
+    local guardingVisibility=false
     local mutatingPanel=false
     local unbindGuard
     local changingMask=false
     local currentSnapshot,previewData,previewKey
+    local quarantineUnknownPanels,maskPreview
     local overlayName="LarpbloxInspectPreview"
     local fallbackGui,fallbackEntry,previewLabel
     local activeDescription
@@ -158,7 +161,7 @@ function M.create(player,getPreviews)
             end
         end
     end
-    local function quarantineUnknownPanels()
+    function quarantineUnknownPanels()
         if not modeEnabled then return end
         for root in pairs(inspectRoots)do
             if not root.Parent then inspectRoots[root]=nil
@@ -207,7 +210,7 @@ function M.create(player,getPreviews)
                     if not ok then status="Local inspection preview is loading: "..tostring(err)end
                 end
     end
-    local function maskPreview(allowReady,preserveLive)
+    function maskPreview(allowReady,preserveLive)
         if fallbackGui and not preserveLive then fallbackGui.Enabled=false end
         if not modeEnabled then return end
         quarantineUnknownPanels()
@@ -292,7 +295,21 @@ function M.create(player,getPreviews)
             if ancestor.Name:find("InspectAndBuy",1,true) or ancestor.Name=="AvatarInspectMenu"then scoped=true;root=ancestor end
             ancestor=ancestor.Parent
         end
-        if root then inspectRoots[root]=true end
+        if root then
+            inspectRoots[root]=true
+            -- InspectAndBuy can be a Folder; observe the actual GUI objects,
+            -- including the reused shell whose Visible changes when reopened.
+            if object:IsA("GuiObject") and not rootVisibility[object] then
+                pcall(function() rootVisibility[object]=object:GetPropertyChangedSignal("Visible"):Connect(function()
+                    if modeEnabled and object.Visible and not guardingVisibility then
+                        guardingVisibility=true
+                        local ok,message=pcall(function()quarantineUnknownPanels();maskPreview(false,true)end)
+                        guardingVisibility=false
+                        if not ok then status="Inspection visibility guard: "..tostring(message) end
+                    end
+                end);connections[#connections+1]=rootVisibility[object] end)
+            end
+        end
         if scoped and object:IsA("TextLabel")then
             knownLabels[object]=true
             local wasTitle=object.Text:match("'s Avatar$")~=nil
