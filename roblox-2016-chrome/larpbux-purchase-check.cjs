@@ -265,7 +265,7 @@ for (const label of ['Off Sale','']) {
  const offHarness=harness.replace("fetch: async () => ({ok: true, json: async () => ({PriceInRobux: 100, AssetTypeId: 8, Name: 'Blue Hat'})}),", "AbortController, fetch: async () => ({ok:true,json:async()=>({PriceInRobux:null,IsForSale:false,AssetTypeId:8,Name:'Offsale Hat'})}),");
  const mod={exports:{}};
  vm.runInNewContext(`((module)=>{${offHarness}\n})(module);`,{module:mod,require,console,AbortController,setTimeout,clearTimeout},{filename:harnessPath});
- const store=new Map([['larpblox-cosmetics-v1:811',JSON.stringify({version:1,mode:true,balance:15000,items:[],equipped:[]})]]);
+ const store=new Map([['larpblox-cosmetics-v1:811',JSON.stringify({version:1,mode:true,balance:0,items:[],equipped:[]})]]);
  const off=mod.exports.setup('811','1,000',store);off.location.pathname='/catalog/99/Offsale-Hat';
  const root=off.document.createElement('section');root.setAttribute('id','item-details');
  const title=off.document.createElement('h1');title.textContent='Offsale Hat';
@@ -273,10 +273,10 @@ for (const label of ['Off Sale','']) {
  if(label){const price=off.document.createElement('span');price.className='item-price-value';price.textContent=label;row.append(price);}
  root.append(title,row);off.document.body.append(root);off.mutateNative();
  await click(row.querySelector('.larpbux-classic-buy'));
- assert.match(textOf(off.document.querySelector('.larpbux-buy-dialog')),/10,000/);
+ assert.match(textOf(off.document.querySelector('.larpbux-buy-dialog')),/for R\$ 0\?/);
  await click(off.document.querySelector('.larpbux-buy-confirm'));
  const saved=JSON.parse(store.get('larpblox-cosmetics-v1:811'));
- assert.equal(saved.balance,5000,'offsale purchase charges exactly 10k');
+ assert.equal(saved.balance,0,'offsale item can be claimed with zero balance and no charge');
  assert.equal(saved.items[0].id,99,'offsale item is added to collection');
 }
 

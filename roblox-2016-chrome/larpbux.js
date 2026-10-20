@@ -1048,7 +1048,7 @@
   function nativePrice() {
     const element = document.querySelector('#item-details .item-price-value .text-robux-lg, #item-details .item-price-value, #item-details .price-row-container .text-robux-lg, #item-details-container .item-price-value .text-robux-lg, #item-details-container .item-price-value, #item-details-container .price-row-container .text-robux-lg, .price-row-container .item-price-value');
     const raw = element?.textContent?.trim().replace(/^(?:R\$|Robux|\uE002)\s*/i, '').replace(/\s*(?:R\$|Robux)$/i, '');
-    if (/^(?:off\s*sale|not\s+for\s+sale)$/i.test(raw || '')) return 10000;
+    if (/^(?:off\s*sale|not\s+for\s+sale)$/i.test(raw || '')) return 0;
     if (/^free$/i.test(raw || '')) return 0;
     if (raw && /^[\d,\s]+$/.test(raw)) return amount(raw.replace(/[,\s]/g, ''));
     return null;
@@ -1102,7 +1102,7 @@
       if (!response.ok) throw new Error('Item details could not be loaded. Click Buy to try again.');
       const data = await response.json();
       const offsale = type === 'Asset' ? data.IsForSale === false : data.product?.isForSale === false;
-      const price = offsale ? 10000 : type === 'Asset' ? data.PriceInRobux : data.product?.priceInRobux;
+      const price = offsale ? 0 : type === 'Asset' ? data.PriceInRobux : data.product?.priceInRobux;
       const assets = type === 'Bundle' ? await bundleAssets(data, controller.signal) : undefined;
       return {id, itemType: type, assetType: type === 'Asset' ? data.AssetTypeId : 0, ...(type === 'Asset' ? {assetTypeVerified:true, limitedVerified:true, isLimited:data.IsLimited === true, isLimitedUnique:data.IsLimitedUnique === true} : {}), bundleType: type === 'Bundle' ? data.bundleType : undefined, assets, name: String(type === 'Asset' ? data.Name : data.name).slice(0, 128), price: price == null ? null : amount(price)};
       })();
