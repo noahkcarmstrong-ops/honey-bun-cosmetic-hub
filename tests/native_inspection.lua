@@ -20,8 +20,12 @@ local function child(parent,class,name)local x=node(class,name);x.Parent=parent;
 
 local old={task=task,Instance=Instance,Enum=Enum,Color3=Color3,game=game,UDim2=UDim2,Vector2=Vector2}
 local descriptions,inspectCalls,restoreCalls= {},{},{}
-local deferred={}
-task={defer=function(f)deferred[#deferred+1]=f end}
+local deferred,recoveryQueue={},{}
+local originalClock=os.clock;local clock=0;os.clock=function()return clock end
+task={defer=function(f)deferred[#deferred+1]=f end,delay=function(_,f)recoveryQueue[#recoveryQueue+1]=f end}
+local function advanceRecovery(seconds)
+ clock=clock+seconds;local pending=recoveryQueue;recoveryQueue={};for _,f in ipairs(pending)do f()end
+end
 local function flushDeferred()local pending=deferred;deferred={};for _,f in ipairs(pending)do f()end end
 Instance={new=function(class)
     local x=node(class,class)
@@ -206,6 +210,19 @@ api.update({enabled=false,name="LarpAlias"});assert(#restoreCalls==1 and restore
 assert(viewport.ImageTransparency==0.2 and late.ImageTransparency==0 and itemContent.Visible,"mode off restores original native visibility")
 assert(inspectCalls[2].description.destroyed,"mode off releases the retained source")
 api.update({enabled=true,name="LarpAlias",snapshot=changed})
+-- A successful native request must recover if its item cards never finish.
+local requestsBeforeRecovery=#inspectCalls
+advanceRecovery(1);advanceRecovery(5)
+assert(#inspectCalls==requestsBeforeRecovery,"normal loading gets a grace period")
+advanceRecovery(1)
+assert(#inspectCalls==requestsBeforeRecovery+1,"stalled native skeletons request the same Larp outfit again")
+advanceRecovery(11)
+assert(#inspectCalls==requestsBeforeRecovery+1,"recovery is throttled instead of restarting every update")
+advanceRecovery(1);advanceRecovery(24);advanceRecovery(100)
+assert(#inspectCalls==requestsBeforeRecovery+3,"stalled loading has a strict retry cap")
+local completedCard=child(nativeList,"TextLabel","ItemCardFooterTitle");completedCard.Text="Larp Shirt"
+advanceRecovery(100)
+assert(#inspectCalls==requestsBeforeRecovery+3,"completed native cards stop retries")
 -- Native avatar content may be inserted before its identifying title exists.
 local unknownMount=child(core,"Folder","InspectAndBuyNew")
 local unknownPanel=child(unknownMount,"Frame","Container")
@@ -223,5 +240,6 @@ game.GetService=function(_,name)if name=="CoreGui"then return core elseif name==
 local blocked=module.create(player);title.Text="Original's Avatar";blocked.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(blocked.report():find("blocked",1,true),"blocked native API access is reported")
 blocked.destroy()
 task=old.task
+os.clock=originalClock
 Instance,Enum,Color3,game,UDim2,Vector2=old.Instance,old.Enum,old.Color3,old.game,old.UDim2,old.Vector2
 print("Native inspection description, redirect adoption, lifecycle and blocked API checks passed.")
