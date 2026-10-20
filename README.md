@@ -163,6 +163,8 @@ While the browser is paired and Larp mode is on, recognized local-player portrai
 While Larp mode is loading, recognized own portraits stay blank. The inspection page and its controls remain visible; account avatar, name, and item content are masked until the Larp replacements are ready. The inspection viewport renders a capture of the live local character, so Roblox normalizing its generated body description cannot leave the Larp preview permanently blank. Failed avatar loads leave only the preview blank, so the inspection page remains usable. Turning mode off or disconnecting restores the original portraits and own inspector. These are local views and do not change account ownership or other players' screens. Inspector detection currently recognizes Roblox's English own-avatar title inside InspectAndBuy; protected or changed native layouts may prevent detection. Automated stand-in tests cover matching, outfit conversion and restoration; live executor compatibility has not been verified.
 
 
+Chat sender labels use the browser Larp name locally while mode is on. Matching is limited to recognized chat UI and the local sender prefix; message bodies and other players' names are preserved. Turning mode off restores the original sender labels. This does not change the name other players see.
+
 ## Browser gear
 
 The browser wardrobe's Gear category contains catalog gear (asset type 19), separately from hats and other accessories. Wear selects one held Larp gear at a time; Remove clears it. Selected gear is included in browser outfit exports and connected outfit snapshots, so browser outfit previews and Currently Wearing use the same selection.
