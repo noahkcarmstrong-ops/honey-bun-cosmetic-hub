@@ -1006,15 +1006,13 @@ render=function()
     elseif activePage=="Accessories" then
         caption("ACCESSORIES",24)
         caption("BROWSER CONNECTION",24)
-        caption("Connect this local avatar to the Larpblox browser through the loopback relay. Your pairing code stays on this executor and is never stored in Roblox.",56)
-        local pairing=input("32-character browser pairing code","",function()end)
+        caption("Open the Larpblox app to connect your browser and game automatically.",40)
         button(gameBrowserSyncAPI and gameBrowserSyncAPI.isConnected() and "Disconnect browser" or "Connect browser",function()
             if busy then return end
             action(function()
                 local sync=gameBrowserSync()
                 if sync.isConnected() then sync.disconnect();return "Browser disconnected." end
-                local code=pairing.Text:match("^%s*(.-)%s*$")
-                sync.connect(#code>0 and code or nil);return "Browser connected; local avatar sync is running."
+                sync.connect();return "Browser connected; local avatar sync is running."
             end)
         end)
         caption("Sync publishes your live local avatar, including added accessories, current shirt and pants, skin overrides, and hidden originals. Unsupported game-only items are reported.",48)
