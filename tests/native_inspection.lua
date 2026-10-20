@@ -48,6 +48,9 @@ local inspect=child(mount,"Frame","ItemDetails")
 local closeButton=child(inspect,"ImageButton","CloseButton")
 local title=child(inspect,"TextLabel","Title");title.Text="Original's Avatar";title.Visible=false
 local viewport=child(inspect,"ViewportFrame","AvatarViewport");viewport.ImageTransparency=0.2;viewport.AnchorPoint={0,0};viewport.Position={0.2,0.3};viewport.Size={0.8,0.7};viewport.AbsolutePosition={X=111,Y=222};viewport.AbsoluteSize={X=200,Y=250}
+local firstPanel=child(inspect,"Frame","FirstPanel")
+local nativeList=child(firstPanel,"ScrollingFrame","List")
+local skeleton=child(nativeList,"Frame","Skeleton1")
 local itemContent=child(inspect,"Frame","ItemDetails");local itemLabel=child(itemContent,"TextLabel","ItemName");itemLabel.Text="Original item"
 local loadingContainer=child(inspect,"Frame","ViewportContainer")
 local loadingImage=child(loadingContainer,"ImageLabel","AvatarLoadingImage");loadingImage.ImageTransparency=0.3
@@ -110,6 +113,7 @@ assert(d.HeightScale==1.1 and d.WidthScale==0.9 and d.DepthScale==1.05 and d.Hea
 assert(d.HeadColor.R==17/255 and d.HeadColor.G==34/255 and d.HeadColor.B==51/255,"body colors are converted")
 title.Text="LarpAlias's Avatar";itemLabel.Text="Larp Shirt";title:GetPropertyChangedSignal("Text"):Fire();flushDeferred()
 assert(liveOverlay() and liveOverlay().Visible,"the alias-ready signal renders the preview without waiting for another relay poll")
+assert(skeleton.Visible and #nativeList.children==1,"native loading cards remain untouched; no custom item list is injected")
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(#inspectCalls==1,"adopting the redirected title does not reopen in a loop")
 assert(inspect.Visible==true,"the panel reveals only after its Larp title and local preview are ready")
 assert(title.Visible and itemContent.Visible,"the redirected title and refreshed item content appear only after adoption")
