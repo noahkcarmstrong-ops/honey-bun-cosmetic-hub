@@ -40,8 +40,10 @@ local menuUser=node("TextLabel","Text");menuUser.Text="@OriginalUser";menuUser.P
 local otherRow=node("Frame","OtherReactRow");otherRow.Parent=people
 local otherDisplay=node("TextLabel","Text");otherDisplay.Text="Original Display";otherDisplay.Parent=otherRow
 local otherUser=node("TextLabel","Text");otherUser.Text="@OtherUser";otherUser.Parent=otherRow
+local profileName=node("TextLabel","Username");profileName.Text="OriginalUser (You)";profileName.Parent=row
 local api=make(player,gui)
 api.set("Local_User","Local Display")
+assert(profileName.Text=="Local_User (You)","own MM2 profile heading keeps You suffix and shows the Larp name")
 assert(label.Text=="Local_User" and otherLabel.Text=="OriginalUser","only the local player's native row changes")
 assert(menuDisplay.Text=="Local Display" and menuUser.Text=="@Local_User","People menu own display and username update without row ID")
 assert(otherDisplay.Text=="Original Display" and otherUser.Text=="@OtherUser","People menu shared display name stays untouched")

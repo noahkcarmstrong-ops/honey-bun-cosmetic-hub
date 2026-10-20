@@ -175,7 +175,7 @@ function M.create(player, getPreviews)
         if overlay then pcall(function() overlay:Destroy() end); overlays[image] = nil; overlayKeys[image] = nil end
         if restore ~= false then restoreImage(image) end
     end
-    local function frameCamera(frame)
+    local function frameCamera(frame, bust)
         local world = read(frame, "FindFirstChild") and frame:FindFirstChild("CharacterPreview")
         local model = world and world:FindFirstChild("Avatar")
         local head = model and model:FindFirstChild("Head", true)
@@ -183,7 +183,15 @@ function M.create(player, getPreviews)
         if not (head and camera) then return end
         local position, size = head.Position, head.Size
         if not (position and size and CFrame and CFrame.lookAt) then return end
-        local distance = math.max(size.X, size.Y, size.Z, 1) * 2.5
+        if bust then
+            local torso = model:FindFirstChild("UpperTorso", true) or model:FindFirstChild("Torso", true)
+            local torsoPosition, torsoSize = torso and torso.Position, torso and torso.Size
+            if torsoPosition and torsoSize then
+                position = Vector3.new(position.X, (position.Y * 0.6) + (torsoPosition.Y * 0.4), position.Z)
+                size = Vector3.new(math.max(size.X, torsoSize.X), math.max(size.Y, torsoSize.Y * 2), math.max(size.Z, torsoSize.Z))
+            end
+        end
+        local distance = math.max(size.X, size.Y, size.Z, 1) * (bust and 3.8 or 2.5)
         pcall(function() camera.CFrame = CFrame.lookAt(position + Vector3.new(0, 0, -distance), position) end)
     end
     local function makeOverlay(image, imageSource)
@@ -218,7 +226,10 @@ function M.create(player, getPreviews)
         local overlay = makeOverlay(image)
         local shown, result = pcall(function() return previews.show(overlay, previewSnapshot) end)
         if shown and result ~= false then
-            overlayKeys[image] = effectiveKey; frameCamera(overlay); renderedCount = renderedCount + 1
+            local source = tostring(read(image, "Image") or ""):lower()
+            local imageName = tostring(read(image, "Name") or ""):lower()
+            local bust = source:find("avatarbust", 1, true) ~= nil or source:find("bust-thumbnail", 1, true) ~= nil or imageName == "charactericon"
+            overlayKeys[image] = effectiveKey; frameCamera(overlay, bust); renderedCount = renderedCount + 1
             pcall(function() overlay.Visible = true end)
         else destroyOverlay(image, false) end
     end
@@ -292,7 +303,6 @@ function M.create(player, getPreviews)
             if alive and enabled then scan() end
         end) end)
         if connection then textConnections[object] = connection end
-        if enabled then scan()end
     end
     local ok = pcall(function() coreGui = game:GetService("CoreGui"); coreGui:GetDescendants() end)
     pcall(function() playerGui = player:FindFirstChildOfClass("PlayerGui") end)
@@ -304,15 +314,18 @@ function M.create(player, getPreviews)
     if available then
         for index, root in ipairs(roots) do pcall(function() connections["root" .. index] = root.DescendantAdded:Connect(function(object)
             watch(object); watchPeopleText(object)
+            if enabled and isAvatarImage(object,player,{name=currentName}) then render(object) end
         end) end) end
     end
 
     local api = {}
     function api.update(options)
-        options = options or {}; enabled = options.enabled == true; currentName = tostring(options.name or ""); currentImage = tostring(options.image or ""); if currentImage == "" then currentImage = nil end
+        options = options or {}; local wasEnabled=enabled; local previousName=currentName
+        enabled = options.enabled == true; currentName = tostring(options.name or ""); currentImage = tostring(options.image or ""); if currentImage == "" then currentImage = nil end
         local character = read(player, "Character")
         local effectiveSnapshot = options.snapshot
         local nextKey = signature(effectiveSnapshot) .. "|" .. tostring(character) .. "|" .. tostring(currentImage or "")
+        if enabled and wasEnabled and previousName==currentName and nextKey==effectiveKey and (currentImage or previewSnapshot) then return api.report() end
         if enabled and (nextKey~=effectiveKey or effectiveSnapshot==nil)then
             previewSnapshot=nil
             for image,overlay in pairs(overlays)do overlay.Visible=false;hideImage(image)end

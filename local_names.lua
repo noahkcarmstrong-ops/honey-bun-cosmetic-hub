@@ -62,7 +62,8 @@ return function(player, playerGui, gameObject)
         if text == "@"..originalUsername then return "@"..username end
         if text == originalUsername then return username end
         if text == originalDisplay then return display end
-        if visibleText(text) ~= originalUsername and visibleText(text) ~= originalDisplay then return text end
+        local plain=visibleText(text):gsub(" %(You%)$", "")
+        if plain ~= originalUsername and plain ~= originalDisplay then return text end
         -- Replace only text between tags; this preserves RichText attributes and tags.
         local out, cursor = {}, 1
         while true do
@@ -125,7 +126,7 @@ return function(player, playerGui, gameObject)
     local function candidate(object)
         if not isTextObject(object) or isHubOwned(object) or not owned(object) then return false end
         if nativeName(object) then return true end
-        local plain=visibleText(object.Text)
+        local plain=visibleText(object.Text):gsub(" %(You%)$", "")
         return plain==originalUsername or plain=="@"..originalUsername or plain==originalDisplay
     end
     local function applyText(object)
