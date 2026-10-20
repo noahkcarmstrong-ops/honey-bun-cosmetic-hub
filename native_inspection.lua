@@ -44,6 +44,8 @@ function M.create(player,getPreviews)
     local active=false
     local modeEnabled,currentName=false,player.Name
     local masked,connections,knownLabels={},{},{}
+    local panels,inspectRoots={},{}
+    local mutatingPanel=false
     local unbindGuard
     local changingMask=false
     local currentSnapshot,previewData,previewKey
@@ -57,7 +59,7 @@ function M.create(player,getPreviews)
     local function visible(object)
         local current=object
         while current do
-            if current:IsA("GuiObject") and not current.Visible then return false end
+            if current:IsA("GuiObject") and not current.Visible and not (panels[current] and not panels[current].ready and panels[current].original) then return false end
             if current:IsA("ScreenGui") and not current.Enabled then return false end
             current=current.Parent
         end
@@ -75,7 +77,7 @@ function M.create(player,getPreviews)
                 local scopeRoot
                 local ancestor=object.Parent
                 while ancestor do
-                    if ancestor.Name:find("InspectAndBuy",1,true) or ancestor.Name=="AvatarInspectMenu" then scoped=true;scopeRoot=ancestor;break end
+                    if ancestor.Name:find("InspectAndBuy",1,true) or ancestor.Name=="AvatarInspectMenu" then scoped=true;scopeRoot=ancestor end
                     ancestor=ancestor.Parent
                 end
                 if scoped then knownLabels[object]=true end
@@ -85,7 +87,57 @@ function M.create(player,getPreviews)
             end
         end
     end
+    local function panelVisibility(root,show)
+        local targets={}
+        if root:IsA("GuiObject")then targets[1]=root
+        else
+            for _,object in ipairs(root:GetDescendants())do
+                if object:IsA("GuiObject")then
+                    local ancestor=object.Parent
+                    while ancestor and ancestor~=root and not ancestor:IsA("GuiObject")do ancestor=ancestor.Parent end
+                    if ancestor==root then targets[#targets+1]=object end
+                end
+            end
+        end
+        for _,object in ipairs(targets)do
+            local entry=panels[object]
+            if not entry then
+                entry={original=object.Visible,root=root,ready=false};panels[object]=entry
+                pcall(function()entry.connection=object:GetPropertyChangedSignal("Visible"):Connect(function()
+                    if modeEnabled and not entry.ready and not mutatingPanel then
+                        mutatingPanel=true;object.Visible=false;mutatingPanel=false
+                    end
+                end)end)
+            end
+            entry.ready=show
+            mutatingPanel=true;object.Visible=show and entry.original or false;mutatingPanel=false
+        end
+    end
+    local function restorePanels(root)
+        for object,entry in pairs(panels)do
+            if not root or entry.root==root then
+                if entry.connection then entry.connection:Disconnect()end
+                pcall(function()object.Visible=entry.original end)
+                panels[object]=nil
+            end
+        end
+    end
+    local function quarantineUnknownPanels()
+        if not modeEnabled then return end
+        for root in pairs(inspectRoots)do
+            if not root.Parent then inspectRoots[root]=nil
+            else
+                local identified=false
+                for _,object in ipairs(root:GetDescendants())do
+                    if object:IsA("TextLabel") and object.Text:match("'s Avatar$")then identified=true;break end
+                end
+                -- A thumbnail can arrive before the name; keep unknown panels blank.
+                if not identified then panelVisibility(root,false)end
+            end
+        end
+    end
     local function restoreMasks()
+        restorePanels()
         if fallbackGui then fallbackGui:Destroy();fallbackGui=nil;fallbackEntry=nil end
         for viewport,entry in pairs(masked)do
             if entry.connection then entry.connection:Disconnect()end
@@ -122,10 +174,19 @@ function M.create(player,getPreviews)
     local function maskPreview(allowReady,preserveLive)
         if fallbackGui and not preserveLive then fallbackGui.Enabled=false end
         if not modeEnabled then return end
-        local label,_,root=ownTitle(currentName,preserveLive)
+        quarantineUnknownPanels()
+        local label,title,root=ownTitle(currentName,preserveLive)
         previewLabel=label
         if not label or not root then
             if fallbackGui then fallbackGui.Enabled=false end
+            -- Return shared native containers to normal when another player is inspected.
+            for object,entry in pairs(panels)do
+                local other=false
+                for _,candidate in ipairs(entry.root:GetDescendants())do
+                    if candidate:IsA("TextLabel") and candidate.Text:match("'s Avatar$") and candidate.Text~=player.Name.."'s Avatar" and candidate.Text~=currentName.."'s Avatar" and candidate.Text~=(lastName or "").."'s Avatar"then other=true;break end
+                end
+                if other then restorePanels(entry.root)end
+            end
             -- Roblox can reuse the same viewport when inspecting a different player.
             for viewport,entry in pairs(masked)do
                 local ancestor=viewport.Parent
@@ -142,6 +203,10 @@ function M.create(player,getPreviews)
             end
             return
         end
+        local larpTitle=title==currentName.."'s Avatar"
+        local ready=active and larpTitle and fallbackGui and fallbackGui.Enabled and fallbackEntry and fallbackEntry.overlay and fallbackEntry.overlay.Visible
+        panelVisibility(root,preserveLive and ready==true)
+        if not ready and fallbackGui then fallbackGui.Enabled=false end
         local objects=root:GetDescendants()
         for _,viewport in ipairs(objects)do
             if viewport:IsA("ViewportFrame") and viewport.Name~=overlayName then
@@ -173,22 +238,25 @@ function M.create(player,getPreviews)
             if overlay then
                 -- The native item title marks the bottom of the avatar area.
                 local titleY=label.AbsolutePosition and label.AbsolutePosition.Y or 340
+                if titleY<120 then titleY=340 end
                 local height=math.min(300,math.max(0,titleY-84))
                 overlay.AnchorPoint=Vector2.new(0.5,0)
                 overlay.Position=UDim2.new(0.5,0,0,math.max(64,titleY-height-12))
                 overlay.Size=UDim2.fromOffset(math.min(320,height),height)
-                fallbackGui.Enabled=height>0 and overlay.Visible==true
+                fallbackGui.Enabled=height>0 and overlay.Visible==true and larpTitle
+                panelVisibility(root,fallbackGui.Enabled)
             end
         end
     end
     local function watchTitle(object)
         if object.Name==overlayName then return false end
-        local ancestor=object.Parent
-        local scoped=false
+        local ancestor=object
+        local scoped,root=false,nil
         while ancestor do
-            if ancestor.Name:find("InspectAndBuy",1,true) or ancestor.Name=="AvatarInspectMenu"then scoped=true;break end
+            if ancestor.Name:find("InspectAndBuy",1,true) or ancestor.Name=="AvatarInspectMenu"then scoped=true;root=ancestor end
             ancestor=ancestor.Parent
         end
+        if root then inspectRoots[root]=true end
         if scoped and object:IsA("TextLabel")then
             knownLabels[object]=true
             local wasTitle=object.Text:match("'s Avatar$")~=nil
@@ -205,6 +273,7 @@ function M.create(player,getPreviews)
             for _,object in ipairs(core:GetDescendants())do watchTitle(object)end
             connections[#connections+1]=core.DescendantAdded:Connect(function(object)
                 local scoped=watchTitle(object)
+                if scoped and modeEnabled then quarantineUnknownPanels()end
                 if scoped and (object:IsA("ViewportFrame") or (object:IsA("TextLabel") and object.Text:match("'s Avatar$")))then maskPreview(false)end
             end)
         end)

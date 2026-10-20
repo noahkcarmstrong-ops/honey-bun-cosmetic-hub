@@ -6,7 +6,7 @@ local function signal()
 end
 local function node(class,name,parent)
     local x={ClassName=class,Name=name or class,Visible=true,Enabled=true,Text="",children={},destroyed=false,DescendantAdded=signal(),signals={}}
-    function x:IsA(k)return k==self.ClassName or k=="GuiObject" and (self.ClassName=="Frame" or self.ClassName=="TextLabel")end
+    function x:IsA(k)return k==self.ClassName or k=="GuiObject" and (self.ClassName=="Frame" or self.ClassName=="ImageButton" or self.ClassName=="ViewportFrame" or self.ClassName=="TextLabel")end
     function x:GetDescendants()
         local out={};local function walk(v)for _,c in ipairs(v.children)do out[#out+1]=c;walk(c)end end;walk(self);return out
     end
@@ -39,7 +39,9 @@ local run={RenderStepped=renderStepped,
  BindToRenderStep=function(_,name,priority,callback)assert(priority>=2000);boundGuard=callback end,
  UnbindFromRenderStep=function()unbound=true;boundGuard=false end}
 local core=node("CoreGui","CoreGui")
-local inspect=child(core,"Frame","InspectAndBuy")
+-- Current Roblox mounts a Folder and places the entire panel beneath it.
+local mount=child(core,"Folder","InspectAndBuy")
+local inspect=child(mount,"Frame","Panel")
 local title=child(inspect,"TextLabel","Title");title.Text="Original's Avatar"
 local viewport=child(inspect,"ViewportFrame","AvatarViewport");viewport.ImageTransparency=0.2
 local world=child(viewport,"WorldModel","WorldModel")
@@ -78,6 +80,9 @@ local snapshot={version=1,definition={assets={{id=100,meta=nil},{id=200,meta={or
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
 assert(#inspectCalls==1 and inspectCalls[1].name=="LarpAlias","local native inspection is requested with the alias")
 assert(viewport.ImageTransparency==1,"the account preview is hidden before native loading starts")
+assert(inspect.Visible==false and title.Text=="Original's Avatar","the entire old-name/old-avatar panel stays hidden before replacement")
+inspect.Visible=true;inspect:GetPropertyChangedSignal("Visible"):Fire()
+assert(inspect.Visible==false,"native visibility updates cannot reveal the original panel during loading")
 local d=inspectCalls[1].description
 assert(not d.destroyed,"native inspector must retain the description while asynchronous avatar and item loading use it")
 assert(d.Head==304 and d.Pants==305 and #d.accessories==5,"head, pants and every equipped accessory reach the native description")
@@ -87,6 +92,7 @@ assert(d.Shirt==100 and d.accessories[1].AssetId==200 and d.accessories[1].IsLay
 assert(d.HeightScale==1.1 and d.WidthScale==0.9 and d.DepthScale==1.05 and d.HeadScale==1.2 and d.ProportionScale==0.4 and d.BodyTypeScale==0.7,"body scales are preserved")
 assert(d.HeadColor.R==17/255 and d.HeadColor.G==34/255 and d.HeadColor.B==51/255,"body colors are converted")
 title.Text="LarpAlias's Avatar";api.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(#inspectCalls==1,"adopting the redirected title does not reopen in a loop")
+assert(inspect.Visible==true,"the panel reveals only after its Larp title and local preview are ready")
 -- Native normalized descriptions must not keep the live Larp preview blank.
 assert(liveOverlay() and liveOverlay().Visible and captures==1 and shows==1,"live local avatar renders even if the native applied model differs")
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
@@ -115,14 +121,26 @@ assert(previewGui().Enabled and liveOverlay().Visible,"inspection without a nati
 viewport.ClassName="ViewportFrame";viewport.ImageTransparency=0
 boundGuard()
 assert(viewport.ImageTransparency==1 and previewGui().Enabled,"last-priority guard blocks the native model flash without blanking the ready Larp preview")
-title.Visible=false;boundGuard()
+inspect.Visible=false;boundGuard()
 assert(not previewGui().Enabled,"closing the native menu hides the added preview before the next frame")
-title.Visible=true;api.update({enabled=true,name="LarpAlias",snapshot=changed})
+inspect.Visible=true;api.update({enabled=true,name="LarpAlias",snapshot=changed})
 assert(d.destroyed and not inspectCalls[2].description.destroyed,"new inspection releases the old source and keeps the replacement alive")
 assert(otherTitle.Text=="Other's Avatar" and hiddenTitle.Text=="Original's Avatar","other and hidden inspect screens are untouched")
 api.update({enabled=false,name="LarpAlias"});assert(#restoreCalls==1 and restoreCalls[1]==123,"turning Larp mode off restores the platform avatar even while the redirected alias title is visible")
 assert(viewport.ImageTransparency==0.2 and late.ImageTransparency==0,"mode off restores original native visibility")
 assert(inspectCalls[2].description.destroyed,"mode off releases the retained source")
+api.update({enabled=true,name="LarpAlias",snapshot=changed})
+-- Native avatar content may be inserted before its identifying title exists.
+local unknownMount=child(core,"Folder","InspectAndBuyNew")
+local unknownPanel=child(unknownMount,"Frame","Container")
+core.DescendantAdded:Fire(unknownPanel)
+assert(unknownPanel.Visible==false,"a new inspection panel is quarantined before its avatar or title can flash")
+local unknownAvatar=child(unknownPanel,"ViewportFrame","Avatar")
+core.DescendantAdded:Fire(unknownAvatar)
+assert(unknownPanel.Visible==false,"avatar-first loading remains blank while identity is unknown")
+local legacyPanel=child(core,"ImageButton","InspectAndBuy")
+core.DescendantAdded:Fire(legacyPanel)
+assert(legacyPanel.Visible==false,"legacy root image-button panels are hidden before their children arrive")
 local blockedGui={InspectPlayerFromHumanoidDescription=function()error("blocked")end,InspectPlayerFromUserId=function()end}
 game.GetService=function(_,name)if name=="CoreGui"then return core elseif name=="GuiService"then return blockedGui elseif name=="HttpService"then return http end end
 local blocked=module.create(player);title.Text="Original's Avatar";blocked.update({enabled=true,name="LarpAlias",snapshot=snapshot});assert(blocked.report():find("blocked",1,true),"blocked native API access is reported")
