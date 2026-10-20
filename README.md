@@ -15,6 +15,8 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/l
 > [!NOTE]
 > Enable **ACCESSORIES → Share Larp appearance** to share supported looks and Larp names with other Larpblox users in the same server. Both clients must have sharing enabled.
 
+Your own name, portrait, and appearance come from the paired local browser connection and work without the shared relay. Other players' shared names, portraits, and appearances come from the relay while sharing is enabled.
+
 Set your single **Larp name** in the browser's **Robux** dropdown and enable **Larp mode**. A paired browser connection sends it to the game automatically. There is no Names tab in the in-game menu. Disabling Larp mode or restoring the browser name restores the real in-game names when connected.
 
 Names affect local overhead labels and accessible own-player rows, including the built-in player list and the People menu's display name and @username. Players without shared appearance enabled see your real identity. Protected CoreGui or custom game interfaces may prevent replacement; live executor verification is still needed.
