@@ -64,7 +64,7 @@ assert(module.isAvatarImage(avatarAshx,{Name="Original",UserId=7446730},{}),"leg
 assert(not module.isAvatarImage(wrongAshx,{Name="Original",UserId=7446730},{}),"untrusted thumbnail host is excluded")
 characterIcon.Image="";otherIcon.Image="";avatarAshx.Image="";wrongAshx.Image=""
 local captures, shows, shownData=0,0,nil
-local api=module.create(player,function() return {capture=function()captures=captures+1;return {live=true,serial=captures}end,show=function(frame,data)shows=shows+1;shownData=data;frame.CurrentCamera={};return true end} end)
+local api=module.create(player,function() return {capture=function()captures=captures+1;return {live=true,serial=captures}end,show=function(frame,data)for _,child in ipairs(frame.children)do child:Destroy()end;frame.children={};shows=shows+1;shownData=data;frame.CurrentCamera={};return true end} end)
 api.update({enabled=true,name="LocalAlias",snapshot=nil})
 assert(captures==0 and shows==0 and thumb.ImageTransparency==1,"nil effective snapshot stays blank without capturing the live avatar")
 local effective={definition={shirt="effective"},items={1,2}}

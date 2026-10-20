@@ -196,6 +196,17 @@ function M.create(player, getPreviews)
         local distance = math.max(size.X, size.Y, size.Z, 1) * (bust and 3.8 or 2.5)
         pcall(function() camera.CFrame = CFrame.lookAt(position + Vector3.new(0, 0, -distance), position) end)
     end
+    local function matchPortraitMask(image,overlay)
+        -- Child previews do not inherit the native portrait's rounded mask.
+        local radius
+        for _,child in ipairs(image:GetDescendants()) do
+            if child.Parent==image and read(child,"ClassName")=="UICorner" then radius=child.CornerRadius;break end
+        end
+        if not radius and uniquePeopleRow(image,player,{name=currentName}) then radius=UDim.new(0.5,0) end
+        if radius then
+            local corner=Instance.new("UICorner");corner.CornerRadius=radius;corner.Parent=overlay
+        end
+    end
     local function makeOverlay(image, imageSource)
         local overlay = overlays[image]
         local class = imageSource and "ImageLabel" or "ViewportFrame"
@@ -209,15 +220,6 @@ function M.create(player, getPreviews)
         overlay.BackgroundTransparency = 1; overlay.BorderSizePixel = 0
         overlay.Visible = false
         overlay.ZIndex = read(image, "ZIndex") or 1; overlay.Parent = image
-        -- Child previews do not inherit the native portrait's rounded mask.
-        local radius
-        for _,child in ipairs(image:GetDescendants()) do
-            if child.Parent==image and read(child,"ClassName")=="UICorner" then radius=child.CornerRadius;break end
-        end
-        if not radius and uniquePeopleRow(image,player,{name=currentName}) then radius=UDim.new(0.5,0) end
-        if radius then
-            local corner=Instance.new("UICorner");corner.CornerRadius=radius;corner.Parent=overlay
-        end
         if imageSource then overlay.Image = imageSource end
         overlays[image] = overlay
         return overlay
@@ -228,6 +230,7 @@ function M.create(player, getPreviews)
         if overlays[image] and overlayKeys[image] == effectiveKey then return end
         if currentImage then
             local overlay = makeOverlay(image, currentImage)
+            matchPortraitMask(image,overlay)
             overlay.Image = currentImage; overlayKeys[image] = effectiveKey; renderedCount = renderedCount + 1
             pcall(function() overlay.Visible = true end)
             return
@@ -237,6 +240,7 @@ function M.create(player, getPreviews)
         local overlay = makeOverlay(image)
         local shown, result = pcall(function() return previews.show(overlay, previewSnapshot) end)
         if shown and result ~= false then
+            matchPortraitMask(image,overlay)
             local source = tostring(read(image, "Image") or ""):lower()
             local imageName = tostring(read(image, "Name") or ""):lower()
             local bust = source:find("avatarbust", 1, true) ~= nil or source:find("bust-thumbnail", 1, true) ~= nil or imageName == "charactericon"
