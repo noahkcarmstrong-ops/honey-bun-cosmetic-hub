@@ -444,6 +444,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     function api.isConnected()return connected end
     function api.status()return connected and (socketReady and "Browser connected via WebSocket." or "Browser connected (HTTP fallback).") or "Browser disconnected."end
     function api.publish()assert(connected,"Connect the browser first.");local value=snapshot();local encoded=HttpService:JSONEncode(value);if encoded~=lastJson then send("game",value);lastJson=encoded end;return value end
+    function api.snapshot()return snapshot()end
     function api.destroy()api.disconnect()end
     local saved=readSaved()
     if saved then
