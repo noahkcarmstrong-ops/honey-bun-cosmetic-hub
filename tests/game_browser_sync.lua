@@ -13,10 +13,14 @@ function humanoid:GetAppliedDescription()return desc end
 humanoid.Parent=character;character.humanoid=humanoid
 local player={UserId=7,Character=character}
 local localHats={{key=1,id=12,name="Local Hat"}}
+local gearEntry=nil
 local settings={accessories={12},hideOriginals=false,colors={},bodyParts={},body="Blocky"}
 local avatar={}
 function avatar.getSettings()return settings end
 function avatar.listAccessories()local entries={};for i,entry in ipairs(localHats)do entries[i]=entry end;return entries end
+function avatar.listGear()return gearEntry and {gearEntry} or {} end
+function avatar.equipGear(id)gearEntry={id=id,name="Gear"} end
+function avatar.removeGear()gearEntry=nil end
 function avatar.removeAccessory(key)for i,v in ipairs(localHats)do if v.key==key then table.remove(localHats,i)end end end
 function avatar.equipAccessory(id)assert(id~=11,"an already worn original cannot be downloaded again");localHats[#localHats+1]={key=id,id=id,name="Added"}end
 function avatar.clearAccessories()localHats={}end
@@ -38,6 +42,7 @@ function request(o)if o.Method=="GET" and o.Url:find("status")then return {Statu
 local jobs={};task={spawn=function(f)jobs[#jobs+1]=f end,wait=function()end}
 local create=dofile("game_browser_sync.lua");local sync=create(player,function()return avatar end,function()return clothing end,function()return true end,function()end)
 sync.connect(string.rep("a",32));local snapshot=sync.publish();local hasGraphic=false;for _,a in ipairs(snapshot.definition.assets)do if a.id==308 then hasGraphic=true end end;assert(snapshot.definition.assets[1].id==12,"local hat is published");assert(hasGraphic,"graphic shirt is published")
+extraTypes[1900]=19;gearEntry={id=1900,name="Blaster"};snapshot=sync.publish();local hasGear=false;for _,item in ipairs(snapshot.items)do if item.id==1900 and item.assetType==19 then hasGear=true end end;assert(hasGear,"hub gear is published as asset type 19");gearEntry=nil
 task.wait=function()sync.disconnect()end
 jobs[1]();assert(#localHats==1 and localHats[1].id==13,"new hat equips without reloading an unchanged unavailable original")
 local keptOriginal=false;for _,item in ipairs(posted.items)do if item.id==11 then keptOriginal=true end end;assert(keptOriginal,"unchanged original remains visible")
@@ -90,7 +95,7 @@ function clothing.equipTShirt(id)clothes.ShirtGraphic=id end
 function clothing.removeTShirt()clothes.ShirtGraphic=0 end
 local movementSettings={}
 local movementApi={getSettings=function()return movementSettings end,equipAssets=function(items)movementSettings={assets=items}end,restore=function()movementSettings={}end}
-local categories={2,11,12,8,41,42,43,44,45,46,47,64,65,66,67,68,69,70,71,72,76,77,48,50,51,52,53,54,55,56}
+local categories={2,11,12,19,8,41,42,43,44,45,46,47,64,65,66,67,68,69,70,71,72,76,77,48,50,51,52,53,54,55,56}
 local allItems={}
 for _,assetType in ipairs(categories)do local id=10000+assetType;extraTypes[id]=assetType;allItems[#allItems+1]={id=id,name="Category "..assetType,itemType="Asset",assetType=assetType}end
 jobs={};local fullSync=create(player,function()return avatar end,function()return clothing end,function()return true end,function()end,function()return movementApi end)

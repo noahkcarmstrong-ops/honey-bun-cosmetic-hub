@@ -51,17 +51,19 @@ end
 return function(player,onStatus)
     local alive,generation=true,0
     local snapshot,added,skin,hidden=nil,{},{},{}
+    local gear=nil
     local accountAccessoryNames
     local nextKey=0
     local playerGui=player:FindFirstChildOfClass("PlayerGui")
     local attribute="HoneyBunCosmeticSettings"
-    local settings={accessories={},colors={},bodyParts={},hideOriginals=false}
+    local settings={accessories={},colors={},bodyParts={},hideOriginals=false,gear=nil}
     local reapplying,replayGeneration,replayToken=false,nil,0
     local function copySettings()
-        local copy={accessories={},colors={},bodyParts={},hideOriginals=settings.hideOriginals,body=settings.body}
+        local copy={accessories={},colors={},bodyParts={},hideOriginals=settings.hideOriginals,body=settings.body,gear=settings.gear}
         for i,id in ipairs(settings.accessories) do copy.accessories[i]=id end
         for region,color in pairs(settings.colors) do copy.colors[region]={color[1],color[2],color[3]} end
         for region,value in pairs(settings.bodyParts) do copy.bodyParts[region]=value end
+        if type(settings.gear)=="table" then copy.gear={id=settings.gear.id,name=settings.gear.name} end
         return copy
     end
     if playerGui then
@@ -84,6 +86,9 @@ return function(player,onStatus)
                         table.insert(settings.accessories,id)
                     end
                 end
+            end
+            if type(saved.gear)=="table" and type(saved.gear.id)=="number" and saved.gear.id>0 and saved.gear.id%1==0 and saved.gear.id<9007199254740992 then
+                settings.gear={id=saved.gear.id,name=type(saved.gear.name)=="string" and saved.gear.name or tostring(saved.gear.id)}
             end
             if type(saved.colors)=="table" then
                 for region,color in pairs(saved.colors) do
@@ -131,7 +136,7 @@ return function(player,onStatus)
             dispose(snapshot.meshes)
             for _,part in pairs(snapshot.parts) do part:Destroy() end
         end
-        snapshot=nil;added={};skin={};hidden={}
+        snapshot=nil;added={};skin={};hidden={};gear=nil
     end
     local function capture(ctx,body)
         if not snapshot then
@@ -355,6 +360,62 @@ return function(player,onStatus)
         if not reapplying then table.insert(settings.accessories,id);save() end
         return "Equipped "..candidate.Name.." (visible to you)."
     end
+    function api.equipGear(value)
+        local ctx=context();local id=idFrom(value,"catalog")
+        local ok,objects=pcall(function() return game:GetObjects("rbxassetid://"..string.format("%.0f",id)) end)
+        assert(ok and type(objects)=="table" and #objects>0,"Roblox could not load that gear. It may be private or unavailable.")
+        if not valid(ctx) then dispose(objects);check(ctx) end
+        local source
+        for _,root in ipairs(objects) do
+            strip(root)
+            if root:IsA("Tool") then source=root;break end
+            for _,item in ipairs(root:GetDescendants()) do if item:IsA("Tool") then source=item;break end end
+            if source then break end
+        end
+        if not source then dispose(objects);error("That item is not wearable gear (Tool).") end
+        local candidate=source:Clone();dispose(objects)
+        local handle=candidate:FindFirstChild("Handle")
+        if not handle or not handle:IsA("BasePart") then candidate:Destroy();error("That gear has no usable Handle.") end
+        strip(candidate)
+        capture(ctx)
+        for _,item in ipairs(candidate:GetDescendants()) do
+            if item:IsA("BasePart") then item.Anchored=false;item.CanCollide=false;item.CanTouch=false;item.Massless=true end
+        end
+        local hand=ctx.character:FindFirstChild("RightHand") or ctx.character:FindFirstChild("Right Arm")
+        if not hand or not hand:IsA("BasePart") then candidate:Destroy();error("This avatar has no right hand for gear.") end
+        local handGrip=hand:FindFirstChild("RightGripAttachment")
+        local toolGrip=candidate.Grip or CFrame.new()
+        local handAnchor=handGrip and handGrip.CFrame or CFrame.new(0,-1,0)
+        local handleTarget=hand.CFrame*handAnchor*toolGrip:Inverse()
+        local handleRelative={}
+        for _,item in ipairs(candidate:GetDescendants()) do
+            if item:IsA("BasePart") and item~=handle then handleRelative[item]=handle.CFrame:ToObjectSpace(item.CFrame) end
+        end
+        local attached,message=pcall(function()
+            candidate:SetAttribute("LarpbloxHubGear",true);candidate.Parent=ctx.character
+            handle.CFrame=handleTarget
+            for part,relative in pairs(handleRelative) do part.CFrame=handleTarget*relative end
+            local weld=Instance.new("Weld");weld.Name="LarpbloxGearWeld";weld.Part0=handle;weld.Part1=hand;weld.C0=CFrame.new();weld.C1=hand.CFrame:ToObjectSpace(handleTarget);weld.Parent=handle
+            for part in pairs(handleRelative) do
+                local brace=Instance.new("WeldConstraint");brace.Name="LarpbloxGearPartWeld";brace.Part0=handle;brace.Part1=part;brace.Parent=handle
+            end
+        end)
+        if not attached then candidate:Destroy();error(message) end
+        if gear and gear.object then gear.object:Destroy() end
+        gear={id=id,name=candidate.Name,object=candidate}
+        if not reapplying then settings.gear={id=id,name=candidate.Name};save() end
+        return "Equipped "..candidate.Name.." gear (visible to you)."
+    end
+    function api.listGear()
+        if gear and gear.object and gear.object.Parent==player.Character then return {{id=gear.id,name=gear.name}} end
+        return {}
+    end
+    function api.removeGear()
+        if not gear then return "No gear added by this hub is equipped." end
+        local name=gear.name;gear.object:Destroy();gear=nil
+        if not reapplying then settings.gear=nil;save() end
+        return "Removed "..name.." gear."
+    end
     function api.listAccessories()
         local list={}
         for _,entry in ipairs(added) do
@@ -378,6 +439,10 @@ return function(player,onStatus)
     local function clearAdded()
         for _,entry in ipairs(added) do entry.object:Destroy() end
         added={}
+    end
+    local function clearGear()
+        if gear and gear.object then gear.object:Destroy() end
+        gear=nil
     end
     function api.clearAccessories()
         clearAdded()
@@ -637,6 +702,7 @@ return function(player,onStatus)
     local function restoreAppearance(keepOriginalsHidden)
         local ctx=context()
         clearAdded()
+        clearGear()
         if not snapshot or snapshot.character~=ctx.character then return "Nothing to restore on this character." end
         if not keepOriginalsHidden then showOriginalAccessories() end
         if snapshot.bodyChanged then
@@ -671,12 +737,12 @@ return function(player,onStatus)
     end
     function api.restore()
         local message=restoreAppearance()
-        settings={accessories={},colors={},bodyParts={},hideOriginals=false};save()
+        settings={accessories={},colors={},bodyParts={},hideOriginals=false,gear=nil};save()
         return message
     end
     function api.getSettings() return copySettings() end
     local operations={}
-    for _,name in ipairs({"equipAccessory","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","applyBody","applyBodyPart","restoreSkin","restoreBody","restore"}) do
+    for _,name in ipairs({"equipAccessory","equipGear","removeGear","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","applyBody","applyBodyPart","restoreSkin","restoreBody","restore"}) do
         local operation=api[name]
         operations[name]=operation
         api[name]=function(...)
@@ -705,6 +771,7 @@ return function(player,onStatus)
             for region,value in pairs(desired.bodyParts) do apply(operations.applyBodyPart,region,value) end
             if desired.hideOriginals then apply(operations.removeCurrentAccessories) end
             for _,id in ipairs(desired.accessories) do apply(operations.equipAccessory,id) end
+            if desired.gear and desired.gear.id then apply(operations.equipGear,desired.gear.id) end
             if desired.colors.All then apply(operations.setSkin,Color3.new(desired.colors.All[1],desired.colors.All[2],desired.colors.All[3]),"All") end
             for region,color in pairs(desired.colors) do if region~="All" then apply(operations.setSkin,Color3.new(color[1],color[2],color[3]),region) end end
         end)

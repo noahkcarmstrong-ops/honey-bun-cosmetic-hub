@@ -22,6 +22,8 @@ function methods:GetDescendants()
     walk(self); return result
 end
 function methods:Destroy() self.destroyed = true; self.Parent = nil end
+function methods:SetAttribute(name, value) self.props[name] = value end
+function methods:GetAttribute(name) return self.props[name] end
 Vector3 = {new = function(x, y, z) return {X=x, Y=y, Z=z} end}
 Color3 = {new = function(r, g, b) return {R=r, G=g, B=b} end}
 local function cframe(x, y, z)
@@ -44,6 +46,7 @@ local gameplay = Instance.new('Model', character); local gameplayPart = Instance
 Instance.new('Script', character)
 local module = dofile('previews.lua'); local api = module(player); local data = api.capture()
 assert(#data.records == 3, 'captures body and hat appearance, excludes tools and gameplay models')
+tool:SetAttribute('LarpbloxHubGear', true);local gearData=api.capture();assert(#gearData.records == 4, 'captures hub-owned gear visuals');tool:SetAttribute('LarpbloxHubGear', false);assert(#api.capture().records == 3, 'continues excluding unrelated game tools')
 assert(data.records[1].cframe and data.records[1].size, 'captures bounded part geometry')
 local meshRecord
 for _, record in ipairs(data.records) do if record.class == 'MeshPart' then meshRecord = record end end

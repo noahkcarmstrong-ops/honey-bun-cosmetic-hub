@@ -47,13 +47,17 @@ return function(player)
         local ok, value = pcall(function() return instance[property] end)
         return ok and value or nil
     end
+    local function hubGear(instance)
+        local ok,value=pcall(function() return instance:GetAttribute("LarpbloxHubGear") end)
+        return ok and value==true
+    end
     local function set(instance, property, value)
         if value ~= nil then pcall(function() instance[property] = value end) end
     end
-    local function hasToolAncestor(instance, character)
+    local function hasForeignToolAncestor(instance, character)
         local parent = read(instance, "Parent")
         while parent and parent ~= character do
-            if read(parent, "ClassName") == "Tool" then return true end
+            if read(parent, "ClassName") == "Tool" then return not hubGear(parent) end
             parent = read(parent, "Parent")
         end
         return false
@@ -65,6 +69,7 @@ return function(player)
             top, parent = parent, read(parent, "Parent")
         end
         local topClass = read(top, "ClassName")
+        if topClass == "Tool" then return hubGear(top) end
         if topClass == "Accessory" or topClass == "Hat" then return true end
         if partClasses[topClass] then return read(top, "Name") ~= "HumanoidRootPart" end
         if top ~= instance then return false end
@@ -298,7 +303,7 @@ return function(player)
         end
         for _, instance in ipairs(ordered) do
             local class = read(instance, "ClassName")
-            if visualClasses[class] and appearanceInstance(instance, character) and not hasToolAncestor(instance, character) and #records < MAX_RECORDS then
+            if visualClasses[class] and appearanceInstance(instance, character) and not hasForeignToolAncestor(instance, character) and #records < MAX_RECORDS then
                 local parent = indices[read(instance, "Parent")] or 0
                 local record = capture(instance, root, parent)
                 if record.class == "Part" or record.class == "MeshPart" or record.class == "UnionOperation" or record.class == "WedgePart" or record.class == "CornerWedgePart" or record.class == "TrussPart" then

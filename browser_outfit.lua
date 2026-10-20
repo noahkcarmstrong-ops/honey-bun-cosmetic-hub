@@ -37,7 +37,9 @@ return function(player,getAvatar,getClothes,onStatus,getAnimations)
             local assetType=item.assetType
             local name=type(item.name)=="string" and item.name or tostring(id)
             local ok,message
-            if accessoryTypes[assetType] then
+            if assetType==19 then
+                ok,message=pcall(function() return getAvatar().equipGear(id) end)
+            elseif accessoryTypes[assetType] then
                 ok,message=pcall(function() return getAvatar().equipAccessory(id) end)
             elseif assetType==11 then
                 ok,message=pcall(function() return getClothes().equipShirt(id) end)

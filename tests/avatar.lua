@@ -2,6 +2,7 @@
 local function cf(x,y,z)
     local c={x=x or 0,y=y or 0,z=z or 0}
     function c:Inverse() return cf(-self.x,-self.y,-self.z) end
+    function c:ToObjectSpace(other) return cf(other.x-self.x,other.y-self.y,other.z-self.z) end
     return setmetatable(c,{__mul=function(a,b)return cf(a.x+b.x,a.y+b.y,a.z+b.z)end})
 end
 local function node(class,name)
@@ -25,6 +26,8 @@ local function node(class,name)
         self.MeshId=source.MeshId;self.TextureID=source.TextureID
     end
  function x:Destroy()self.destroyed=true;self.Parent=nil;for i=#self.children,1,-1 do self.children[i]:Destroy()end end
+    function x:SetAttribute(k,v)self[k]=v end
+    function x:GetAttribute(k)return self[k] end
     function x:Clone()local n=node(self.ClassName,self.Name);for k,v in pairs(self)do if k~="children"and k~="Parent"and k~="_parent"and type(v)~="function"then n[k]=v end end;for _,c in ipairs(self.children)do c:Clone().Parent=n end;return n end
     return x
 end
@@ -46,11 +49,14 @@ local gui=node("PlayerGui","PlayerGui");function gui:SetAttribute(k,v)self[k]=v 
 player.PlayerGui=gui;function player:FindFirstChild(n)return self[n]end;function player:FindFirstChildOfClass(n)if n=="PlayerGui"then return self.PlayerGui end end;function player:WaitForChild(n)return self[n]end;function player:HasAppearanceLoaded()return true end
 Color3={fromRGB=function(r,g,b)return{R=r/255,G=g/255,B=b/255,r=r/255,g=g/255,b=b/255}end,new=function(r,g,b)return{R=r,G=g,B=b,r=r,g=g,b=b}end};task={queue={},wait=function()end,spawn=function(f)table.insert(task.queue,f)end}
 local mode="normal";local function freshAccessory()local a=node("Accessory","Blue Hat");a.SourceAssetId=9876;a.AttachmentPoint=cf();local h=node("Part","Handle");h.CFrame=cf();h.AttachmentPoint=cf();h.Parent=a;return a end
+local gameTool=node("Tool","Game Tool");local gameHandle=node("Part","Handle");gameHandle.CFrame=cf();gameHandle.Parent=gameTool
+local gearAsset=node("Tool","Cosmetic Gear");gearAsset.Grip=cf();local gearHandle=node("Part","Handle");gearHandle.CFrame=cf(0,0,1);gearHandle.Parent=gearAsset;local gearScript=node("Script","Gear Script");gearScript.Parent=gearAsset
 local marketplace={assetType=28};function marketplace:GetProductInfoAsync()return{AssetTypeId=self.assetType}end
-game={GetService=function(_,n)return({Players=players,HttpService=http,MarketplaceService=marketplace})[n]end,GetObjects=function(_,id)assert(id=="rbxassetid://123");if mode=="respawn"then local fresh=node("Model","Fresh");player.Character=fresh;player.CharacterAdded:Fire(fresh)end;if mode=="blocked"then return{node("Part","NotWearable")}end;if accessory.destroyed then return{freshAccessory()}end;return{accessory}end,HttpGet=function()return http:GetAsync()end}
+game={GetService=function(_,n)return({Players=players,HttpService=http,MarketplaceService=marketplace})[n]end,GetObjects=function(_,id)assert(id=="rbxassetid://123" or id=="rbxassetid://456");if id=="rbxassetid://456"then return{gearAsset:Clone()}end;if mode=="respawn"then local fresh=node("Model","Fresh");player.Character=fresh;player.CharacterAdded:Fire(fresh)end;if mode=="blocked"then return{node("Part","NotWearable")}end;if accessory.destroyed then return{freshAccessory()}end;return{accessory}end,HttpGet=function()return http:GetAsync()end}
 Enum.InfoType={Asset="Asset"}
 local create=dofile(arg and arg[1] or "avatar.lua");assert(type(create)=="function","module returns create(player)");local api=create(player)
 assert(api.equipAccessory(123):match("Equipped"));local candidate=body:FindFirstChild("Blue Hat");assert(injected.destroyed and candidate,"sanitizing removes inserted script and parents cloned accessory");assert(#api.listAccessories()==1)
+gameTool.Parent=body;assert(gearAsset:FindFirstChild("Handle"),"gear fixture has handle");assert(api.equipGear(456):match("gear"));local wornGear=api.listGear()[1];assert(gameTool.Parent==body and not body:FindFirstChild("Cosmetic Gear"):FindFirstChild("Gear Script"),"gear weld preserves existing game tools and strips scripts");assert(wornGear.id==456,"hub gear is tracked separately");assert(api.removeGear():match("Removed") and gameTool.Parent==body,"removing hub gear leaves game tools alone");assert(api.equipGear(456));assert(api.getSettings().gear.id==456,"gear selection is saved");local held=body:FindFirstChild("Cosmetic Gear");local gearLoader=game.GetObjects;local badGear=node("Tool","Broken Gear");game.GetObjects=function()return {badGear}end;assert(not pcall(api.equipGear,789),"gear without a Handle is rejected");assert(body:FindFirstChild("Cosmetic Gear")==held and api.listGear()[1].id==456,"failed replacement preserves previous gear");game.GetObjects=gearLoader;api.clearAccessories();assert(api.listGear()[1].id==456,"clearing accessories keeps gear");assert(api.restore():match("restored") and #api.listGear()==0 and gameTool.Parent==body,"restore removes saved hub gear without removing game tools")
 api.setSkin(Color3.new(.5,.4,.3),"All");assert(head.Color.r==.5 and body:FindFirstChild("LeftUpperArm").Color.r==.5 and bc.HeadColor3.r==.5,"R15 grouped skin applies");api.restore();assert(head.Color.r==1 and bc.HeadColor3.r==1,"restore returns original colors")
 assert(api.applyBody("https://www.roblox.com/bundles/555"):match("applied"));assert(players.generated and body:FindFirstChild('Head')==head and not head.destroyed,"bundle outfit generates appearance without replacing live parts")
 mode="respawn";local stale=create(player);local ok=pcall(function()stale.equipAccessory(123)end);assert(not ok,"respawn cancels stale asset operation");stale.destroy();player.Character=body;player.CharacterAdded:Fire(body)

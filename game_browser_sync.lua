@@ -80,6 +80,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             end
         end
         local added={};for _,entry in ipairs(getAvatar():listAccessories())do added[entry.id]=true;local typeId=assetTypes[entry.id] or 8;add(entry.id,entry.name,typeId,true)end
+        if getAvatar().listGear then for _,entry in ipairs(getAvatar():listGear())do add(entry.id,entry.name,19,true) end end
         local ok,entries=pcall(function()return desc:GetAccessories(true)end)
         if ok and type(entries)=="table" then for _,entry in ipairs(entries)do local id=entry.AssetId;local typeId=assetTypes[id] or 8;add(id,entry.Name,typeId,not settings.hideOriginals or added[id],entry.IsLayered and {order=entry.Order or 0,puffiness=entry.Puffiness or 0} or nil)end end
         local bodyTypes={Head=17,Torso=27,LeftArm=29,RightArm=28,LeftLeg=30,RightLeg=31}
@@ -127,10 +128,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     end
     local function applyCommand(value)
         validSnapshot(value);local revision=tonumber(value.revision);assert(revision and revision%1==0 and revision>0 and revision<9007199254740992,"Browser revision is invalid.");if revision<=lastRevision then return end
-        local avatar,clothes=getAvatar(),getClothes();local failed={};local loadErrors={};local desired={};local current={}
+        local avatar,clothes=getAvatar(),getClothes();local failed={};local loadErrors={};local desired={};local current={};local desiredGear
         for _,item in ipairs(value.items)do
             assetTypes[item.id]=item.assetType
             if accessoryTypes[item.assetType] then desired[item.id]=true end
+            if item.assetType==19 then desiredGear=item end
         end
         local ok,msg=pcall(function()
             for _,item in ipairs(snapshot().items)do if accessoryTypes[item.assetType] then current[item.id]=true end end
@@ -156,6 +158,14 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                     end
                 end
             end
+            local currentGear=avatar.listGear and avatar.listGear()[1]
+            if (currentGear and not desiredGear) or (desiredGear and (not currentGear or currentGear.id~=desiredGear.id)) then
+                if desiredGear then
+                    local loaded,reason=pcall(avatar.equipGear,desiredGear.id)
+                    if not loaded then loadErrors[#loadErrors+1]=desiredGear.name..": "..tostring(reason) end
+                elseif currentGear then avatar.removeGear()
+                end
+            end
             local currentClothes=clothes.getSettings();local clothingTypes={[2]={"ShirtGraphic","equipTShirt","removeTShirt"},[11]={"Shirt","equipShirt","removeShirt"},[12]={"Pants","equipPants","removePants"}}
             local visibleClothes={};for _,item in ipairs(snapshot().items)do if clothingTypes[item.assetType] then visibleClothes[item.assetType]=item.id end end
             local wantedClothes={};local wantedAnimations={}
@@ -165,7 +175,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                     wantedClothes[item.assetType]=true
                     if visibleClothes[item.assetType]~=item.id then clothes[slot[2]](item.id)end
                 elseif animationTypes[item.assetType] then wantedAnimations[#wantedAnimations+1]={id=item.id,assetType=item.assetType}
-                elseif not accessoryTypes[item.assetType] and item.assetType~=17 and item.assetType~=18 and item.assetType~=27 and item.assetType~=28 and item.assetType~=29 and item.assetType~=30 and item.assetType~=31 then failed[#failed+1]=item.name end
+                elseif item.assetType~=19 and not accessoryTypes[item.assetType] and item.assetType~=17 and item.assetType~=18 and item.assetType~=27 and item.assetType~=28 and item.assetType~=29 and item.assetType~=30 and item.assetType~=31 then failed[#failed+1]=item.name end
             end
             for assetType,slot in pairs(clothingTypes)do if not wantedClothes[assetType] and currentClothes[slot[1]]~=0 and clothes[slot[3]] then clothes[slot[3]]()end end
             if getAnimations then
