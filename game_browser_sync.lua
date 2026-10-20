@@ -64,6 +64,10 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         for _,key in ipairs({"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg","BodyTypeScale","ProportionScale"})do result[key]=source[key] end
         source:Destroy();bodyCache[value]=result;return result
     end
+    local bodyRegions={{"Head",17},{"Torso",27},{"RightArm",28},{"LeftArm",29},{"LeftLeg",30},{"RightLeg",31}}
+    local bodyTypeRegions={[17]="Head",[79]="Head",[27]="Torso",[28]="RightArm",[29]="LeftArm",[30]="LeftLeg",[31]="RightLeg"}
+    local browserBody,originalBody={},{ }
+    local browserFace=false
     local function snapshot()
         local character=player.Character;local humanoid=character and character:FindFirstChildOfClass("Humanoid")
         assert(character and humanoid,"Wait for your avatar to finish spawning.")
@@ -102,7 +106,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             end
             add(id,region,typeId,true)
         end
-        add(desc.Face,"Face",18,true)
+        add(settings.face or desc.Face,"Face",18,true)
         add(clothes.ShirtGraphic or desc.GraphicTShirt,"Graphic T-Shirt",2,true)
         add(clothes.Shirt or desc.Shirt,"Shirt",11,(clothes.Shirt or desc.Shirt)~=nil);add(clothes.Pants or desc.Pants,"Pants",12,(clothes.Pants or desc.Pants)~=nil)
         local animationSettings=getAnimations and getAnimations().getSettings() or {}
@@ -140,7 +144,40 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             if item.assetType==19 then desiredGear=item end
         end
         local ok,msg=pcall(function()
-            for _,item in ipairs(snapshot().items)do if accessoryTypes[item.assetType] then current[item.id]=true end end
+            local before=snapshot()
+            for _,item in ipairs(before.items)do if accessoryTypes[item.assetType] then current[item.id]=true end end
+            local currentBody,desiredBody={},{ }
+            for _,item in ipairs(before.items)do local region=bodyTypeRegions[item.assetType];if region then currentBody[region]=item.id end end
+            for _,item in ipairs(value.items)do local region=bodyTypeRegions[item.assetType];if region then desiredBody[region]=item.id end end
+            for _,entry in ipairs(bodyRegions)do
+                local region=entry[1];local wanted=desiredBody[region];local owned=browserBody[region]
+                if owned and not wanted then
+                    local original=originalBody[region]
+                    if avatar.restoreBodyPart then
+                        local loaded,reason=pcall(avatar.restoreBodyPart,region)
+                        if not loaded then loadErrors[#loadErrors+1]=region..": "..tostring(reason)end
+                    elseif original then
+                        local loaded,reason=pcall(avatar.applyBodyPart,region,original)
+                        if not loaded then loadErrors[#loadErrors+1]=region..": "..tostring(reason)end
+                    end
+                    browserBody[region]=nil;originalBody[region]=nil
+                elseif wanted and currentBody[region]~=wanted then
+                    if not originalBody[region] then originalBody[region]=currentBody[region] end
+                    local loaded,reason=pcall(avatar.applyBodyPart,region,wanted)
+                    if loaded then browserBody[region]=wanted else loadErrors[#loadErrors+1]=region..": "..tostring(reason)end
+                end
+            end
+            local currentFace,desiredFace
+            for _,item in ipairs(before.items)do if item.assetType==18 then currentFace=item.id end end
+            for _,item in ipairs(value.items)do if item.assetType==18 then desiredFace=item.id end end
+            if desiredFace and avatar.applyFace and currentFace~=desiredFace then
+                local loaded,reason=pcall(avatar.applyFace,desiredFace)
+                if loaded then browserFace=true else loadErrors[#loadErrors+1]="Face: "..tostring(reason)end
+            elseif not desiredFace and browserFace and avatar.restoreFace then
+                local loaded,reason=pcall(avatar.restoreFace)
+                if not loaded then loadErrors[#loadErrors+1]="Face: "..tostring(reason)end
+                browserFace=false
+            end
             local changed=false;for id in pairs(desired)do if not current[id]then changed=true end end;for id in pairs(current)do if not desired[id]then changed=true end end
             if changed then
                 -- Keep unchanged instances: some already-worn hats cannot be loaded again.
@@ -180,7 +217,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                     wantedClothes[item.assetType]=true
                     if visibleClothes[item.assetType]~=item.id then clothes[slot[2]](item.id)end
                 elseif animationTypes[item.assetType] then wantedAnimations[#wantedAnimations+1]={id=item.id,assetType=item.assetType}
-                elseif item.assetType~=19 and not accessoryTypes[item.assetType] and item.assetType~=17 and item.assetType~=18 and item.assetType~=27 and item.assetType~=28 and item.assetType~=29 and item.assetType~=30 and item.assetType~=31 then failed[#failed+1]=item.name end
+                elseif item.assetType~=19 and not accessoryTypes[item.assetType] and item.assetType~=17 and item.assetType~=18 and item.assetType~=27 and item.assetType~=28 and item.assetType~=29 and item.assetType~=30 and item.assetType~=31 and item.assetType~=79 then failed[#failed+1]=item.name end
             end
             for assetType,slot in pairs(clothingTypes)do if not wantedClothes[assetType] and currentClothes[slot[1]]~=0 and clothes[slot[3]] then clothes[slot[3]]()end end
             if getAnimations then

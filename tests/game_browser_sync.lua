@@ -14,8 +14,10 @@ humanoid.Parent=character;character.humanoid=humanoid
 local player={UserId=7,Character=character}
 local localHats={{key=1,id=12,name="Local Hat"}}
 local gearEntry=nil
-local settings={accessories={12},hideOriginals=false,colors={},bodyParts={},body="Blocky"}
+local settings={accessories={12},hideOriginals=false,colors={},bodyParts={},body="Blocky",face=302}
 local avatar={}
+local bodyCalls={}
+local faceCalls={}
 function avatar.getSettings()return settings end
 function avatar.listAccessories()local entries={};for i,entry in ipairs(localHats)do entries[i]=entry end;return entries end
 function avatar.listGear()return gearEntry and {gearEntry} or {} end
@@ -25,6 +27,10 @@ function avatar.removeAccessory(key)for i,v in ipairs(localHats)do if v.key==key
 function avatar.equipAccessory(id)assert(id~=11,"an already worn original cannot be downloaded again");localHats[#localHats+1]={key=id,id=id,name="Added"}end
 function avatar.clearAccessories()localHats={}end
 function avatar.removeCurrentAccessories()settings.hideOriginals=true end
+function avatar.applyBodyPart(region,id)bodyCalls[#bodyCalls+1]={region,id};settings.bodyParts[region]=id end
+function avatar.restoreBodyPart(region)bodyCalls[#bodyCalls+1]={region,"restore"};settings.bodyParts[region]=nil end
+function avatar.applyFace(id)faceCalls[#faceCalls+1]={"apply",id};settings.face=id end
+function avatar.restoreFace()faceCalls[#faceCalls+1]={"restore"};settings.face=302 end
 local clothes={Shirt=101,Pants=202};local clothing={}
 function clothing.getSettings()return clothes end
 function clothing.equipShirt(id)clothes.Shirt=id end
@@ -152,3 +158,14 @@ assert(viewEvents[1].enabled==true and viewEvents[1].name=="" and not viewEvents
 assert(viewEvents[2].enabled==true and viewEvents[2].snapshot,"effective outfit is delivered after the loading gate")
 assert(viewEvents[#viewEvents].enabled==false,"disconnect restores native views")
 print("Native view mode, effective outfit and disconnect forwarding passed.")
+
+-- Browser body selections apply only changed regions and restore browser-owned removals.
+request=function(o)if o.Url:find("status")then return {StatusCode=200,Body={version=1,connected=true}}end;if o.Method=="GET"then return {StatusCode=200,Body=command}end;posted=o.Body;return {StatusCode=200,Body={}}end
+local bodySync=create(player,function()return avatar end,function()return clothing end,function()return true end,function()end)
+command.revision=20;command.items={{id=999,name="Head",itemType="Asset",assetType=17},{id=303,name="Torso",itemType="Asset",assetType=27},{id=305,name="RightArm",itemType="Asset",assetType=28},{id=304,name="LeftArm",itemType="Asset",assetType=29},{id=9999,name="LeftLeg",itemType="Asset",assetType=30},{id=307,name="RightLeg",itemType="Asset",assetType=31},{id=404,name="Face",itemType="Asset",assetType=18}}
+bodyCalls={};faceCalls={};jobs={};task.wait=function()bodySync.disconnect()end;bodySync.connect(string.rep("a",32));jobs[1]();assert(#bodyCalls==1 and bodyCalls[1][1]=="LeftLeg","browser body selection applies only changed regions");assert(faceCalls[1][1]=="apply" and faceCalls[1][2]==404,"browser face applies through avatar API")
+local publishedFace;for _,item in ipairs(posted.items or {})do if item.assetType==18 then publishedFace=item.id end end;assert(publishedFace==404,"snapshot publishes the selected face")
+local beforeRemoval=#bodyCalls
+command.revision=21;command.items={{id=999,name="Head",itemType="Asset",assetType=17},{id=303,name="Torso",itemType="Asset",assetType=27},{id=305,name="RightArm",itemType="Asset",assetType=28},{id=304,name="LeftArm",itemType="Asset",assetType=29},{id=307,name="RightLeg",itemType="Asset",assetType=31}}
+jobs={};bodySync.connect(string.rep("a",32));jobs[1]();assert(#bodyCalls>beforeRemoval and bodyCalls[#bodyCalls][1]=="LeftLeg" and bodyCalls[#bodyCalls][2]=="restore","removed browser body part restores through avatar API");assert(faceCalls[#faceCalls][1]=="restore","removed browser face restores through avatar API")
+bodySync.destroy();print("Game browser body selections apply and restore selectively.")

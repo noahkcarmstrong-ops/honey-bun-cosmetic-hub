@@ -279,3 +279,22 @@ assert(not pcall(accessoryEditor.equipAccessory,123),"R6 layered clothing report
 body:FindFirstChildOfClass("Humanoid").RigType=Enum.HumanoidRigType.R15
 accessoryEditor.destroy();game.GetObjects=previousObjects
 print("Accessory head, hair, face, neck, shoulder, front, back, waist and R15 layered attachment passed.")
+
+local partRestore=create(player)
+marketplace.assetType=30;partRestore.applyBodyPart("LeftLeg",123)
+marketplace.assetType=28;partRestore.applyBodyPart("RightArm",456)
+partRestore.restoreBodyPart("LeftLeg")
+assert(partRestore.getSettings().bodyParts.LeftLeg==nil and partRestore.getSettings().bodyParts.RightArm==456,"restoring one body region preserves other mixed parts")
+partRestore.destroy()
+local faceHead=body:FindFirstChild("Head")
+local originalFace=node("Decal","face");originalFace.Texture="original-face";originalFace.Parent=faceHead
+local faceReads=0
+game.GetObjects=function()faceReads=faceReads+1;local face=node("Decal","face");face.Texture="new-face";return{face}end
+local faceEditor=create(player);faceEditor.applyFace(900)
+assert(faceHead:FindFirstChildOfClass("Decal").Texture=="new-face","browser face asset applies to existing head")
+assert(faceEditor.getSettings().face==900,"face selection persists")
+faceEditor.restoreFace();assert(faceHead:FindFirstChildOfClass("Decal").Texture=="original-face","face restoration preserves original")
+faceEditor.applyFace(900);assert(faceReads==1,"face re-equip reuses validated texture")
+faceEditor.destroy();assert(faceHead:FindFirstChildOfClass("Decal").Texture=="original-face","cleanup restores original face")
+game.GetObjects=previousObjects
+print("Classic face equip, cache, persistence and restore passed.")

@@ -59,7 +59,7 @@ return function(player,onStatus)
     local settings={accessories={},colors={},bodyParts={},hideOriginals=false,gear=nil}
     local reapplying,replayGeneration,replayToken=false,nil,0
     local function copySettings()
-        local copy={accessories={},colors={},bodyParts={},hideOriginals=settings.hideOriginals,body=settings.body,gear=settings.gear}
+        local copy={accessories={},colors={},bodyParts={},hideOriginals=settings.hideOriginals,body=settings.body,gear=settings.gear,face=settings.face}
         for i,id in ipairs(settings.accessories) do copy.accessories[i]=id end
         for region,color in pairs(settings.colors) do copy.colors[region]={color[1],color[2],color[3]} end
         for region,value in pairs(settings.bodyParts) do copy.bodyParts[region]=value end
@@ -72,6 +72,7 @@ return function(player,onStatus)
             return value and Http:JSONDecode(value)
         end)
         if ok and type(saved)=="table" then
+            if type(saved.face)=="number" and saved.face>0 and saved.face%1==0 and saved.face<9007199254740992 then settings.face=saved.face end
             settings.hideOriginals=saved.hideOriginals==true
             if type(saved.body)=="string" then settings.body=saved.body end
             if type(saved.bodyParts)=="table" then
@@ -134,6 +135,7 @@ return function(player,onStatus)
         showOriginalAccessories()
         if snapshot then
             dispose(snapshot.meshes)
+            dispose(snapshot.face or {})
             for _,part in pairs(snapshot.parts) do part:Destroy() end
         end
         snapshot=nil;added={};skin={};hidden={};gear=nil
@@ -684,6 +686,52 @@ return function(player,onStatus)
         if not reapplying then settings.bodyParts[region]=value;save() end
         return region.." body part applied (visible to you)."
     end
+    function api.restoreBodyPart(region)
+        local ctx=context();assert(bodyRegions[region],"Choose a body region.")
+        if snapshot and snapshot.character==ctx.character and next(snapshot.parts) then
+            replaceParts(ctx,snapshot.parts,regionNames(region))
+        end
+        settings.bodyParts[region]=nil;save()
+        return "Original "..region.." restored."
+    end
+    local faceTemplates={}
+    function api.applyFace(value)
+        local ctx=context();local id=idFrom(value,"catalog")
+        local texture=faceTemplates[id]
+        if not texture then
+            local ok,objects=pcall(function()return game:GetObjects("rbxassetid://"..string.format("%.0f",id))end)
+            assert(ok and type(objects)=="table","Roblox could not load that face.")
+            if not valid(ctx) then dispose(objects);check(ctx) end
+            for _,root in ipairs(objects)do
+                if root:IsA("Decal") then texture=root.Texture end
+                if not texture then for _,item in ipairs(root:GetDescendants())do if item:IsA("Decal")then texture=item.Texture;break end end end
+                if texture then break end
+            end
+            dispose(objects)
+            assert(type(texture)=="string" and texture~="","That catalog item is not a classic face.")
+            faceTemplates[id]=texture
+        end
+        local head=ctx.character:FindFirstChild("Head");assert(head,"This avatar has no head.")
+        capture(ctx)
+        if not snapshot.face then
+            snapshot.face={}
+            for _,item in ipairs(head:GetChildren())do if item:IsA("Decal")then table.insert(snapshot.face,item:Clone())end end
+        end
+        for _,item in ipairs(head:GetChildren())do if item:IsA("Decal")then item:Destroy()end end
+        local face=Instance.new("Decal");face.Name="face";face.Texture=texture;face.Parent=head
+        if not reapplying then settings.face=id;save()end
+        return "Face applied (visible to you)."
+    end
+    local function restoreFaceAppearance(ctx)
+        if not snapshot or not snapshot.face or snapshot.character~=ctx.character then return end
+        local head=ctx.character:FindFirstChild("Head");if not head then return end
+        for _,item in ipairs(head:GetChildren())do if item:IsA("Decal")then item:Destroy()end end
+        for _,item in ipairs(snapshot.face)do item:Clone().Parent=head end
+    end
+    function api.restoreFace()
+        restoreFaceAppearance(context());settings.face=nil;save()
+        return "Original face restored."
+    end
     local function restoreSkinAppearance(ctx)
         if not snapshot or snapshot.character~=ctx.character then skin={};return false end
         local colors=ctx.character:FindFirstChildOfClass("BodyColors")
@@ -714,6 +762,7 @@ return function(player,onStatus)
             snapshot.bodyChanged=false
         end
         restoreSkinAppearance(ctx)
+        restoreFaceAppearance(ctx)
         return "Original appearance restored."
     end
     function api.restoreSkin()
@@ -742,7 +791,7 @@ return function(player,onStatus)
     end
     function api.getSettings() return copySettings() end
     local operations={}
-    for _,name in ipairs({"equipAccessory","equipGear","removeGear","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","applyBody","applyBodyPart","restoreSkin","restoreBody","restore"}) do
+    for _,name in ipairs({"equipAccessory","equipGear","removeGear","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","applyBody","applyBodyPart","restoreBodyPart","applyFace","restoreFace","restoreSkin","restoreBody","restore"}) do
         local operation=api[name]
         operations[name]=operation
         api[name]=function(...)
@@ -769,6 +818,7 @@ return function(player,onStatus)
             end
             if desired.body then apply(operations.applyBody,desired.body) end
             for region,value in pairs(desired.bodyParts) do apply(operations.applyBodyPart,region,value) end
+            if desired.face then apply(operations.applyFace,desired.face)end
             if desired.hideOriginals then apply(operations.removeCurrentAccessories) end
             for _,id in ipairs(desired.accessories) do apply(operations.equipAccessory,id) end
             if desired.gear and desired.gear.id then apply(operations.equipGear,desired.gear.id) end
