@@ -1,7 +1,7 @@
 -- Run in a Roblox client, passing the native_avatar_views module as the chunk argument.
 local viewsModule=...
 local player=game:GetService("Players").LocalPlayer
-local screen=Instance.new("ScreenGui");screen.Name="LarpbloxVerificationTest";screen.Parent=player.PlayerGui
+local screen=Instance.new("ScreenGui");screen.Name="LarpbloxVerificationTest";screen:SetAttribute("LarpbloxIgnoreNameOverride",true);screen.Parent=player.PlayerGui
 local row=Instance.new("Frame");row.Name="PlayerEntry_"..player.UserId;row.Parent=screen
 local label=Instance.new("TextLabel");label.Text=player.Name;label.Size=UDim2.fromOffset(100,20);label.Parent=row
 local api=viewsModule.create(player,function()return{}end)
