@@ -324,11 +324,12 @@ function M.create(player, getPreviews, describeSnapshot)
     local function updateGeometry(image)
         for _,overlay in pairs({overlays[image],pending[image] and pending[image].overlay}) do
             matchPortraitMask(image,overlay)
-            if overlay:IsA("ViewportFrame") then frameCamera(overlay,image) end
+            local viewport=overlay:IsA("ViewportFrame") and overlay or overlay:FindFirstChild("Viewport")
+            if viewport then frameCamera(viewport,image) end
         end
     end
     local function makeOverlay(image, imageSource)
-        local class = imageSource and "ImageLabel" or "ViewportFrame"
+        local class = imageSource and "ImageLabel" or "CanvasGroup"
         local overlay = Instance.new(class)
         ownedOverlays[overlay]=true
         overlay.Destroying:Connect(function() ownedOverlays[overlay]=nil end)
@@ -339,6 +340,12 @@ function M.create(player, getPreviews, describeSnapshot)
         overlay.Visible = false
         overlay.ZIndex = read(image, "ZIndex") or 1; overlay.Parent = image
         if imageSource then overlay.Image = imageSource;overlay.ScaleType=read(image,"ScaleType") or Enum.ScaleType.Fit end
+        if not imageSource then
+            local viewport=Instance.new("ViewportFrame")
+            viewport.Name="Viewport";viewport.Size=UDim2.fromScale(1,1)
+            viewport.BackgroundTransparency=1;viewport.BorderSizePixel=0
+            viewport.ZIndex=overlay.ZIndex;viewport.Parent=overlay
+        end
         return overlay
     end
     local render
@@ -454,11 +461,12 @@ function M.create(player, getPreviews, describeSnapshot)
         end
         local ok, previews = pcall(getPreviews)
         if not ok or not previews or type(previews.show) ~= "function" then status = "Preview renderer unavailable.";discard();return end
-        local shown, result = pcall(function() return previews.show(overlay, snapshot) end)
+        local viewport=overlay:FindFirstChild("Viewport") or overlay
+        local shown, result = pcall(function() return previews.show(viewport, snapshot) end)
         if shown and result ~= false and pending[image]==staged then
             matchPortraitMask(image,overlay)
-            posePortrait(overlay,image)
-            frameCamera(overlay,image)
+            posePortrait(viewport,image)
+            frameCamera(viewport,image)
             commit()
         else discard() end
     end
