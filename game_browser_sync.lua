@@ -27,6 +27,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local api,token,connected,lastJson,lastRevision={},nil,false,nil,0
     local generation=0
     local lastNameState=nil
+    local lastBrowserCommand
     local lastSharingPreference=nil
     local sharingConnected=false
     local scheduleSnapshot
@@ -251,7 +252,9 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         return value
     end
     local function applyCommand(value)
-        validSnapshot(value);assert(value.verified==nil or type(value.verified)=="boolean","Browser verification is invalid.");local revision=tonumber(value.revision);assert(revision and revision%1==0 and revision>0 and revision<9007199254740992,"Browser revision is invalid.");if revision<=lastRevision then return end
+        validSnapshot(value);assert(value.verified==nil or type(value.verified)=="boolean","Browser verification is invalid.");local revision=tonumber(value.revision);assert(revision and revision%1==0 and revision>0 and revision<9007199254740992,"Browser revision is invalid.")
+        if not lastBrowserCommand or revision>=lastBrowserCommand.revision then lastBrowserCommand=value end
+        if revision<=lastRevision then return end
         if browserModeKnown and not larpEnabled then lastRevision=revision;return end
         local avatar,clothes=getAvatar(),getClothes();local failed={};local loadErrors={};local desired={};local current={};local desiredGear
         for _,item in ipairs(value.items)do
@@ -390,7 +393,14 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             end
         end
         local firstModeState=value~=nil and not browserModeKnown
+        local reenabled=browserModeKnown and not larpEnabled and state~="disabled"
         larpEnabled=state~="disabled";larpName=name;larpVerified=larpEnabled and verified or false
+        if reenabled then
+            -- Turning off restores the real avatar without deleting the saved
+            -- Larp command. A mode-only toggle does not create a new revision.
+            lastRevision=0
+            if lastBrowserCommand then incoming.browser={value=lastBrowserCommand}end
+        end
         if sharing then
             assert(not value or value.sharing==nil or type(value.sharing)=="boolean","Browser sharing preference is invalid.")
             -- The extension owns the persisted preference. Never fall back to
