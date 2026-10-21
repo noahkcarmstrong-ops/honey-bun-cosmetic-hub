@@ -215,7 +215,7 @@ function M.create(player, getPreviews, describeSnapshot)
         end
     end
     local function verificationText(object)
-        local text=plainText(read(object,"Text"))
+        local text=plainText(read(object,"Text")):gsub("%s*%(You%)%s*$","")
         if text:sub(1,1)=="@" then return false end
         return (currentName~="" and text==currentName) or text==tostring(read(player,"Name") or "")
             or text==tostring(read(player,"DisplayName") or "") or (currentDisplayName~="" and text==currentDisplayName)
@@ -241,9 +241,10 @@ function M.create(player, getPreviews, describeSnapshot)
             local objects=read(root,"GetDescendants") and root:GetDescendants() or {}
             for _,object in ipairs(objects) do
                 local class=read(object,"ClassName")
-                if (class=="TextLabel" or class=="TextButton") and verificationText(object)
-                    and (hasOwnId(object,player) or uniquePeopleRow(object,player,{name=currentName})
-                        or (verifiedRosterRow(object) and plainText(read(object,"Text"))=="@"..currentName)) then
+                local rosterText=plainText(read(object,"Text")):gsub("%s*%(You%)%s*$","")
+                if (class=="TextLabel" or class=="TextButton") and
+                    ((verificationText(object) and (hasOwnId(object,player) or uniquePeopleRow(object,player,{name=currentName)))
+                        or (verifiedRosterRow(object) and rosterText=="@"..currentName)) then
                     seen[object]=true
                     if not verificationBadges[object] then
                         local badge=Instance.new("ImageLabel");badge.Name="LarpbloxVerifiedBadge";badge.BackgroundTransparency=1
@@ -265,7 +266,9 @@ function M.create(player, getPreviews, describeSnapshot)
         if not alive or not enabled or not verified or verificationQueued then return end
         if object then
             local class=read(object,"ClassName")
-            if (class~="TextLabel" and class~="TextButton") or not verificationText(object) then return end
+            local rosterText=plainText(read(object,"Text")):gsub("%s*%(You%)%s*$","")
+            local rosterMatch=verifiedRosterRow(object) and rosterText=="@"..currentName
+            if (class~="TextLabel" and class~="TextButton") or (not verificationText(object) and not rosterMatch) then return end
         end
         verificationQueued=true
         task.defer(function()

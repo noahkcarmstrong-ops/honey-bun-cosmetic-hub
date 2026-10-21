@@ -9,6 +9,7 @@ if (!block.includes('renderingVerification')) throw new Error('renderer lacks re
 if (!block.includes('clearVerification();renderingVerification=false;return')) throw new Error('off state does not clean up');
 if (!block.includes('VerifiedBadgeNameIcon.png')) throw new Error('native verified badge asset is missing');
 if (!block.includes('verificationBadges[object]')) throw new Error('native row badge lifecycle is missing');
+if (!block.includes('gsub("%s*%(You%)%s*$","")')) throw new Error('own-row suffix normalization is missing');
 if (block.includes('object.Text=')) throw new Error('renderer must not rewrite Roblox-owned text');
 
 const character = source.slice(source.indexOf('local function bindVerificationCharacter'), source.indexOf('local function restoreImage'));

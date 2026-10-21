@@ -434,6 +434,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             if state=="disabled" then names.setEnabled(false)
             elseif name=="" then names.restore()
             else names.set(name,name)end
+            if names.setVerified then names.setVerified(larpVerified) end
         end
         if getViews then getViews().update({enabled=larpEnabled,name=larpName,verified=larpVerified,image=currentImage()})end
         lastNameState=state
