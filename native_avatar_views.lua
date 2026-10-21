@@ -190,13 +190,17 @@ function M.create(player, getPreviews, describeSnapshot)
     local ownerKey=tostring(read(player,"UserId"))
     local previousOwner=rendererOwners[ownerKey]
     if previousOwner and type(previousOwner.destroy)=="function" then pcall(previousOwner.destroy) end
-    local alive, enabled, currentName, currentImage, previewSnapshot, effectiveKey = true, false, "", nil, nil, nil
+    local alive, enabled, currentName, currentDisplayName, verified, currentImage, previewSnapshot, effectiveKey = true, false, "", "", false, nil, nil, nil
     local overlays, overlayKeys, hiddenImages, connections, scanCount, renderedCount = {}, {}, {}, {}, 0, 0
     local transparencyConnections,textConnections,geometryConnections={},{},{}
     local pending = {}
     local directImages={}
     local ownedOverlays={}
     local failedImages={}
+    local verificationBadges={}
+    local verificationBillboard
+    local renderingVerification=false
+    local verificationCharacterConnections={}
     local stagingFolder
     local outfitSnapshot,previewBuild,previewKey
     local ensurePreview
@@ -204,6 +208,78 @@ function M.create(player, getPreviews, describeSnapshot)
     local indexed=false
     local coreGui, playerGui, roots, available
     local status = "Native avatar thumbnails are disabled."
+
+    local function clearVerification()
+        for label,badge in pairs(verificationBadges) do
+            pcall(function() badge:Destroy() end)
+            verificationBadges[label]=nil
+        end
+        if verificationBillboard then pcall(function() verificationBillboard:Destroy() end);verificationBillboard=nil end
+    end
+    local function verificationText(object)
+        local text=plainText(read(object,"Text"))
+        return (currentName~="" and (text=="@"..currentName or text==currentName)) or text==tostring(read(player,"Name") or "")
+            or text==tostring(read(player,"DisplayName") or "") or (currentDisplayName~="" and text==currentDisplayName)
+    end
+    local function verifiedRosterRow(object)
+        local ancestor=object
+        while ancestor do
+            local name=tostring(read(ancestor,"Name") or ""):lower()
+            if name:find("leaderboard",1,true) or name:find("scoreboard",1,true) or name:find("roster",1,true) then return true end
+            ancestor=read(ancestor,"Parent")
+        end
+        return false
+    end
+    local function renderVerification()
+        if renderingVerification then return end
+        renderingVerification=true
+        for label,badge in pairs(verificationBadges) do
+            if not read(label,"Parent") then pcall(function() badge:Destroy() end);verificationBadges[label]=nil end
+        end
+        if not alive or not enabled or not verified then clearVerification();renderingVerification=false;return end
+        local character=read(player,"Character");local head=character and character:FindFirstChild("Head")
+        if head and (not verificationBillboard or not read(verificationBillboard,"Parent") or verificationBillboard.Adornee~=head) then
+            if verificationBillboard then pcall(function() verificationBillboard:Destroy() end) end
+            local gui=Instance.new("BillboardGui");gui.Name="LarpbloxVerification";gui.Adornee=head;gui.AlwaysOnTop=true
+            gui.Size=UDim2.fromOffset(22,18);gui.StudsOffset=Vector3.new(0,3.1,0);gui.Parent=head
+            local badge=Instance.new("ImageLabel");badge.Name="LarpbloxVerifiedBadge";badge.BackgroundTransparency=1;badge.Size=UDim2.fromScale(1,1)
+            badge.Image="rbxasset://textures/ui/VerifiedBadgeNameIcon.png";badge.Parent=gui;verificationBillboard=gui
+        end
+        local seen={}
+        for _,root in ipairs(roots) do
+            local objects=read(root,"GetDescendants") and root:GetDescendants() or {}
+            for _,object in ipairs(objects) do
+                local class=read(object,"ClassName")
+                if (class=="TextLabel" or class=="TextButton") and verificationText(object)
+                    and (hasOwnId(object,player) or uniquePeopleRow(object,player,{name=currentName})
+                        or (verifiedRosterRow(object) and plainText(read(object,"Text"))=="@"..currentName)) then
+                    seen[object]=true
+                    if not verificationBadges[object] then
+                        local badge=Instance.new("ImageLabel");badge.Name="LarpbloxVerifiedBadge";badge.BackgroundTransparency=1
+                        badge.Size=UDim2.fromOffset(16,16);badge.AnchorPoint=Vector2.new(0,0.5)
+                        badge.Position=UDim2.new(1,2,0.5,0);badge.ZIndex=(tonumber(read(object,"ZIndex")) or 1)+1
+                        badge.Image="rbxasset://textures/ui/VerifiedBadgeNameIcon.png";badge.Parent=object
+                        verificationBadges[object]=badge
+                    end
+                end
+            end
+        end
+        for label,badge in pairs(verificationBadges) do
+            if not seen[label] then pcall(function() badge:Destroy() end);verificationBadges[label]=nil end
+        end
+        renderingVerification=false
+    end
+    local function bindVerificationCharacter(character)
+        for _,connection in ipairs(verificationCharacterConnections) do pcall(function() connection:Disconnect() end) end
+        verificationCharacterConnections={}
+        clearVerification()
+        if not character then return end
+        local function changed()
+            if player.Character==character and enabled and verified then renderVerification() end
+        end
+        pcall(function() verificationCharacterConnections[#verificationCharacterConnections+1]=character.ChildAdded:Connect(changed) end)
+        if enabled and verified then renderVerification() end
+    end
 
     local function restoreImage(image)
         if hiddenImages[image] then
@@ -575,6 +651,7 @@ function M.create(player, getPreviews, describeSnapshot)
                     elseif hiddenImages[image] then destroyOverlay(image) end
                 end
             end
+            if verified then renderVerification() end
         end) end)
         if connection then textConnections[object] = connection end
     end
@@ -589,10 +666,15 @@ function M.create(player, getPreviews, describeSnapshot)
     if playerGui then roots[#roots + 1] = playerGui end
     available = #roots > 0
     if not available then status = "Roblox CoreGui is unavailable; native avatar thumbnails could not be inspected." end
+    pcall(function()
+        connections.verificationCharacterAdded=player.CharacterAdded:Connect(bindVerificationCharacter)
+        bindVerificationCharacter(player.Character)
+    end)
     if available then
         for index, root in ipairs(roots) do pcall(function() connections["root" .. index] = root.DescendantAdded:Connect(function(object)
             watch(object); watchPeopleText(object)
             if enabled and isAvatarImage(object,player,{name=currentName}) then render(object) end
+            if enabled and verified then renderVerification() end
         end) end) end
         for index,root in ipairs(roots)do
             pcall(function()connections["removed"..index]=root.DescendantRemoving:Connect(function(object)
@@ -637,11 +719,13 @@ function M.create(player, getPreviews, describeSnapshot)
         if not alive then return api.report() end
         options = options or {}; local wasEnabled=enabled; local previousName=currentName
         enabled = options.enabled == true; currentName = tostring(options.name or "")
+        currentDisplayName=tostring(options.displayName or "")
+        verified=options.verified==true
         currentImage = type(options.image)=="string" and options.image~="" and options.image or nil
         local effectiveSnapshot = options.snapshot
         outfitSnapshot=effectiveSnapshot
         local nextKey = signature(effectiveSnapshot) .. "|" .. tostring(currentImage or "")
-        if enabled and wasEnabled and previousName==currentName and nextKey==effectiveKey and (currentImage or previewSnapshot) then return api.report() end
+        if enabled and wasEnabled and previousName==currentName and nextKey==effectiveKey and (currentImage or previewSnapshot) then renderVerification();return api.report() end
         if enabled and not indexed then
             local preflight = {}
             for _, root in ipairs(roots) do pcall(function()
@@ -659,10 +743,10 @@ function M.create(player, getPreviews, describeSnapshot)
             for image in pairs(directImages) do destroyOverlay(image) end
             for image in pairs(overlays) do destroyOverlay(image) end
             for image in pairs(pending) do destroyOverlay(image) end
-            restoreAllImages()
+            restoreAllImages();clearVerification()
             status = "Native avatar thumbnails are disabled."; return api.report()
         end
-        scan(); status = available and "Native avatar thumbnails active." or status; return api.report()
+        scan();renderVerification(); status = available and "Native avatar thumbnails active." or status; return api.report()
     end
     function api.report() return status .. " Scans: " .. tostring(scanCount) .. "; rendered: " .. tostring(renderedCount) .. "." end
     function api.destroy()
@@ -677,6 +761,8 @@ function M.create(player, getPreviews, describeSnapshot)
             for _,connection in ipairs(group) do pcall(function() connection:Disconnect() end) end
         end
         connections = {};transparencyConnections={};textConnections={};geometryConnections={}
+        for _,connection in ipairs(verificationCharacterConnections) do pcall(function() connection:Disconnect() end) end
+        verificationCharacterConnections={}
         for image in pairs(directImages) do pcall(destroyOverlay,image) end
         for image in pairs(overlays) do pcall(destroyOverlay,image) end
         for image in pairs(pending) do pcall(destroyOverlay,image) end
@@ -685,6 +771,7 @@ function M.create(player, getPreviews, describeSnapshot)
         for overlay in pairs(ownedOverlays) do pcall(function() overlay:Destroy() end) end
         ownedOverlays={}
         for image in pairs(hiddenImages) do pcall(restoreImage,image) end
+        clearVerification()
         if stagingFolder then pcall(function() stagingFolder:Destroy() end);stagingFolder=nil end
     end
     rendererOwners[ownerKey]=api

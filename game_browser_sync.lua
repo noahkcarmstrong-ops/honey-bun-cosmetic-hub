@@ -30,7 +30,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local lastSharingPreference=nil
     local sharingConnected=false
     local scheduleSnapshot
-    local larpEnabled,larpName,lastSnapshot=false,"",nil
+    local larpEnabled,larpName,larpVerified,lastSnapshot=false,"",false,nil
     local browserModeKnown=false
     local socket,socketReady,socketMine,nextSocketTry=nil,false,0,0
     local incoming,pumping={},false
@@ -117,7 +117,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         return imageAsset and imageAssetDefinition and (not expected or definitionKey(imageAssetDefinition)==definitionKey(expected)) and imageAsset or nil
     end
     local function updateViews()
-        if getViews then getViews().update({enabled=larpEnabled,name=larpName,snapshot=lastBrowserSnapshot or lastSnapshot,image=currentImage()})end
+        if getViews then getViews().update({enabled=larpEnabled,name=larpName,verified=larpVerified,snapshot=lastBrowserSnapshot or lastSnapshot,image=currentImage()})end
     end
     local function applyImage(value)
         if type(value)~="table" or value.version~=1 or tostring(value.userId)~=tostring(player.UserId) then return end
@@ -212,7 +212,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         if sharing and sharing.getBackgroundState then backgroundId,backgrounds=sharing.getBackgroundState() end
         if backgroundId and backgroundId>0 then definition.backgroundId=backgroundId;definition.backgroundRequestModel={id=backgroundId} end
         return {version=1,userId=tostring(player.UserId),definition=definition,items=items,emotes=emotes,backgroundId=backgroundId,backgrounds=backgrounds,
-            sharing={enabled=desiredSharing~=nil and desiredSharing.enabled==true,connected=sharingConnected}}
+            sharing={enabled=desiredSharing~=nil and desiredSharing.enabled==true,connected=sharingConnected},verified=larpVerified}
     end
     local function validSnapshot(value)
         assert(type(value)=="table" and value.version==1 and tostring(value.userId)==tostring(player.UserId),"Browser snapshot is for a different account.")
@@ -251,7 +251,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         return value
     end
     local function applyCommand(value)
-        validSnapshot(value);local revision=tonumber(value.revision);assert(revision and revision%1==0 and revision>0 and revision<9007199254740992,"Browser revision is invalid.");if revision<=lastRevision then return end
+        validSnapshot(value);assert(value.verified==nil or type(value.verified)=="boolean","Browser verification is invalid.");local revision=tonumber(value.revision);assert(revision and revision%1==0 and revision>0 and revision<9007199254740992,"Browser revision is invalid.");if revision<=lastRevision then return end
         if browserModeKnown and not larpEnabled then lastRevision=revision;return end
         local avatar,clothes=getAvatar(),getClothes();local failed={};local loadErrors={};local desired={};local current={};local desiredGear
         for _,item in ipairs(value.items)do
@@ -370,7 +370,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 local id=value.backgroundId or value.definition.backgroundId or (value.definition.backgroundRequestModel and value.definition.backgroundRequestModel.id)
                 sharing.setBackgroundState(id,value.backgrounds)
             end
-            lastRevision=revision;lastDefinition=value.definition;lastBrowserSnapshot=value;commandSnapshotPending=true
+            if value.verified~=nil then larpVerified=value.verified==true end;lastRevision=revision;lastDefinition=value.definition;lastBrowserSnapshot=value;commandSnapshotPending=true
             if sharing and sharing.onChanged then sharing.onChanged() end
         end
         if not ok then status("Browser outfit failed: "..tostring(msg)) elseif #failed>0 then status("Browser outfit applied; unsupported items: "..table.concat(failed,", ")) else status("Browser outfit applied locally.") end
@@ -378,17 +378,19 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local function applyNameState(value)
         local state="disabled"
         local name=""
+        local verified=false
         if value then
             -- Older relays may return an outfit-shaped payload for unknown paths.
             if value.enabled==nil and value.name==nil then return end
-            assert(type(value)=="table" and value.version==1 and tostring(value.userId)==tostring(player.UserId) and type(value.enabled)=="boolean" and type(value.name)=="string","Browser name is invalid.")
+            assert(type(value)=="table" and value.version==1 and tostring(value.userId)==tostring(player.UserId) and type(value.enabled)=="boolean" and type(value.name)=="string" and (value.verified==nil or type(value.verified)=="boolean"),"Browser name is invalid.")
+            verified=value.verified==true
             if value.enabled then
                 assert(value.name=="" or (value.name:match("^[A-Za-z0-9_]+$") and #value.name>=3 and #value.name<=20),"Browser name is invalid.")
-                state="enabled:"..value.name;name=value.name
+                state="enabled:"..value.name..(verified and ":verified" or "");name=value.name
             end
         end
         local firstModeState=value~=nil and not browserModeKnown
-        larpEnabled=state~="disabled";larpName=name
+        larpEnabled=state~="disabled";larpName=name;larpVerified=larpEnabled and verified or false
         if sharing then
             assert(not value or value.sharing==nil or type(value.sharing)=="boolean","Browser sharing preference is invalid.")
             -- The extension owns the persisted preference. Never fall back to
@@ -419,9 +421,10 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             elseif name=="" then names.restore()
             else names.set(name,name)end
         end
-        if getViews then getViews().update({enabled=larpEnabled,name=larpName,image=currentImage()})end
+        if getViews then getViews().update({enabled=larpEnabled,name=larpName,verified=larpVerified,image=currentImage()})end
         lastNameState=state
-        notifySnapshot()
+        -- Rebuild before publishing so peers receive the new verification flag.
+        if scheduleSnapshot then scheduleSnapshot() else notifySnapshot()end
     end
     local function closeSocket()
         socketMine=socketMine+1;socketReady=false;socketSupportsSharing=false;sharingConnected=false

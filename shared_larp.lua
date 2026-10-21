@@ -81,8 +81,10 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         if type(record)~="table" or record.version~=1 or type(record.userId)~="string" then return false end
         local snapshot=record.snapshot
         if type(snapshot)~="table" or snapshot.version~=1 or tostring(snapshot.userId)~=record.userId then return false end
+        if snapshot.verified~=nil and type(snapshot.verified)~="boolean" then return false end
         if not safeId(record.userId) or type(snapshot.definition)~="table" or type(snapshot.definition.assets)~="table" or #snapshot.definition.assets>100 or type(snapshot.items)~="table" or #snapshot.items>100 then return false end
         if record.imageUrl~=nil and not safeImageUrl(record.imageUrl) then return false end
+        if record.verified~=nil and type(record.verified)~="boolean" then return false end
         if record.name~=nil then
             local name=record.name
             if type(name)~="table" or type(name.enabled)~="boolean" or type(name.username)~="string" or #name.username>20 or not name.username:match("^[A-Za-z0-9_]*$") or type(name.displayName)~="string" or #name.displayName>50 or name.displayName:find("[%c]") then return false end
@@ -217,7 +219,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             end
             if presentation.createViews and peers[record.userId]==entry and sharing and isAlive() then
                 if not entry.views then entry.views=presentation.createViews(target)end
-                local options={enabled=true,name=name and name.enabled and name.username or "",snapshot=snapshot,image=entry.image}
+                local options={enabled=true,name=name and name.enabled and name.username or "",displayName=name and name.enabled and name.displayName or "",verified=record.verified==true,snapshot=snapshot,image=entry.image}
                 entry.viewOptions=options
                 entry.views.update(options)
                 local custom=getcustomasset or getsynasset
@@ -262,7 +264,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             and #displayName>=1 and #displayName<=50 and not displayName:find("[%c]") then
             name={enabled=true,username=username,displayName=displayName}
         end
-        local record={version=1,userId=tostring(localPlayer.UserId),snapshot=snapshot,name=name}
+        local record={version=1,userId=tostring(localPlayer.UserId),snapshot=snapshot,name=name,verified=snapshot.verified==true}
         if presentation.getImageUrl then
             local url=presentation.getImageUrl()
             if safeImageUrl(url) then record.imageUrl=url end
