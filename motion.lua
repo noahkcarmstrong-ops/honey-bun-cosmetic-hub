@@ -25,6 +25,7 @@ return function(player,onStatus,managedRespawn)
     local gui=player:FindFirstChildOfClass("PlayerGui")
     local attribute="HoneyBunCosmeticEmotes"
     local slots,original={},nil
+    local wheelNames={}
     local replaceOriginals=false
     local alive,generation=true,0
     local baseline,accountChecked=nil,false
@@ -94,17 +95,26 @@ return function(player,onStatus,managedRespawn)
     local function applyWheel()
         local desc=ensureBaseline()
         local emotes,equipped=copy(original.emotes),{}
+        local names={}
         for _,entry in ipairs(original.equipped) do
             if not replaceOriginals and not slots[entry.Slot] then equipped[#equipped+1]=copy(entry) end
         end
         for slot,item in pairs(slots) do
-            local name="Larpblox Slot "..slot
+            local label=tostring(item.name or "Emote"):gsub("[%c]",""):match("^%s*(.-)%s*$")
+            if label=="" then label="Emote" end
+            local name=label
+            local suffix=2
+            while emotes[name] and (#emotes[name]~=1 or emotes[name][1]~=item.id)do
+                name=label.." ("..suffix..")";suffix=suffix+1
+            end
             emotes[name]={item.id}
+            names[slot]=name
             equipped[#equipped+1]={Slot=slot,Name=name}
         end
         table.sort(equipped,function(a,b) return a.Slot<b.Slot end)
         local ok,message=pcall(function() desc:SetEmotes(emotes);desc:SetEquippedEmotes(equipped) end)
         if not ok then pcall(restoreWheel);error("Roblox could not update this emote wheel: "..tostring(message)) end
+        wheelNames=names
     end
     local function slotNumber(value)
         assert(type(value)=="number" and value>=1 and value<=8 and value%1==0,"Choose a slot from 1 to 8.")
@@ -330,7 +340,7 @@ return function(player,onStatus,managedRespawn)
         slot=slotNumber(slot);assert(slots[slot],"Assign an emote to that slot first.")
         applyWheel()
         local character,humanoid,ticket=context()
-        local ok,played=pcall(function() return humanoid:PlayEmoteAsync("Larpblox Slot "..slot) end)
+        local ok,played=pcall(function() return humanoid:PlayEmoteAsync(wheelNames[slot]) end)
         check(character,ticket)
         assert(ok and played,"Roblox could not play this emote. Check its permissions and your avatar rig.")
         return "Playing emote from slot "..slot.."."
