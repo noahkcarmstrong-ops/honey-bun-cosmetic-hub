@@ -427,6 +427,22 @@ return function(player,onStatus,readAsset,managedRespawn)
         end
         return template:Clone()
     end
+    local function bunnyExplosion(ctx,candidate)
+        -- Recreate the old BootScript's explosion visually; never run asset scripts.
+        task.delay(5,function()
+            if not alive or not valid(ctx) or candidate.Parent~=ctx.character then return end
+            local handle=candidate:FindFirstChild("Handle")
+            if not handle then return end
+            local explosion=Instance.new("Explosion")
+            explosion.BlastRadius=32
+            explosion.BlastPressure=0
+            explosion.DestroyJointRadiusPercent=0
+            explosion.ExplosionType=Enum.ExplosionType.NoCraters
+            explosion.Position=handle.Position
+            explosion.Parent=workspace
+            game:GetService("Debris"):AddItem(explosion,3)
+        end)
+    end
     local api={}
     function api.equipAccessory(value)
         local ctx=context()
@@ -455,6 +471,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         candidate.Parent=ctx.character
         nextKey=nextKey+1
         table.insert(added,{key=nextKey,id=id,name=candidate.Name,object=candidate})
+        if id==1527622 then bunnyExplosion(ctx,candidate) end
         if not reapplying then table.insert(settings.accessories,id);save() end
         return "Equipped "..candidate.Name.." (visible to you)."
     end
