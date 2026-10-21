@@ -377,11 +377,13 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             end
         end
         larpEnabled=state~="disabled";larpName=name
-        if sharing and (state=="disabled" or (value and value.sharing~=nil)) then
+        if sharing then
             assert(not value or value.sharing==nil or type(value.sharing)=="boolean","Browser sharing preference is invalid.")
-            local enabled=state~="disabled" and value.sharing==true
+            local preference=value and value.sharing
+            if preference==nil and sharing.getPreference then preference=sharing.getPreference()end
+            local enabled=state~="disabled" and preference==true
             if enabled~=lastSharingPreference then
-                sharing.setEnabled(enabled)
+                sharing.setEnabled(enabled,state=="disabled")
                 lastSharingPreference=enabled
                 if scheduleSnapshot then scheduleSnapshot()end
             end
