@@ -476,6 +476,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         return "Equipped "..candidate.Name.." (visible to you)."
     end
     function api.equipGear(value)
+        error("Larpblox gear is temporarily disabled while equip state synchronization is fixed.")
         local ctx=context();local id=idFrom(value,"catalog")
         local candidate=wearable(ctx,id,"Tool")
         local handle=candidate:FindFirstChild("Handle")
@@ -1069,7 +1070,6 @@ return function(player,onStatus,readAsset,managedRespawn)
             local template,remember=bodyPartSource(ctx,region,value);remember();template:Destroy()
         end
         for _,id in ipairs(settings.accessories)do local template=wearable(ctx,id,"Accessory");template:Destroy()end
-        if settings.gear then local template=wearable(ctx,settings.gear.id,"Tool");template:Destroy()end
         if settings.face then
             faceSource(ctx,settings.face)
         end
@@ -1100,7 +1100,6 @@ return function(player,onStatus,readAsset,managedRespawn)
             if desired.face then apply("face",operations.applyFace,desired.face)end
             if desired.hideOriginals then apply("hidden accessories",operations.removeCurrentAccessories) end
             for _,id in ipairs(desired.accessories) do apply("accessory "..id,operations.equipAccessory,id) end
-            if desired.gear and desired.gear.id then apply("gear "..desired.gear.id,operations.equipGear,desired.gear.id) end
             if desired.colors.All then apply("skin color",operations.setSkin,Color3.new(desired.colors.All[1],desired.colors.All[2],desired.colors.All[3]),"All") end
             for region,color in pairs(desired.colors) do if region~="All" then apply(region.." color",operations.setSkin,Color3.new(color[1],color[2],color[3]),region) end end
         end)
