@@ -264,16 +264,16 @@ return function(player,onStatus,managedRespawn)
         end)
         return true
     end
-    local bindingPending=false
+    local bindingInProgress=false
     scheduleBinding=function()
-        if bindingPending or not alive then return end
-        bindingPending=true
-        task.defer(function()
-            bindingPending=false
-            if not alive then return end
-            local ok,ready=pcall(bindWalking)
-            if not ok and onStatus then onStatus(tostring(ready))end
-        end)
+        if bindingInProgress or not alive then return end
+        -- These events already run after their relevant instance/property change.
+        -- Bind directly so an executor's deferred queue cannot strand the toggle.
+        bindingInProgress=true
+        local ok,ready=pcall(bindWalking)
+        bindingInProgress=false
+        if not ok and onStatus then onStatus("Emote movement binding failed: "..tostring(ready))end
+        return ok and ready
     end
     local function watchEmoteControls(character)
         for _,connection in ipairs(callbackConnections)do connection:Disconnect()end

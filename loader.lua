@@ -539,6 +539,7 @@ local function motion()
     local chunk,message=loadstring(source);assert(chunk,message)
     motionAPI=chunk()(Players.LocalPlayer,function(message)
         if not alive then return end
+        trace("Emote: "..tostring(message))
         statusText=message
         if view then view.setStatus(message) end
     end,true)
