@@ -512,8 +512,8 @@ local function api()
         assert(loaded and type(objects)=="table" and #objects>0,"This executor could not load Dominus Azurelight's visual asset.")
         return objects
     end
-    local function createAvatar(player,onStatus)
-        return create(player,onStatus,readAsset)
+    local function createAvatar(player,onStatus,assetReader,managedRespawn)
+        return create(player,onStatus,assetReader or readAsset,managedRespawn)
     end
     avatarFactory=createAvatar
     avatarAPI=create(Players.LocalPlayer,function(message,working)
