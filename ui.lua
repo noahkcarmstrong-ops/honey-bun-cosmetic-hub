@@ -2,7 +2,7 @@
 return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
     local React, Prism, ReactRoblox = runtime.React, runtime.Prism, runtime.ReactRoblox
     local e = React.createElement
-    local ui = {React = React, Prism = Prism, e = e}
+    local ui = {React = React, Prism = Prism, e = e, colors=colors}
     -- React clears its root on first commit. The existing shell and portal
     -- targets belong to the menu controller, so they must be outside that root.
     local container = Instance.new("Folder")
@@ -55,7 +55,9 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
                 corner = {CornerRadius = props.radius or UDim.new(0, 2)},
                 stroke = {Thickness = props.strokeThickness or 1},
             },
-        }, props.children)
+        }, props.children and {
+            Content=e("Frame",{Name="ButtonContent",BackgroundTransparency=1,BorderSizePixel=0,Size=UDim2.fromScale(1,1)},props.children),
+        }or nil)
     end
 
     function ui.Text(props)
@@ -88,7 +90,7 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
                 setValue(nextValue)
                 props.onChange(nextValue)
             end,
-            Event = {FocusLost = function() callbacks.save() end},
+            Event = {FocusLost = function() if props.onCommit then props.onCommit(value)end;callbacks.save() end},
             styleOverrides = function(_, context)
                 return {backgroundColor = Color3.new(1, 1, 1), textColor = colors.ink,
                     placeholderColor = colors.muted, strokeColor = context.state == "focused" and colors.blue or colors.edge,
@@ -114,11 +116,73 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
         })
     end
 
+    function ui.Stack(props)
+        local nodes=table.clone(props.children or {})
+        nodes.Layout=e("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,props.gap or 10),FillDirection=props.horizontal and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical})
+        if props.padding then nodes.Padding=e("UIPadding",{PaddingTop=UDim.new(0,props.padding),PaddingBottom=UDim.new(0,props.padding),PaddingLeft=UDim.new(0,props.padding),PaddingRight=UDim.new(0,props.padding)})end
+        return e("Frame",{Name=props.name or "Stack",Size=UDim2.new(props.width or UDim.new(1,0),UDim.new(0,0)),Position=props.position,AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,LayoutOrder=props.layoutOrder},nodes)
+    end
+    function ui.Columns(props)
+        local wide,setWide=React.useState(false)
+        return e("Frame",{Name="ResponsiveColumns",Size=UDim2.new(1,-8,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,LayoutOrder=props.layoutOrder,
+            [React.Change.AbsoluteSize]=function(object)local value=object.AbsoluteSize.X>=740;if value~=wide then setWide(value)end end},{
+            Layout=e("UIListLayout",{FillDirection=wide and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical,SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,16)}),
+            Left=e(ui.Stack,{width=wide and UDim.new(props.ratio or 0.56,-8)or UDim.new(1,0),layoutOrder=1,gap=14,children=props.left}),
+            Right=e(ui.Stack,{width=wide and UDim.new(1-(props.ratio or 0.56),-8)or UDim.new(1,0),layoutOrder=2,gap=14,children=props.right}),
+        })
+    end
+    function ui.Section(props)
+        local open,setOpen=React.useState(props.open~=false)
+        return e(ui.Stack,{layoutOrder=props.layoutOrder,gap=0,children={
+            Header=e(ui.Button,{name=props.name,label="",width=UDim.new(1,0),height=38,onPress=function()setOpen(not open)end,children={
+                Title=e(ui.Text,{text=props.title,size=17,font=Enum.Font.SourceSansSemibold,color=colors.ink,position=UDim2.fromOffset(12,0),width=UDim.new(1,-48),height=38}),
+                Arrow=e(ui.Text,{text=open and "−"or "+",width=20,height=38,position=UDim2.new(1,-30,0,0),align=Enum.TextXAlignment.Center}),
+            }}),
+            Body=open and e(ui.Stack,{layoutOrder=1,padding=12,gap=10,children=props.children})or nil,
+        }})
+    end
+    function ui.NumberField(props)
+        local value,setValue=React.useState(props.value or props.min)
+        local draft,setDraft=React.useState(tostring(props.value or props.min))
+        React.useEffect(function()setValue(props.value or props.min);setDraft(string.format("%.2f",props.value or props.min):gsub("%.?0+$",""))end,{props.value})
+        local function change(nextValue)
+            nextValue=math.clamp(nextValue,props.min,props.max)
+            if props.onChange(nextValue)~=false then setValue(nextValue);setDraft(string.format("%.2f",nextValue):gsub("%.?0+$",""))end
+        end
+        return e("Frame",{Size=UDim2.new(1,0,0,40),BackgroundTransparency=1,LayoutOrder=props.layoutOrder},{
+            Label=e(ui.Text,{text=props.label,width=112,height=40,size=14,color=colors.ink}),
+            Slider=e(Prism.Slider,{value=value,min=props.min,max=props.max,step=props.step or 0.01,size="sm",width=UDim.new(1,-202),height=30,position=UDim2.fromOffset(116,5),disabled=props.disabled,onChange=change,onChangeEnd=props.onCommit,
+                slotProps={track={BackgroundColor3=colors.edge},range={BackgroundColor3=colors.blue},thumb={BackgroundColor3=colors.blue}}}),
+            Value=e(ui.Input,{name=props.name,value=draft,onChange=setDraft,onCommit=function(text)local number=tonumber(text);if number and number==number then change(number)else setDraft(tostring(value))end;if props.onCommit then props.onCommit()end end,width=74,height=34,position=UDim2.new(1,-74,0,3),disabled=props.disabled}),
+        })
+    end
+    function ui.ToggleField(props)
+        return e("Frame",{Size=UDim2.new(1,0,0,34),BackgroundTransparency=1,LayoutOrder=props.layoutOrder},{
+            Label=e(ui.Text,{text=props.label,color=colors.ink,width=UDim.new(1,-78),height=34,size=15}),
+            Toggle=e(ui.Button,{label=props.value and "On"or "Off",selected=props.value,width=64,height=30,position=UDim2.new(1,-64,0,2),disabled=props.disabled,onPress=function()props.onChange(not props.value)end}),
+        })
+    end
+    function ui.ColorField(props)
+        local open,setOpen=React.useState(false)
+        local draft,setDraft=React.useState(props.value or "#FFFFFF")
+        React.useEffect(function()setDraft(props.value or "#FFFFFF")end,{props.value})
+        local hex=(props.value or "#FFFFFF"):gsub("#","")
+        local channels={tonumber(hex:sub(1,2),16)or 255,tonumber(hex:sub(3,4),16)or 255,tonumber(hex:sub(5,6),16)or 255}
+        local nodes={Row=e("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1},{
+            Label=e(ui.Text,{text=props.label,width=112,height=38,color=colors.ink}),
+            Swatch=e(ui.Button,{label="",disabled=props.disabled,background=Color3.fromRGB(channels[1],channels[2],channels[3]),width=38,height=32,position=UDim2.fromOffset(116,3),onPress=function()setOpen(not open)end}),
+            Hex=e(ui.Input,{value=draft,onChange=setDraft,onCommit=function(value)props.onChange(value);if props.onCommit then props.onCommit()end end,width=UDim.new(1,-164),height=34,position=UDim2.fromOffset(164,2),disabled=props.disabled}),
+        })}
+        if open then for index,label in ipairs({"Red","Green","Blue"})do local channel=index;nodes[label]=e(ui.NumberField,{label=label,value=channels[index],min=0,max=255,step=1,layoutOrder=index,onChange=function(value)
+            local nextChannels=table.clone(channels);nextChannels[channel]=math.floor(value+0.5);return props.onChange(string.format("#%02X%02X%02X",nextChannels[1],nextChannels[2],nextChannels[3]))end,onCommit=props.onCommit,disabled=props.disabled})end end
+        return e(ui.Stack,{layoutOrder=props.layoutOrder,gap=4,children=nodes})
+    end
+
     function ui.SelectRow(props)
         return e(Prism.Box,{width=props.width or UDim.new(1,-8),height=40,layoutOrder=props.layoutOrder,position=props.position},{
             Label=props.label and e(ui.Text,{text=props.label,width=100,height=38,size=16,color=colors.ink}) or nil,
             Select=e(Prism.Select,{
-                options=props.options,value=props.value,onChange=props.onChange,disabled=props.disabled,
+                options=props.options,value=props.value,onChange=props.onChange,disabled=props.disabled,placeholder=props.placeholder,
                 width=props.label and UDim.new(1,-108) or UDim.new(1,0),height=38,
                 position=UDim2.fromOffset(props.label and 108 or 0,0),size="sm",maxVisibleOptions=7,
                 styleOverrides={trigger=function()return {backgroundColor=Color3.new(1,1,1),textColor=colors.ink,strokeColor=colors.edge,strokeTransparency=0}end},

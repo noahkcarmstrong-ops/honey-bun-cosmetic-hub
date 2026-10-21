@@ -60,7 +60,6 @@ local function smooth(object,properties,duration,done)
     tween:Play()
 end
 local isMM2 = game.GameId == 66654135 or game.PlaceId == 142823291
-local mm2MenuOpen = false
 local crosshairAPI
 local mm2API,mm2NativeAPI,mm2SavedNativeAPI,mm2EffectsAPI,mm2EffectsNativeAPI,mm2EffectsLibraryAPI
 local atmosphereAPI
@@ -286,6 +285,7 @@ local crosshairSize=uiSetting("mm2CrosshairSize",40)
 if crosshairSize~=crosshairSize or crosshairSize<8 or crosshairSize>200 then crosshairSize=40 end
 local crosshairInput=crosshairImage
 local alive, busy, activePage = true, false, uiSetting("page","Animations")
+if activePage=="Atmosphere"then activePage="Lighting"end
 local animationSection=activePage=="Emotes" and "Emotes" or "Animations"
 local backgroundId=uiSetting("backgroundId",-1)
 local backgroundChoices
@@ -299,15 +299,10 @@ local previewRevision=0
 local customAnimationType
 local animationPreviewFactory
 local actionRunning=false
-if activePage~="Animations" and activePage~="Emotes" and activePage~="Atmosphere" and activePage~="Settings" and not (isMM2 and activePage=="MM2") then activePage="Animations" end
 local statusText = "Local avatar editor. Saved selections reapply automatically."
 local render,lastRenderedPage
 local renderAnimationPage
 local accessoryInput, bundleInput = uiSetting("accessory",""), uiSetting("bundle","")
-local skyboxInput=uiSetting("skybox","")
-local skyboxName=""
-local skyboxMenu,skyboxDelete,skyboxRename
-local skyboxSearch=""
 local function savedSkies()
     local raw=uiSetting("savedSkyboxes","")
     if raw=="" then return {} end
@@ -328,7 +323,7 @@ local function savedSkies()
 end
 local function storeSkies(entries)
     local raw=game:GetService("HttpService"):JSONEncode(entries)
-    assert(#raw<=8192,"Atmosphere library is full. Delete a saved atmosphere first.")
+    assert(#raw<=131072,"Preset library is full. Delete a saved preset first.")
     playerGui:SetAttribute("HoneyBunCosmeticUI_savedSkyboxes",raw)
 end
 local emoteInput,animationInput=uiSetting("emote",""),uiSetting("animationBundle","")
@@ -354,7 +349,6 @@ local function saveUI()
     values.animationSection=animationSection
     values.backgroundId=backgroundId
     if backgroundChoices then values.backgrounds=game:GetService("HttpService"):JSONEncode(backgroundChoices) end
-    values.skybox=skyboxInput
     values.bodyPartsOpen=bodyPartsOpen
     values.copyPlayer=copyPlayerInput
     values.mm2KnifeSide=knifeSide
@@ -384,9 +378,23 @@ local robloxColors={
     {0,143,156},{91,154,76},{124,156,107},{161,196,140},{226,155,64},
     {245,205,48},{248,217,109},{99,95,98},{205,205,205},{248,248,248},
 }
-local pages={"Animations", "Emotes", "Atmosphere"}
-if isMM2 then table.insert(pages,"MM2") end
+local function module(file)
+    local chunk,message=loadstring(readSource(file,moduleRevision),"="..file);assert(chunk,message)
+    return chunk()
+end
+local lightingSchema=module("lighting_schema.lua")
+local gamePages={}
+local pages={"Animations","Emotes","Lighting"}
+for _,descriptor in ipairs(module("game_pages.lua"))do
+    if descriptor.matches(game)then gamePages[descriptor.id]=descriptor;table.insert(pages,descriptor.label)end
+end
+local pageComponents={}
+local function pageComponent(file)
+    if not pageComponents[file]then pageComponents[file]=module(file)(view)end
+    return pageComponents[file]
+end
 table.insert(pages,"Settings")
+if not table.find(pages,activePage)then activePage="Animations"end
 view=uiChunk()(prismRuntime,theme,gui,content,tabs,hide,{
     save=saveUI,
     hide=function()capturingOpeningKey=false;showMenu(false)end,
@@ -465,7 +473,7 @@ local function atmosphere()
     if atmosphereAPI then return atmosphereAPI end
     local source=readSource("atmosphere.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
-    atmosphereAPI=chunk()(game)
+    atmosphereAPI=chunk()(game,lightingSchema)
     return atmosphereAPI
 end
 local function motion()
@@ -663,28 +671,26 @@ local function action(callback,independent)
         render()
     end)
 end
-local function atmosphereAction(callback)
-    action(function()
-        local message=callback()
-        if atmosphereAPI then
-            local saved={version=1,asset=atmosphereAPI.currentAsset() or "",daylight=atmosphereAPI.daylightEnabled(),environment=atmosphereAPI.environment()}
-            playerGui:SetAttribute("HoneyBunCosmeticUI_activeAtmosphere",game:GetService("HttpService"):JSONEncode(saved))
-        end
-        return message
-    end,true)
+local function persistLighting()
+    if atmosphereAPI then
+        local configuration=atmosphereAPI.configuration()
+        -- Retain legacy presets until the user changes a direct editor control.
+        local legacy=atmosphereAPI.environment()
+        if legacy then configuration={version=1,asset=atmosphereAPI.currentAsset()or "",daylight=atmosphereAPI.daylightEnabled(),environment=legacy}end
+        playerGui:SetAttribute("HoneyBunCosmeticUI_activeAtmosphere",game:GetService("HttpService"):JSONEncode(configuration))
+    end
 end
 local function reapplyAtmosphere()
     local raw=uiSetting("activeAtmosphere","")
-    if raw=="" then return end
+    if raw==""then return end
     local saved=game:GetService("HttpService"):JSONDecode(raw)
-    assert(type(saved)=="table" and saved.version==1 and type(saved.asset)=="string" and #saved.asset<=512
-        and type(saved.daylight)=="boolean","Saved active atmosphere is invalid.")
+    assert(type(saved)=="table","Saved lighting is invalid.")
     local active=atmosphere()
+    if saved.version==2 then active.loadConfiguration(saved);return end
+    assert(saved.version==1 and type(saved.asset)=="string"and #saved.asset<=512 and type(saved.daylight)=="boolean","Saved lighting is invalid.")
     active.setDaylight(saved.daylight)
-    if saved.environment then
-        local ok,message=active.applyEnvironment(saved.environment);assert(ok,message)
-    end
-    if saved.asset~="" then local ok,message=active.apply(saved.asset);assert(ok,message) end
+    if saved.environment then local ok,message=active.applyEnvironment(saved.environment);assert(ok,message)end
+    if saved.asset~=""then local ok,message=active.apply(saved.asset);assert(ok,message)end
 end
 local function hatSounds()
     if accessorySoundsAPI then return accessorySoundsAPI end
@@ -903,9 +909,121 @@ renderAnimationPage=function()
     local previewHeight=math.max(180,content.AbsoluteSize.Y-(animationSection=="Emotes" and 398 or customAnimationType and 462 or 416))
     append(view.AvatarPreview,{sourceKey=animationSection..":"..previewType..":"..emoteSlot..":"..previewRevision,height=previewHeight,backgroundId=math.max(0,backgroundId),start=startAnimationPreview})
 end
+local gamePageProps={}
+gamePageProps.MM2=function()
+        local function updateWeapons()
+            if mm2Enabled then nativeMM2().disable();local ok=nativeMM2().enable();if ok==false then mm2Enabled=false end end
+            savedNativeMM2().enable();savedNativeMM2().refreshSaved()
+        end
+        local function refreshEffects()
+            nativeEffectsMM2().enable();nativeEffectsMM2().refreshSaved();effectsMM2().collectOriginals()
+            return "Saved effects refreshed."
+        end
+        local function invoke(callback)return function(...)local arguments=table.pack(...);action(function()return callback(table.unpack(arguments,1,arguments.n))end,true)end end
+        local saved=mm2API and mm2API.savedInventory()or {}
+        return {
+            loadSaved=function()return mm2().savedInventory()end,
+            busy=busy,player=copyPlayerInput,saved=saved,crosshair=crosshairImage,crosshairSize=crosshairSize,knifeSide=knifeSide,allWeapons=mm2Enabled,emotes=mm2EmotesShown,persist=saveUI,
+            capture=invoke(function(username,kinds)
+                assert(type(username)=="string"and username~="","Choose a player.")
+                copyPlayerInput=username;saveUI()
+                local messages={}
+                for _,kind in ipairs({"Gun","Knife","Effect"})do
+                    if kinds[kind]then
+                        local ok,message=pcall(function()
+                            if kind~="Effect"then local result=mm2().collectPlayerWeapon(username,kind);updateWeapons();return result end
+                            effectsMM2();local result,ids=mm2EffectsLibraryAPI.capturePlayer(username);mm2EffectsAPI.reloadLibrary()
+                            if ids and ids[1]then result=result.." "..mm2EffectsAPI.equip(ids[1],"Effect")end
+                            nativeEffectsMM2().enable();nativeEffectsMM2().refreshSaved();return result
+                        end)
+                        messages[#messages+1]=ok and message or tostring(message):gsub("^.-:%d+:%s*","")
+                    end
+                end
+                return table.concat(messages,"\n")
+            end),
+            equip=invoke(function(entry)return mm2().equip(entry.id,entry.kind)end),
+            rename=invoke(function(entry,name)local result=mm2().renameSavedWeapon(entry.id,name);updateWeapons();return result end),
+            remove=invoke(function(entry)local result=mm2().removeSavedWeapon(entry.id);updateWeapons();return result end),
+            applyCrosshair=invoke(function(value)
+                crosshairInput=value:match("^%s*(.-)%s*$")
+                local id=crosshairInput:match("^(%d+)$") or crosshairInput:match("^rbxassetid://(%d+)$")
+                if not id and crosshairInput:match("^https?://[^/]*roblox.com/") then
+                    id=crosshairInput:match("[?&]id=(%d+)") or crosshairInput:match("/asset/(%d+)") or crosshairInput:match("/catalog/(%d+)") or crosshairInput:match("/library/(%d+)")
+                end
+                assert(id and tonumber(id) and tonumber(id)>0,"Enter a Roblox image ID or image link.")
+                local info=game:GetService("MarketplaceService"):GetProductInfo(tonumber(id))
+                local image="rbxassetid://"..id
+                if info.AssetTypeId==13 then
+                    local objects=game:GetObjects(image)
+                    local ok,texture=pcall(function()
+                        for _,root in ipairs(objects) do
+                            local items={root}
+                            for _,item in ipairs(root:GetDescendants()) do items[#items+1]=item end
+                            for _,item in ipairs(items) do
+                                if item:IsA("Decal") and item.Texture~="" then
+                                    local textureId=item.Texture:match("^rbxassetid://(%d+)$") or item.Texture:match("[?&]id=(%d+)")
+                                    if textureId then return "rbxassetid://"..textureId end
+                                end
+                            end
+                        end
+                        error("This decal's image could not load. Try its image/texture ID directly.")
+                    end)
+                    for _,root in ipairs(objects) do root:Destroy() end
+                    assert(ok,texture)
+                    image=texture
+                else
+                    assert(info.AssetTypeId==1,"That ID is not an image or decal. Choose a crosshair image or decal.")
+                end
+                customCrosshair().set(image)
+                crosshairImage=image;saveUI()
+
+                return "Crosshair saved."
+            end),
+            resizeCrosshair=function(value)
+                if busy then return false end
+                local ok=pcall(function()customCrosshair().setSize(value)end)
+                if ok then crosshairSize=value end;return ok
+            end,
+            resetCrosshair=invoke(function()if crosshairAPI then crosshairAPI.set("")end;crosshairImage="";saveUI();return "Default crosshair restored."end),
+            setKnifeSide=invoke(function(value)local _,message=mm2().setKnifeSide(value);assert(message==nil,message);knifeSide=value;saveUI();return "Knife position updated."end),
+            refreshWeapons=invoke(function()updateWeapons();return "Saved weapons refreshed."end),
+            restoreWeapons=invoke(function()return mm2().restore()end),
+            identify=invoke(function(name,kind)local message=mm2().identifySavedWeapon(name,kind);updateWeapons();return message end),
+            toggleEmotes=invoke(function(enabled)
+                if enabled then enableMM2Emotes()
+                else nativeEmotesMM2().disable();if mm2EmoteBarAPI then mm2EmoteBarAPI.disable()end;mm2().stopEmote()end
+                mm2EmotesShown=enabled;saveUI();return "MM2 emotes updated."
+            end),
+            toggleWeapons=invoke(function(enabled)
+                if enabled then local ok,message=nativeMM2().enable();assert(ok~=false,message or "MM2 inventory could not be detected.")
+                else nativeMM2().disable()end
+                mm2Enabled=enabled;savedNativeMM2().enable();savedNativeMM2().refreshSaved();saveUI();return "Inventory display updated."
+            end),
+            refreshEffects=invoke(refreshEffects),
+            collectEffects=invoke(function(username)
+                effectsMM2();local result=mm2EffectsLibraryAPI.captureServer(username);mm2EffectsAPI.reloadLibrary();nativeEffectsMM2().enable();nativeEffectsMM2().refreshSaved();return result
+            end),
+            stopEmote=invoke(function()return mm2().stopEmote()end),
+            report=invoke(function()
+                local report=mm2().report().."\n"..nativeMM2().report()
+                if mm2SavedNativeAPI then report=report.."\n"..mm2SavedNativeAPI.report() end
+                if mm2EffectsAPI then report=report.."\n"..mm2EffectsAPI.report() end
+                if mm2EffectsLibraryAPI then report=report.."\n"..mm2EffectsLibraryAPI.report() end
+                if mm2EmotesNativeAPI then report=report.."\n"..mm2EmotesNativeAPI.report() end
+                if mm2EmoteBarAPI then report=report.."\n"..mm2EmoteBarAPI.report() end
+                if mm2EffectsNativeAPI then report=report.."\n"..mm2EffectsNativeAPI.report() end
+                if type(setclipboard)=="function" then
+                    setclipboard(report)
+                    return "MM2 report copied. Paste it into chat if a preview cannot load."
+                end
+                return report
+
+            end),
+        }
+end
 render=function()
     if not alive then return end
-    local savedScroll=(activePage=="Atmosphere") and lastRenderedPage==activePage and content.CanvasPosition
+    local savedScroll=(activePage=="Lighting"or gamePages[activePage]~=nil) and lastRenderedPage==activePage and content.CanvasPosition
     local pageChanged=lastRenderedPage~=activePage
     lastRenderedPage=activePage
     if pageChanged then
@@ -942,191 +1060,11 @@ render=function()
                 return "Emote while walking "..(enabled and "enabled." or "disabled.")
             end)
         end})
-    elseif activePage=="MM2" and isMM2 then
-        caption(mm2MenuOpen and "MM2 MENU" or "MURDER MYSTERY 2",24)
-        if mm2MenuOpen then
-            caption("SHERIFF CROSSHAIR",24)
-            caption("Paste a Roblox image or decal ID/link. Shows while you hold your gun. Transparent images work best.",54)
-            local crosshairBox=input("Roblox crosshair image ID",crosshairInput,function(value)crosshairInput=value end)
-            if crosshairImage~="" then
-                append(view.Prism.Image,{src=crosshairImage,width=UDim.new(1,0),height=72,bg=theme.button,
-                    scaleType=Enum.ScaleType.Fit,slotProps={root={Name="CrosshairPreview"}}})
-            end
-            button("Apply crosshair",function() action(function()
-                crosshairInput=crosshairBox.current.Text:gsub("^%s+",""):gsub("%s+$","")
-                local id=crosshairInput:match("^(%d+)$") or crosshairInput:match("^rbxassetid://(%d+)$")
-                if not id and crosshairInput:match("^https?://[^/]*roblox.com/") then
-                    id=crosshairInput:match("[?&]id=(%d+)") or crosshairInput:match("/asset/(%d+)") or crosshairInput:match("/catalog/(%d+)") or crosshairInput:match("/library/(%d+)")
-                end
-                assert(id and tonumber(id) and tonumber(id)>0,"Enter a Roblox image ID or image link.")
-                local info=game:GetService("MarketplaceService"):GetProductInfo(tonumber(id))
-                local image="rbxassetid://"..id
-                if info.AssetTypeId==13 then
-                    local objects=game:GetObjects(image)
-                    local ok,texture=pcall(function()
-                        for _,root in ipairs(objects) do
-                            local items={root}
-                            for _,item in ipairs(root:GetDescendants()) do items[#items+1]=item end
-                            for _,item in ipairs(items) do
-                                if item:IsA("Decal") and item.Texture~="" then
-                                    local textureId=item.Texture:match("^rbxassetid://(%d+)$") or item.Texture:match("[?&]id=(%d+)")
-                                    if textureId then return "rbxassetid://"..textureId end
-                                end
-                            end
-                        end
-                        error("This decal's image could not load. Try its image/texture ID directly.")
-                    end)
-                    for _,root in ipairs(objects) do root:Destroy() end
-                    assert(ok,texture)
-                    image=texture
-                else
-                    assert(info.AssetTypeId==1,"That ID is not an image or decal. Choose a crosshair image or decal.")
-                end
-                customCrosshair().set(image)
-                crosshairImage=image;saveUI()
-                return "Custom crosshair saved. Hold your gun to see it."
-            end,true) end)
-            caption("CROSSHAIR SIZE",24)
-            append(view.CrosshairSlider,{value=crosshairSize,disabled=busy,onChange=function(value)
-                if busy then return false end
-                local ok=pcall(function()customCrosshair().setSize(value)end)
-                if ok then crosshairSize=value end
-                return ok
-            end})
-            button("Restore default crosshair",function() action(function()
-                if crosshairAPI then crosshairAPI.set("") end
-                crosshairImage="";saveUI()
-                return "Default gun crosshair restored."
-            end,true) end)
-            caption("KNIFE POSITION",24)
-            caption("Off: knife on your back. On: knife at your side.",36)
-            button(knifeSide and "Boombox layout: ON" or "Boombox layout: OFF",function() action(function()
-                local nextValue=not knifeSide
-                local _,message=mm2().setKnifeSide(nextValue)
-                assert(message==nil,message)
-                knifeSide=nextValue;saveUI()
-                return knifeSide and "Saved knives are now at your side." or "Saved knives are now on your back."
-            end) end)
-            caption("SAVE A PLAYER'S LOOK",24)
-            caption("Enter a username from this server. Save while they hold the weapon to capture its hand position, toolbar icon, and loaded sounds. Saved copies are for you only.",80)
-            local owner=input("Player's Roblox username",copyPlayerInput,function(value)copyPlayerInput=value end)
-            local function username()
-                copyPlayerInput=owner.current.Text:gsub("^%s+",""):gsub("%s+$","")
-                saveUI()
-                assert(copyPlayerInput~="","Enter a Roblox username from this server.")
-                return copyPlayerInput
-            end
-            local function updateWeapons()
-                if mm2Enabled then
-                    nativeMM2().disable()
-                    local ok=nativeMM2().enable()
-                    if ok==false then mm2Enabled=false end
-                    savedNativeMM2().enable();savedNativeMM2().refreshSaved()
-                else
-                    savedNativeMM2().enable();savedNativeMM2().refreshSaved()
-                end
-            end
-            local function copyWeapon(kind)
-                local message=mm2().collectPlayerWeapon(username(),kind)
-                updateWeapons()
-                return message
-            end
-            local function copyEffect()
-                effectsMM2()
-                local message,ids=mm2EffectsLibraryAPI.capturePlayer(username())
-                mm2EffectsAPI.reloadLibrary()
-                if ids and ids[1] then message=message.." "..mm2EffectsAPI.equip(ids[1],"Effect") end
-                nativeEffectsMM2().enable();nativeEffectsMM2().refreshSaved()
-                return message
-            end
-            button("Save and equip player's gun",function() action(function() return copyWeapon("Gun") end) end)
-            button("Save and equip player's knife",function() action(function() return copyWeapon("Knife") end) end)
-            button("Save and equip player's effect",function() action(copyEffect) end)
-            button("Save all three",function() action(function()
-                username()
-                local messages={}
-                for _,operation in ipairs({function()return copyWeapon("Gun")end,function()return copyWeapon("Knife")end,copyEffect}) do
-                    local ok,message=pcall(operation)
-                    messages[#messages+1]=ok and message or tostring(message):gsub("^.-:%d+:%s*","")
-                end
-                return table.concat(messages,"\n")
-            end) end)
-            caption("YOUR SAVED WEAPONS",24)
-            caption("Open MM2's Weapons inventory → Saved Weapons. All copied guns and knives stay together there. Click a card to equip. Use its cog menu to rename or delete your saved copy.",64)
-            button("Refresh saved weapons in MM2 inventory",function() action(function()
-                updateWeapons()
-                return "Open MM2's Weapons inventory and select Saved Weapons. All your copied guns and knives are there."
-            end) end)
-            button("Remove saved weapon appearances",function() action(function()return mm2().restore()end) end)
-            caption("FIX AN UNIDENTIFIED WEAPON",24)
-            caption("Equip a saved copy, then enter its original MM2 name to match its name, icon, and rarity.",48)
-            local weaponName=input("Original weapon name or item ID","",function()end)
-            for _,kind in ipairs({"Knife","Gun"}) do
-                button("Match equipped saved "..kind:lower(),function() action(function()
-                    local message=mm2().identifySavedWeapon(weaponName.current.Text,kind)
-                    updateWeapons();return message
-                end) end)
-            end
-            caption("MM2 EMOTES",24)
-            button(mm2EmotesShown and "Show all MM2 emotes: ON" or "Show all MM2 emotes: OFF",function() action(function()
-                if mm2EmotesShown then
-                    nativeEmotesMM2().disable();if mm2EmoteBarAPI then mm2EmoteBarAPI.disable() end;mm2().stopEmote();mm2EmotesShown=false
-                    saveUI()
-                    return "Original MM2 Emotes inventory restored."
-                end
-                local barMessage=enableMM2Emotes()
-                mm2EmotesShown=true
-                saveUI()
-                return "Emotes added to the inventory. In the bottom Game Emotes bar, press E for catalog pages. "..tostring(barMessage or "")
-            end) end)
-            if mm2EmotesShown then
-                button("Stop emote",function()action(function()return mm2().stopEmote()end)end)
-            end
-            caption("OPTIONAL MM2 INVENTORY DISPLAY",24)
-            caption("Saved copies appear only in Saved Weapons. Show all weapons displays the separate game catalog.",48)
-            button(mm2Enabled and "Show all weapons: ON" or "Show all weapons: OFF",function() action(function()
-                if mm2Enabled then
-                    nativeMM2().disable();mm2Enabled=false;savedNativeMM2().enable()
-                    return "Original inventory display restored. Your saved weapon appearance stays equipped."
-                end
-                local ok,message=nativeMM2().enable()
-                savedNativeMM2().enable();savedNativeMM2().refreshSaved()
-                assert(ok~=false,message or "MM2 inventory could not be detected.")
-                mm2Enabled=true;return type(ok)=="string" and ok or message
-            end) end)
-            button("Refresh saved effects in MM2 inventory",function() action(function()
-                nativeEffectsMM2().enable();nativeEffectsMM2().refreshSaved()
-                effectsMM2().collectOriginals()
-                return "Saved effects appear automatically in MM2's Effects inventory."
-            end) end)
-
-            button("Collect server effects",function() action(function()
-                effectsMM2()
-                local message=mm2EffectsLibraryAPI.captureServer(copyPlayerInput)
-                mm2EffectsAPI.reloadLibrary()
-                nativeEffectsMM2().enable();nativeEffectsMM2().refreshSaved()
-                return message
-            end) end)
-
-            button("Copy MM2 report",function() action(function()
-                local report=mm2().report().."\n"..nativeMM2().report()
-                if mm2SavedNativeAPI then report=report.."\n"..mm2SavedNativeAPI.report() end
-                if mm2EffectsAPI then report=report.."\n"..mm2EffectsAPI.report() end
-                if mm2EffectsLibraryAPI then report=report.."\n"..mm2EffectsLibraryAPI.report() end
-                if mm2EmotesNativeAPI then report=report.."\n"..mm2EmotesNativeAPI.report() end
-                if mm2EmoteBarAPI then report=report.."\n"..mm2EmoteBarAPI.report() end
-                if mm2EffectsNativeAPI then report=report.."\n"..mm2EffectsNativeAPI.report() end
-                if type(setclipboard)=="function" then
-                    setclipboard(report)
-                    return "MM2 report copied. Paste it into chat if a preview cannot load."
-                end
-                return report
-            end) end)
-            button("Back",function() mm2MenuOpen=false;render() end)
-        else
-            caption("Open your dedicated MM2 menu below.",40)
-            button("Open MM2 menu",function() mm2MenuOpen=true;render() end)
-        end
+    elseif gamePages[activePage]then
+        limits.MaxSize=Vector2.new(1050,850)
+        local descriptor=gamePages[activePage]
+        local props=gamePageProps[descriptor.id]and gamePageProps[descriptor.id]()or {}
+        append(pageComponent(descriptor.source),props)
     elseif activePage=="Accessories" then
         caption("ACCESSORIES",24)
         local soundsEnabled=playerGui:GetAttribute("HoneyBunCosmeticUI_HatSounds")~=false
@@ -1256,124 +1194,9 @@ render=function()
         end)
     elseif activePage=="Animations" or activePage=="Emotes" then
         renderAnimationPage()
-    elseif activePage=="Atmosphere" then
+    elseif activePage=="Lighting"then
         limits.MaxSize=Vector2.new(1050,850)
-        caption("PERSONAL ATMOSPHERE",24)
-        caption("Click a button to cycle styles. Changes apply immediately, only for you.",36)
-        local environment=atmosphereAPI and atmosphereAPI.environment()
-        local times={[8]="Morning",[14]="Day",[18]="Sunset",[0]="Night"}
-        local function cycleEnvironment(key,choices)
-            atmosphereAction(function()
-                local current=atmosphere().environment()
-                local nextValue=choices[1]
-                if current then
-                    for index,value in ipairs(choices) do
-                        if current[key]==value then nextValue=choices[index%#choices+1];break end
-                    end
-                end
-                local settings=current or {time=14,fog="Off",color="Natural"}
-                settings[key]=nextValue
-                local ok,message=atmosphere().applyEnvironment(settings);assert(ok,message)
-                return "Atmosphere updated."
-            end)
-        end
-        button("Time: "..(environment and (times[environment.time] or tostring(environment.time)) or "Game"),function()cycleEnvironment("time",{8,14,18,0})end)
-        button("Fog: "..(environment and environment.fog or "Game"),function()cycleEnvironment("fog",{"Off","Light","Thick"})end)
-        button("Color: "..(environment and environment.color or "Game"),function()cycleEnvironment("color",{"Natural","Warm","Cool","Pink"})end)
-        button("Restore game atmosphere",function()atmosphereAction(function()
-            atmosphere().restoreEnvironment();return "Game atmosphere restored. Your selected skybox stays on."
-        end)end)
-        caption("CUSTOM SKYBOX",24)
-        caption("Paste a Roblox skybox model link or asset ID. The model must contain a Sky; a single image ID is not a complete skybox.",64)
-        local field=input("Roblox skybox model link or ID",skyboxInput,function(value)skyboxInput=value end)
-        button("Apply skybox",function()
-            skyboxInput=field.current.Text;saveUI()
-            atmosphereAction(function()local ok,message=atmosphere().apply(skyboxInput);assert(ok,message);return atmosphere().environment() and "Skybox applied with your atmosphere settings." or ("Skybox applied. "..(atmosphere().daylightEnabled() and "Daylight is on." or "Using the game time.")) end)
-        end)
-        button("Restore original sky",function()atmosphereAction(function()atmosphere().restore();return "Original sky restored." end)end)
-        local daylight=not atmosphereAPI or atmosphereAPI.daylightEnabled()
-        if not environment then button(daylight and "Daylight: ON" or "Daylight: OFF",function()atmosphereAction(function()
-            return atmosphere().setDaylight(not daylight)
-        end)end) end
-        button("Copy sky report",function()action(function()
-            local report=atmosphere().report()
-            if type(setclipboard)=="function" then setclipboard(report);return "Sky report copied. Paste it into chat." end
-            return report
-        end)end)
-        caption("SAVED ATMOSPHERES",24)
-        local nameField=input("Atmosphere name",skyboxName,function(value)skyboxName=value end)
-        button(skyboxRename and "Save Name" or "Save atmosphere",function()
-            local asset=field.current.Text:match("^%s*(.-)%s*$")
-            local label=nameField.current.Text:match("^%s*(.-)%s*$")
-            atmosphereAction(function()
-                assert(#label>0 and #label<=40,"Enter a name with 1-40 characters.")
-                local entries=savedSkies()
-                if skyboxRename then
-                    assert(entries[skyboxRename],"Saved skybox no longer exists.")
-                    entries[skyboxRename].name=label;storeSkies(entries)
-                    skyboxRename=nil;skyboxName=""
-                    return "Atmosphere renamed: "..label
-                end
-                assert(#asset<=512,"Enter a skybox model link or ID.")
-                assert(#asset>0 or atmosphere().environment(),"Choose an atmosphere style or enter a skybox first.")
-                local index
-                local settings=atmosphere().environment()
-                for i,entry in ipairs(entries) do
-                    local previous=entry.environment
-                    local sameSettings=(not previous and not settings) or (previous and settings
-                        and previous.time==settings.time and previous.fog==settings.fog and previous.color==settings.color)
-                    if entry.asset==asset and sameSettings then index=i;break end
-                end
-                assert(index or #entries<30,"You can save up to 30 atmospheres. Delete one first.")
-                if #asset>0 then local ok,message=atmosphere().apply(asset);assert(ok,message) end
-                entries[index or #entries+1]={name=label,asset=asset,daylight=atmosphere().daylightEnabled(),image=atmosphere().previewImage(),environment=atmosphere().environment()}
-                storeSkies(entries);skyboxInput=asset;skyboxName="";saveUI()
-                return "Atmosphere saved: "..label
-            end)
-        end)
-        if skyboxRename then button("Cancel",function()if not busy then skyboxRename=nil;skyboxName="";render() end end) end
-        local loaded,entries=pcall(savedSkies)
-        if not loaded then caption("Saved atmospheres could not load: "..tostring(entries),48)
-        elseif #entries==0 then caption("No saved atmospheres yet. Choose your styles, enter a name, and press Save atmosphere.",44)
-        else
-            append(view.SkyboxGrid,{
-                entries=entries,query=skyboxSearch,menu=skyboxMenu,deleting=skyboxDelete,disabled=busy,
-                onSearch=function(value)skyboxSearch=value end,
-                onMenu=function(id)
-                    if busy then return end
-                    skyboxMenu=skyboxMenu~=id and id or nil;skyboxDelete=nil;render()
-                end,
-                onCancel=function()if not busy then skyboxMenu=nil;skyboxDelete=nil;render()end end,
-                onRequestDelete=function(id)if not busy then skyboxDelete=id;render()end end,
-                onLoad=function(id)atmosphereAction(function()
-                    local entry=entries[id]
-                    local active=atmosphere()
-                    if entry.asset~="" then local ok,message=active.apply(entry.asset);assert(ok,message) else active.restore() end
-                    active.setDaylight(entry.daylight)
-                    if entry.environment then local ok,message=active.applyEnvironment(entry.environment);assert(ok,message)
-                    else active.restoreEnvironment() end
-                    skyboxInput=entry.asset;saveUI()
-                    return "Loaded atmosphere: "..entry.name
-                end)end,
-                onUpdate=function(id)atmosphereAction(function()
-                    local current=savedSkies();local active=atmosphere()
-                    local asset=active.currentAsset() or "";assert(asset~="" or active.environment(),"Choose an atmosphere style or skybox first.")
-                    current[id].asset=asset;current[id].image=active.previewImage();current[id].daylight=active.daylightEnabled();current[id].environment=active.environment()
-                    storeSkies(current);skyboxMenu=nil
-                    return "Updated "..entries[id].name.." with your current atmosphere."
-                end)end,
-                onRename=function(id)
-                    if busy then return end
-                    skyboxRename=id;skyboxName=entries[id].name;skyboxMenu=nil;render()
-                end,
-                onDelete=function(id)atmosphereAction(function()
-                    local current=savedSkies();local name=current[id].name
-                    table.remove(current,id);storeSkies(current);skyboxDelete=nil;skyboxMenu=nil;skyboxRename=nil
-                    return "Deleted "..name..". Your current sky stays on."
-                end)end,
-            })
-        end
-        caption("Only you see these changes. Saved atmospheres keep your skybox, time, fog, and color together.",48)
+        append(pageComponent("lighting_page.lua"),{backend=atmosphere,schema=lightingSchema,saved=savedSkies,store=storeSkies,persist=persistLighting})
     else
         caption("BODY PACKAGES",24)
         caption("Choose a classic body or paste a Roblox bundle link. Packages keep your current avatar rig.",44)

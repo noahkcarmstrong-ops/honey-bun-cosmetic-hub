@@ -141,6 +141,14 @@ These use Roblox stand-ins to check the editor logic; they do not prove that a g
 
 API references: [Accessories](https://create.roblox.com/docs/reference/engine/classes/Accessory), [Humanoid body-part replacement](https://create.roblox.com/docs/reference/engine/classes/Humanoid#ReplaceBodyPartR15), [Players avatar generation](https://create.roblox.com/docs/reference/engine/classes/Players#CreateHumanoidModelFromDescriptionAsync), [emote assignments](https://create.roblox.com/docs/reference/engine/classes/HumanoidDescription#SetEquippedEmotes), and [animation replication](https://create.roblox.com/docs/reference/engine/classes/Animator#LoadAnimation).
 
+## Lighting
+
+Open **Lighting** to adjust time, brightness, colors, fog, shadows, and post-processing. Sliders apply immediately; the number fields accept exact values. Click a color swatch for RGB controls, or enter a hex color.
+
+Choose a sky tile or expand **Custom skybox** for a model link or ID. **Advanced sky** exposes the six faces, sun, moon, and stars. The included skies use real Roblox assets and thumbnails: [Sunset Dawn](https://create.roblox.com/store/asset/325545295/Sunset-Dawn-Skybox) and [Grimm Night](https://create.roblox.com/store/asset/332466267/Grimm-Night-Skybox-HD) by dearjournal, and [Sunset](https://create.roblox.com/store/asset/402561625/Sunset-Skybox) by camcool12354.
+
+**Save preset** stores your current overrides. Saved presets can be loaded, updated, renamed, or deleted. Existing saved atmospheres remain available. **Restore game** removes your lighting and sky overrides. These changes are visible only to you.
+
 ## MM2 local cosmetics
 
 The sheriff crosshair accepts Roblox image IDs and decal IDs or links, including Creator Store links. Decals are resolved to their image texture before previewing and saving.
@@ -148,23 +156,19 @@ Drag the **Crosshair Size** slider to set its width and height from 8 to 200 pix
 
 **Show all MM2 emotes** remembers ON or OFF across Refresh and rerunning the menu. With **Auto-save: on**, it also restores your choice when you run the menu after rejoining MM2, including the Game Emotes bar.
 
-Open MM2's Weapons inventory, then open **MM2 → Open MM2 menu** in the hub and enable **Show all weapons**. Supported native item cards are copied into the game's inventory window using the loaded knife/gun catalog. Click a local card to select it. The selection applies to a matching native weapon now or when it becomes available, and reapplies after respawning. Season 1, Classic, and Holiday use the loaded item metadata; cards sort by available order metadata, rarity, chroma status, and name. The local collection reconnects when MM2 reopens or rebuilds its inventory. Disable the toggle to restore the original inventory display and weapon appearance.
+Open MM2's Weapons inventory, then open **MM2** in the hub and enable **Show all weapons**. Supported native item cards are copied into the game's inventory window using the loaded knife/gun catalog. Click a local card to select it. The selection applies to a matching native weapon now or when it becomes available, and reapplies after respawning. Season 1, Classic, and Holiday use the loaded item metadata; cards sort by available order metadata, rarity, chroma status, and name. The local collection reconnects when MM2 reopens or rebuilds its inventory. Disable the toggle to restore the original inventory display and weapon appearance.
 
 This changes the local inventory display; it does not add ownership or trading rights. It requires a recognizable native card layout and loaded catalog. Unsupported layouts or model formats report an explanation. Use **Copy MM2 report** if the inventory cannot be detected. Live compatibility with every rare item and emote is not yet verified.
 
 Weapon appearances are visible only to the person running the hub. The hub tries the selected model asset and exact, identifiable copies MM2 has already loaded. If neither source is available, the inventory selection remains saved but its avatar appearance cannot be shown. Loaded scripts are stripped; supported meshes are applied to the existing native weapon/display without replacing its connections. The tab matcher supports image buttons with separate caption labels. Copy MM2 report includes category totals, matched tab controls, pending selections, item asset IDs, and equip failures.
 
-### Saved local guns
+### Saved weapons and effects
 
-In the MM2 hub menu, enter a player's Roblox username and click **Copy and equip player's gun** while their gun is loaded nearby. The hub saves the original mesh, texture, and proportions; it shows a separate local visual attached to your existing gun without replacing the game's tool or joints. Custom animations, particles, and additional model parts are not included.
+In **MM2 → Save a look**, choose a player, select Gun, Knife, and/or Effect, then press **Save selected**. Save while the player holds the weapon to capture its appearance and loaded sounds.
 
-Use **Open saved guns** to list saved captures and their Equip buttons. Captures and the last selected saved gun survive rejoining when the hub reports **Auto-save: on**. The source player does not need to stay in your server. Earlier session-only captures must be collected once more with this version. Rendering still depends on Roblox making the saved mesh and texture available.
+Your captures appear under **Saved weapons** and in MM2's **Weapons → Saved Weapons** inventory. Click a card to equip it; its menu lets you rename or delete the saved copy. Saved effects appear in MM2's **Effects** inventory. Captures survive rejoining when file saving is available, and the source player does not need to remain in the server.
 
-### Local knife effects
-
-Open MM2's **Effects** inventory and enable **MM2 → Show all effects**. This separately lists the entries in the loaded `Database.Sync.Effects` catalog using native item cards. Clicking a card selects a local knife effect; supported, available visual templates are copied onto your knife display and knife tool. The selected preview reapplies when those targets arrive after a reset. The effects toggle does not change the weapons toggle.
-
-An inventory entry alone does not guarantee its effect assets are available. Missing templates and effects that depend on game-controlled kill behavior report an unavailable explanation instead of inventing a substitute effect. These previews do not grant ownership or change what other players see. Turning effects off or closing the hub removes the added visuals and restores the native inventory display.
+**More options** contains refresh, weapon matching, server-effect capture, and reporting tools. Rendering depends on Roblox making the source assets available. These local previews do not grant ownership or trading rights.
 
 ## Personal saves and distribution
 

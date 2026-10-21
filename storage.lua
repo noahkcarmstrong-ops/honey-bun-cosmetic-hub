@@ -11,6 +11,7 @@ local function allowed(key,value)
     if key=="HoneyBunCosmeticCharacters" then
         return kind=="string" and #value<=1400000
     end
+    if key=="HoneyBunCosmeticUI_savedSkyboxes"then return kind=="string"and #value<=131072 end
     if key=="HoneyBunCosmeticAnimationBundle" then
         return kind=="number" and value>0 and value%1==0 and value<9007199254740992 or kind=="string" and #value<=131072
     end
