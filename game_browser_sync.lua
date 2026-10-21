@@ -64,6 +64,21 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local file="larpblox-browser-pair-"..tostring(player.UserId)..".txt"
     local cache,assetTypes,bodyCache={},{},{}
     local function status(message)if onStatus and isAlive() then onStatus(message)end end
+    local viewOptions,viewPending,cachedViews
+    local function queueViews(options)
+        viewOptions=options
+        if not getViews or viewPending or (not options.enabled and not cachedViews)then return end
+        viewPending=true
+        task.defer(function()
+            local ok,reason=pcall(function()
+                if not isAlive()then return end
+                cachedViews=cachedViews or getViews()
+                if isAlive()then cachedViews.update(viewOptions)end
+            end)
+            viewPending=false
+            if not ok and isAlive()then status("Avatar preview: "..tostring(reason))end
+        end)
+    end
     local function validToken(v)return type(v)=="string" and #v==32 and v:match("^%x+$") end
     local function readSaved()
         if type(readfile)=="function" and type(isfile)=="function" then
@@ -120,7 +135,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         return imageAsset and imageAssetDefinition and (not expected or definitionKey(imageAssetDefinition)==definitionKey(expected)) and imageAsset or nil
     end
     local function updateViews()
-        if getViews then getViews().update({enabled=larpEnabled,name=larpName,verified=larpVerified,snapshot=lastBrowserSnapshot or lastSnapshot,image=currentImage()})end
+        queueViews({enabled=larpEnabled,name=larpName,verified=larpVerified,snapshot=lastBrowserSnapshot or lastSnapshot,image=currentImage()})
     end
     local function applyImage(value)
         if type(value)~="table" or value.version~=1 or tostring(value.userId)~=tostring(player.UserId) then return end
@@ -436,7 +451,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             else names.set(name,name)end
             if names.setVerified then names.setVerified(larpVerified) end
         end
-        if getViews then getViews().update({enabled=larpEnabled,name=larpName,verified=larpVerified,image=currentImage()})end
+        updateViews()
         lastNameState=state
         -- Rebuild before publishing so peers receive the new verification flag.
         if scheduleSnapshot then scheduleSnapshot() else notifySnapshot()end
@@ -686,7 +701,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         if not opened then connected=false end
         return opened
     end
-    function api.disconnect()generation=generation+1;stopAppearanceWatchers();closeSocket();incoming={};retryCommand=nil;connected=false;token=nil;lastJson=nil;lastNameState=nil;sharingConnected=false;applyNameState(nil);lastSharingPreference=nil;if getViews then getViews().update({enabled=false})end;status("Browser disconnected.")end
+    function api.disconnect()generation=generation+1;stopAppearanceWatchers();closeSocket();incoming={};retryCommand=nil;connected=false;token=nil;lastJson=nil;lastNameState=nil;sharingConnected=false;applyNameState(nil);lastSharingPreference=nil;queueViews({enabled=false});status("Browser disconnected.")end
     function api.isConnected()return connected end
     function api.status()return connected and (socketReady and "Browser connected via WebSocket." or "Waiting for desktop WebSocket.") or "Browser disconnected."end
     function api.publish()assert(connected,"Connect the browser first.");local value=snapshot();local encoded=HttpService:JSONEncode(value);if encoded~=lastJson then send("game",value);lastJson=encoded end;return value end

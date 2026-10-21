@@ -519,7 +519,6 @@ local function clothes()
 end
 local function localNames()
     if localNamesAPI then return localNamesAPI end
-    api()
     local source=readSource("local_names.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     nameFactory=chunk()
@@ -612,15 +611,13 @@ local function nativeViews()
 end
 gameBrowserSync=function()
     if gameBrowserSyncAPI then return gameBrowserSyncAPI end
-    api();clothes()
     local names=localNames()
-    local views=nativeViews()
     local source=readSource("game_browser_sync.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Game browser sync failed to load.")
     gameBrowserSyncAPI=select(1,create(Players.LocalPlayer,function()return api()end,function()return clothes()end,function()return alive end,function(message)
         if alive then trace("Browser: "..message);statusText=message;if view then view.setStatus(message) end end
-    end,function()return animations()end,function()return names end,function()return views end,{
+    end,function()return animations()end,function()return names end,nativeViews,{
         isReady=function()return startupComplete end,
         getMotion=function()return motion()end,
         getBackgroundState=function()return backgroundId>=0 and backgroundId or nil,backgroundChoices end,
@@ -1348,7 +1345,10 @@ trace("Menu rendered; starting saved cosmetics")
 -- The bridge defers changes to our own body until restoration has completed.
 trace("Starting browser connection")
 local syncOk,syncError=pcall(gameBrowserSync)
-if not syncOk then trace("Browser startup error: "..tostring(syncError))end
+if not syncOk then
+    trace("Browser startup error: "..tostring(syncError))
+    warn("Larpblox: browser startup failed: "..tostring(syncError))
+end
 action(function()
     trace("Restoring atmosphere")
     if isMM2 and crosshairImage~="" then pcall(function()customCrosshair().set(crosshairImage)end) end
