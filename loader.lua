@@ -224,10 +224,47 @@ content.CanvasSize = UDim2.fromOffset(0, 0)
 content.AutomaticCanvasSize = Enum.AutomaticSize.Y
 content.ScrollingDirection = Enum.ScrollingDirection.Y
 content.Parent = panel
-local connectionStatus=text(panel,"Desktop · Connecting…",UDim2.new(0,18,1,-32),UDim2.new(1,-36,0,20),14)
-connectionStatus.Name="DesktopConnectionStatus"
-connectionStatus.TextColor3=theme.muted
-connectionStatus.TextXAlignment=Enum.TextXAlignment.Right
+local connectionPill=Instance.new("Frame",panel)
+connectionPill.Name="DesktopConnectionStatus"
+connectionPill.AnchorPoint=Vector2.new(1,1)
+connectionPill.Position=UDim2.new(1,-18,1,-8)
+connectionPill.Size=UDim2.fromOffset(154,26)
+connectionPill.BorderSizePixel=0
+Instance.new("UICorner",connectionPill).CornerRadius=UDim.new(1,0)
+local connectionBorder=Instance.new("UIStroke",connectionPill)
+connectionBorder.Thickness=1
+local connectionDot=Instance.new("Frame",connectionPill)
+connectionDot.Position=UDim2.fromOffset(11,9)
+connectionDot.Size=UDim2.fromOffset(8,8)
+connectionDot.BorderSizePixel=0
+Instance.new("UICorner",connectionDot).CornerRadius=UDim.new(1,0)
+local connectionStatus=text(connectionPill,"",UDim2.fromOffset(26,0),UDim2.new(1,-34,1,0),14)
+connectionStatus.Font=Enum.Font.SourceSansSemibold
+local function setConnectionStatus(connected)
+    local foreground,background,edge
+    if connected==true then
+        connectionStatus.Text="Desktop connected"
+        foreground=Color3.fromRGB(31,112,83)
+        background=Color3.fromRGB(227,241,234)
+        edge=Color3.fromRGB(185,216,199)
+    elseif connected==false then
+        connectionStatus.Text="Desktop disconnected"
+        foreground=Color3.fromRGB(156,57,57)
+        background=Color3.fromRGB(249,233,233)
+        edge=Color3.fromRGB(230,194,194)
+    else
+        connectionStatus.Text="Desktop connecting"
+        foreground=theme.muted
+        background=Color3.fromRGB(232,237,242)
+        edge=Color3.fromRGB(206,215,225)
+    end
+    connectionPill.Size=UDim2.fromOffset(connected==false and 174 or 154,26)
+    connectionStatus.TextColor3=foreground
+    connectionDot.BackgroundColor3=foreground
+    connectionPill.BackgroundColor3=background
+    connectionBorder.Color=edge
+end
+setConnectionStatus(nil)
 local layout = Instance.new("UIListLayout", content)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
@@ -626,8 +663,7 @@ gameBrowserSync=function()
         isReady=function()return startupComplete end,
         onConnectionState=function(connected)
             if not alive then return end
-            connectionStatus.Text=connected and "Desktop · Connected" or "Desktop · Disconnected"
-            connectionStatus.TextColor3=connected and theme.muted or Color3.fromRGB(180,55,55)
+            setConnectionStatus(connected)
         end,
         getMotion=function()return motion()end,
         getBackgroundState=function()return backgroundId>=0 and backgroundId or nil,backgroundChoices end,
@@ -648,20 +684,15 @@ gameBrowserSync=function()
     return gameBrowserSyncAPI
 end
 local function reapplyAll(editor,expectedCharacter)
-    trace("Preparing saved avatar assets")
-    if editor.prepareSaved then editor.prepareSaved()end
-    local clothing=clothes()
-    if clothing.prepareSaved then clothing.prepareSaved()end
-    local animation=animations()
-    if animation.prepareSaved then animation.prepareSaved()end
     assert(not expectedCharacter or Players.LocalPlayer.Character==expectedCharacter,"Your character changed while preparing the avatar.")
     local failures={}
     for _,step in ipairs({
-        {"avatar",function() return editor.reapplySaved() end},
+        {"avatar",function() if editor.prepareSaved then editor.prepareSaved()end;return editor.reapplySaved() end},
         {"emote wheel",function() return motion().reapplySaved() end},
-        {"movement animations",function() return animations().reapplySaved() end},
-        {"clothing",function() return clothes().reapplySaved() end},
+        {"movement animations",function() local controller=animations();if controller.prepareSaved then controller.prepareSaved()end;return controller.reapplySaved() end},
+        {"clothing",function() local controller=clothes();if controller.prepareSaved then controller.prepareSaved()end;return controller.reapplySaved() end},
     }) do
+        assert(not expectedCharacter or Players.LocalPlayer.Character==expectedCharacter,"Your character changed while restoring the avatar.")
         trace("Restoring "..step[1])
         local ok,message=pcall(step[2])
         trace("Finished restoring "..step[1]..(ok and "" or ": "..tostring(message)))
@@ -1291,7 +1322,13 @@ local respawn=Players.LocalPlayer.CharacterAdded:Connect(function(character)
             if not humanoid or humanoid.Health<=0 or not character:FindFirstChild("Head") or busy
                 or not Players.LocalPlayer:HasAppearanceLoaded()then return end
             finished=true;clearReadiness()
-            action(function()return reapplyAll(api(),character)end,true)
+            action(function()
+                local message=reapplyAll(api(),character)
+                if alive and Players.LocalPlayer.Character==character and gameBrowserSyncAPI then
+                    gameBrowserSyncAPI.resumeAppearance(true)
+                end
+                return message
+            end,true)
         end)
     end
     local function watch(object)

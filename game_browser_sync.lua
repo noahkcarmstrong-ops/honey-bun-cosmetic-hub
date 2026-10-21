@@ -753,8 +753,14 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         assert(readyForAppearance(),"Waiting for the saved browser outfit.")
         return snapshot()
     end
-    function api.resumeAppearance()
+    function api.resumeAppearance(characterChanged)
         if not readyForAppearance()then return end
+        -- A revision belongs to an applied character, not just a received outfit.
+        -- Replay the retained browser selection after respawn restoration finishes.
+        if characterChanged and larpEnabled and lastBrowserCommand then
+            lastRevision=0
+            retryCommand=lastBrowserCommand
+        end
         if lastModeValue then lastNameState=nil;applyNameState(lastModeValue)end
         if retryCommand then incoming.browser={value=retryCommand};retryCommand=nil end
         if connected then task.defer(pump);scheduleSnapshot()end

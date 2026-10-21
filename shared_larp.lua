@@ -159,13 +159,14 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local snapshot=record.snapshot
         local entry=peers[record.userId]
         if entry and entry.player==target and entry.character==target.Character
+            and entry.accessoriesComplete~=false
             and sameValue(entry.snapshot,snapshot) and sameValue(entry.name,record.name)
             and entry.verified==(record.verified==true)
             and entry.imageUrl==record.imageUrl then return end
         if entry and (entry.player~=target or entry.character~=target.Character)then
             cleanupPeer(record.userId);entry=nil
         end
-        local fresh=not entry or not entry.snapshot
+        local fresh=not entry or not entry.appearanceStarted
         if not entry then entry=peerApis(target);peers[record.userId]=entry end
         local function current()
             return sharing and isAlive() and peers[record.userId]==entry
@@ -176,6 +177,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         presentRecord(entry,record)
         -- Readiness events replay the retained record once a body is available.
         if not readyHumanoid or readyHumanoid.Health<=0 or not character:FindFirstChild("Head") then return end
+        local accessoryFailures={}
         local ok,err=pcall(function()
             -- Keep the live overlay and its caches when only part of the outfit changes.
             local previous=entry.snapshot or {}
@@ -257,12 +259,15 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                     end
                 end
             end
-            if fresh then entry.avatar.removeCurrentAccessories()end
+            if fresh then entry.avatar.removeCurrentAccessories();entry.appearanceStarted=true end
             local equipped={}
             for _,item in ipairs(entry.avatar.listAccessories())do equipped[item.id]=true end
             -- Load additions first so existing accessories remain visible while assets load.
             for id in pairs(wanted)do
-                if not equipped[id]then pcall(entry.avatar.equipAccessory,id)end
+                if not equipped[id]then
+                    local loaded,reason=pcall(entry.avatar.equipAccessory,id)
+                    if not loaded then accessoryFailures[#accessoryFailures+1]=tostring(id)..": "..tostring(reason)end
+                end
                 if not current()then return end
             end
             for _,item in ipairs(entry.avatar.listAccessories())do if not wanted[item.id]then pcall(entry.avatar.removeAccessory,item.key)end end
@@ -285,7 +290,17 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                 entry.animationAssets=animationAssets
             end
         end)
-        if ok and current() then entry.snapshot=snapshot;entry.name=record.name;entry.imageUrl=record.imageUrl elseif not ok and current()then
+        if ok and current() then
+            -- A partial outfit must not satisfy the unchanged-record fast path.
+            -- Retain loaded assets; the next record/readiness event retries only
+            -- missing accessories using listAccessories above.
+            entry.snapshot=snapshot
+            entry.accessoriesComplete=#accessoryFailures==0
+            entry.name=record.name;entry.imageUrl=record.imageUrl
+            if #accessoryFailures>0 then
+                status("Could not load shared accessories for "..target.Name..": "..table.concat(accessoryFailures,"; "))
+            end
+        elseif not ok and current()then
             cleanupPeer(record.userId)
             status("Could not apply a shared appearance: "..tostring(err))
         end
