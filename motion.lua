@@ -21,18 +21,23 @@ local function copy(value)
     if type(value)~="table" then return value end
     local result={};for key,item in pairs(value) do result[key]=copy(item) end;return result
 end
-return function(player,onStatus)
+return function(player,onStatus,managedRespawn)
     local gui=player:FindFirstChildOfClass("PlayerGui")
     local attribute="HoneyBunCosmeticEmotes"
     local slots,original={},nil
+    local replaceOriginals=false
     local alive,generation=true,0
+    local baseline,accountChecked=nil,false
     if gui then
         local ok,saved=pcall(function() return Http:JSONDecode(gui:GetAttribute(attribute) or "{}") end)
         if ok and type(saved)=="table" then
+            replaceOriginals=saved.replaceOriginals==true
+            saved=type(saved.slots)=="table" and saved.slots or saved
             for i=1,8 do
-                local id=saved[tostring(i)]
+                local entry=saved[tostring(i)]
+                local id=type(entry)=="table" and entry.id or entry
                 if type(id)=="number" and id>0 and id%1==0 and id<9007199254740992 then
-                    slots[i]={id=id,name="Emote "..string.format("%.0f",id)}
+                    slots[i]={id=id,name=type(entry)=="table" and entry.name or "Custom"}
                 end
             end
         end
@@ -40,8 +45,8 @@ return function(player,onStatus)
     local function save()
         if not gui then return end
         local saved={}
-        for slot,item in pairs(slots) do saved[tostring(slot)]=item.id end
-        gui:SetAttribute(attribute,Http:JSONEncode(saved))
+        for slot,item in pairs(slots) do saved[tostring(slot)]={id=item.id,name=item.name} end
+        gui:SetAttribute(attribute,Http:JSONEncode(replaceOriginals and {slots=saved,replaceOriginals=true} or saved))
     end
     local function context()
         assert(alive,"The cosmetic menu was closed.")
@@ -60,7 +65,9 @@ return function(player,onStatus)
         local desc=humanoid:FindFirstChildOfClass("HumanoidDescription")
         assert(desc,"This avatar has no live emote description. Wait for it to load, then retry.")
         if not original or original.description~=desc then
-            original={description=desc,character=character,emotes=desc:GetEmotes(),equipped=desc:GetEquippedEmotes()}
+            local emotes,equipped=desc:GetEmotes(),desc:GetEquippedEmotes()
+            if next(equipped) then baseline={emotes=copy(emotes),equipped=copy(equipped)} end
+            original={description=desc,character=character,emotes=emotes,equipped=equipped}
         end
         return desc,humanoid
     end
@@ -70,11 +77,25 @@ return function(player,onStatus)
             original.description:SetEquippedEmotes(copy(original.equipped))
         end
     end
-    local function applyWheel()
+    local function ensureBaseline()
         local desc=description()
+        if not next(original.equipped) then
+            if not baseline and not accountChecked then
+                accountChecked=true
+                local ok,account=pcall(function()return game:GetService("Players"):GetHumanoidDescriptionFromUserIdAsync(player.UserId)end)
+                if ok then baseline={emotes=account:GetEmotes(),equipped=account:GetEquippedEmotes()};account:Destroy() end
+            end
+            if baseline and next(baseline.equipped) then
+                original.emotes=copy(baseline.emotes);original.equipped=copy(baseline.equipped)
+            end
+        end
+        return desc
+    end
+    local function applyWheel()
+        local desc=ensureBaseline()
         local emotes,equipped=copy(original.emotes),{}
         for _,entry in ipairs(original.equipped) do
-            if not slots[entry.Slot] then equipped[#equipped+1]=copy(entry) end
+            if not replaceOriginals and not slots[entry.Slot] then equipped[#equipped+1]=copy(entry) end
         end
         for slot,item in pairs(slots) do
             local name="Larpblox Slot "..slot
@@ -90,13 +111,134 @@ return function(player,onStatus)
         return value
     end
     local api={}
-    function api.getSlots() return copy(slots) end
+    function api.getSlots()
+        local result={}
+        local ok,desc=pcall(description)
+        if ok and not replaceOriginals then
+            local emotes=desc:GetEmotes()
+            local equipped=desc:GetEquippedEmotes()
+            if not next(equipped) and baseline then emotes=baseline.emotes;equipped=baseline.equipped end
+            for _,entry in ipairs(equipped) do
+                local ids=emotes[entry.Name]
+                if ids and ids[1] then result[entry.Slot]={id=ids[1],name=entry.Name} end
+            end
+        end
+        for index,item in pairs(slots) do result[index]=copy(item) end
+        return result
+    end
+    function api.replaceSlots(entries)
+        assert(type(entries)=="table" and #entries<=8,"Invalid emote slots.")
+        local desired={}
+        for _,item in ipairs(entries) do
+            local index=slotNumber(item.slot)
+            assert(not desired[index],"Duplicate emote slot.")
+            desired[index]={id=assetId(item.id),name=tostring(item.name or "Emote"):sub(1,80)}
+        end
+        local current=api.getSlots()
+        local changed=false
+        for index=1,8 do
+            local a,b=current[index],desired[index]
+            if (a and a.id)~=(b and b.id) then changed=true end
+        end
+        if not changed then return false end
+        local previous,previousReplace=slots,replaceOriginals
+        slots=desired;replaceOriginals=true
+        local ok,message=pcall(applyWheel)
+        if not ok then slots=previous;replaceOriginals=previousReplace;error(message) end
+        save();return true
+    end
+    local walkingEnabled=gui and gui:GetAttribute("HoneyBunCosmeticUI_emoteWhileWalking")==true
+    local walkingHook,walkingTrack,walkingState
+    local function stopWalkingEmote()
+        if walkingTrack then pcall(function()walkingTrack:Stop(0.15);walkingTrack:Destroy()end);walkingTrack=nil end
+    end
+    local function unbindWalking()
+        stopWalkingEmote()
+        if walkingState then walkingState:Disconnect();walkingState=nil end
+        if walkingHook then
+            local hook=walkingHook;walkingHook=nil
+            pcall(function()
+                if getcallbackvalue(hook.object,"OnInvoke")==hook.callback then hook.object.OnInvoke=hook.original end
+            end)
+        end
+    end
+    local function bindWalking()
+        unbindWalking()
+        if not walkingEnabled then return end
+        assert(type(getcallbackvalue)=="function","Your executor cannot enable emotes while walking.")
+        local character,humanoid=context()
+        local animate=character:FindFirstChild("Animate")
+        local play=animate and animate:FindFirstChild("PlayEmote")
+        assert(play and play:IsA("BindableFunction"),"This character does not use Roblox's standard emote controls.")
+        local originalCallback=getcallbackvalue(play,"OnInvoke")
+        assert(type(originalCallback)=="function","Wait for your character's emote controls to load.")
+        local animator=humanoid:FindFirstChildOfClass("Animator")
+        assert(animator,"Wait for your avatar to finish spawning.")
+        local function callback(emote,...)
+            if not alive or not walkingEnabled then return originalCallback(emote,...) end
+            if typeof(emote)~="Instance" or not emote:IsA("Animation") then return originalCallback(emote,...) end
+            stopWalkingEmote()
+            local ok,newTrack=pcall(function()return animator:LoadAnimation(emote)end)
+            if not ok then return originalCallback(emote,...) end
+            walkingTrack=newTrack
+            newTrack.Priority=Enum.AnimationPriority.Action
+            newTrack:Play(0.15)
+            return true,newTrack
+        end
+        walkingHook={object=play,original=originalCallback,callback=callback}
+        play.OnInvoke=callback
+        walkingState=humanoid.StateChanged:Connect(function(_,state)
+            if state==Enum.HumanoidStateType.Jumping or state==Enum.HumanoidStateType.Dead then stopWalkingEmote() end
+        end)
+    end
+    function api.setEmoteWhileWalking(enabled)
+        local previous=walkingEnabled
+        walkingEnabled=enabled==true
+        local ok,message=pcall(bindWalking)
+        if not ok then walkingEnabled=previous;pcall(bindWalking);error(message) end
+        if gui then gui:SetAttribute("HoneyBunCosmeticUI_emoteWhileWalking",walkingEnabled) end
+        return walkingEnabled
+    end
+    function api.getEmoteWhileWalking() return walkingEnabled end
+    local catalogCache={}
+    function api.searchEmotes(query,more)
+        query=tostring(query or ""):match("^%s*(.-)%s*$"):sub(1,100)
+        local key=query:lower()
+        local cached=catalogCache[key]
+        if cached and os.clock()-cached.time<300 and not more then
+            return copy(cached.items),not cached.pages.IsFinished
+        end
+        if not cached or os.clock()-cached.time>=300 then
+            local params=CatalogSearchParams.new()
+            params.AssetTypes={Enum.AvatarAssetType.EmoteAnimation}
+            params.SearchKeyword=query
+            params.Limit=30
+            local pages=game:GetService("AvatarEditorService"):SearchCatalogAsync(params)
+            cached={pages=pages,items={},time=os.clock()}
+            catalogCache[key]=cached
+        elseif more and not cached.pages.IsFinished then
+            cached.pages:AdvanceToNextPageAsync()
+        else
+            return copy(cached.items),not cached.pages.IsFinished
+        end
+        local seen={}
+        for _,item in ipairs(cached.items) do seen[item.id]=true end
+        for _,item in ipairs(cached.pages:GetCurrentPage()) do
+            local id=tonumber(item.Id)
+            if id and not seen[id] then
+                seen[id]=true;cached.items[#cached.items+1]={id=id,name=tostring(item.Name or "Emote")}
+            end
+        end
+        return copy(cached.items),not cached.pages.IsFinished
+    end
     function api.setEmote(slot,value)
         slot=slotNumber(slot)
         local id=assetId(value)
         description()
         local previous=slots[slot]
-        slots[slot]={id=id,name="Emote "..string.format("%.0f",id)}
+        local info=game:GetService("MarketplaceService"):GetProductInfo(id)
+        assert(tonumber(info.AssetTypeId)==61,"Choose an emote from the Roblox catalog.")
+        slots[slot]={id=id,name=tostring(info.Name or "Custom"):sub(1,80)}
         local ok,message=pcall(applyWheel)
         if not ok then slots[slot]=previous;error(message) end
         save()
@@ -128,17 +270,19 @@ return function(player,onStatus)
         return "Playing emote from slot "..slot.."."
     end
     function api.reapplySaved()
-        if next(slots) then applyWheel() end
+        applyWheel()
+        if walkingEnabled then bindWalking() end
         return "Saved emote wheel assignments restored."
     end
     function api.restore()
-        restoreWheel();slots={};save();original=nil
+        restoreWheel();slots={};replaceOriginals=false;save();original=nil
         return "Original emote wheel restored."
     end
     local changed=player.CharacterAdded:Connect(function(character)
         generation=generation+1;local ticket=generation
         original=nil
-        if not next(slots) then return end
+        unbindWalking()
+        if managedRespawn then return end
         task.spawn(function()
             for attempt=1,100 do
                 if not alive or generation~=ticket or player.Character~=character then return end
@@ -156,7 +300,7 @@ return function(player,onStatus)
     end)
     function api.destroy()
         if not alive then return end
-        alive=false;generation=generation+1;changed:Disconnect();pcall(restoreWheel);original=nil
+        alive=false;generation=generation+1;changed:Disconnect();unbindWalking();pcall(restoreWheel);original=nil
     end
     return api
 end

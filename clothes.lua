@@ -24,7 +24,7 @@ local function dispose(roots)
     for _,root in ipairs(roots or {}) do if root then root:Destroy() end end
 end
 
-return function(player,onStatus)
+return function(player,onStatus,managedRespawn)
     local gui=player:FindFirstChildOfClass("PlayerGui")
     local attribute="HoneyBunCosmeticClothes"
     local settings={Shirt=nil,Pants=nil,ShirtGraphic=nil}
@@ -87,9 +87,9 @@ return function(player,onStatus)
         if clearSaved then settings[kind]=nil;save() end
         return "Original "..string.lower(kind).." restored."
     end
-    local function equip(kind,value)
+    local function resolveTemplate(ctx,kind,value)
         local property=({Shirt="ShirtTemplate",Pants="PantsTemplate",ShirtGraphic="Graphic"})[kind]
-        local ctx=context();local id=parse(value);local ticket=nextRequest(kind);local assetId=string.format("%.0f",id);local key=kind..":"..assetId;local template=templates[key]
+        local id=parse(value);local assetId=string.format("%.0f",id);local key=kind..":"..assetId;local template=templates[key]
         if not template then
             local ok,roots=pcall(function() return game:GetObjects("rbxassetid://"..assetId) end)
             assert(ok and type(roots)=="table" and #roots>0,"Roblox could not load that catalog item. It may be private or unavailable.")
@@ -103,9 +103,17 @@ return function(player,onStatus)
             if not source then dispose(roots);error("That catalog item is not a classic "..string.lower(kind)..".") end
             template=source[property]
             if type(template)~="string" or template=="" then dispose(roots);error("That classic "..string.lower(kind).." has no usable template.") end
+            game:GetService("ContentProvider"):PreloadAsync({template})
+            check(ctx)
             templates[key]=template
             dispose(roots)
         end
+        return template,id
+    end
+    local function equip(kind,value)
+        local ctx=context();local ticket=nextRequest(kind)
+        local property=({Shirt="ShirtTemplate",Pants="PantsTemplate",ShirtGraphic="Graphic"})[kind]
+        local template,id=resolveTemplate(ctx,kind,value)
         assert(requests[kind]==ticket,"Clothing choice changed while loading.")
         local applied=Instance.new(kind);applied.Name="HoneyBun"..kind;applied[property]=template
         if not valid(ctx) then applied:Destroy();check(ctx) end
@@ -130,10 +138,18 @@ return function(player,onStatus)
     function api.restorePants()return restoreKind("Pants",true) end
     function api.restore() local a=restoreKind("Shirt",false);local b=restoreKind("Pants",false);local c=restoreKind("ShirtGraphic",false);settings.Shirt=nil;settings.Pants=nil;settings.ShirtGraphic=nil;save();return a.." "..b.." "..c end
     function api.getSettings()return {Shirt=settings.Shirt,Pants=settings.Pants,ShirtGraphic=settings.ShirtGraphic} end
+    function api.prepareSaved()
+        local ctx=context()
+        for _,kind in ipairs({"Shirt","Pants","ShirtGraphic"})do
+            if settings[kind] and settings[kind]~=0 then resolveTemplate(ctx,kind,settings[kind])end
+        end
+        check(ctx)
+    end
     function api.reapplySaved()
         local old=reapplying;reapplying=true;local messages,errors={},{}
         for _,kind in ipairs({"Shirt","Pants","ShirtGraphic"}) do
             if settings[kind] then
+                if onStatus then onStatus("Restoring "..string.lower(kind).." ("..tostring(settings[kind])..")...") end
                 local ok,message=pcall(function() if settings[kind]==0 then return remove(kind) end;return equip(kind,settings[kind]) end)
                 if ok then table.insert(messages,string.lower(kind)) else table.insert(errors,string.lower(kind)..": "..tostring(message)) end
             end
@@ -144,13 +160,13 @@ return function(player,onStatus)
     end
     local changed=player.CharacterAdded:Connect(function(character)
         generation=generation+1;for _,kind in ipairs({"Shirt","Pants","ShirtGraphic"}) do local s=state[kind];if s then clearApplied(s);for _,item in ipairs(s.originals) do item:Destroy() end;state[kind]=nil end end
+        if managedRespawn then return end
         local ticket=generation;task.spawn(function()
             for attempt=1,100 do
                 if not alive or ticket~=generation or player.Character~=character then return end
                 local humanoid=character:FindFirstChildOfClass("Humanoid")
                 local ok,ready=pcall(function() return player:HasAppearanceLoaded() end)
                 if humanoid and humanoid.Health>0 and ((ok and ready) or attempt>=50) then
-                    task.wait(0.25)
                     if not alive or ticket~=generation or player.Character~=character then return end
                     local applied,message=pcall(api.reapplySaved)
                     if not applied and onStatus then onStatus("Could not restore saved clothes: "..tostring(message)) end

@@ -11,6 +11,15 @@ local groups={
 local r15={"Head","UpperTorso","LowerTorso","LeftUpperArm","LeftLowerArm","LeftHand",
     "RightUpperArm","RightLowerArm","RightHand","LeftUpperLeg","LeftLowerLeg","LeftFoot",
     "RightUpperLeg","RightLowerLeg","RightFoot"}
+local scaleFields={height="BodyHeightScale",width="BodyWidthScale",depth="BodyDepthScale",head="HeadScale",bodyType="BodyTypeScale",proportion="BodyProportionScale"}
+local descriptionScales={height="HeightScale",width="WidthScale",depth="DepthScale",head="HeadScale",bodyType="BodyTypeScale",proportion="ProportionScale"}
+local function validScales(values)
+    if type(values)~="table" then return false end
+    for key,value in pairs(values)do
+        if not scaleFields[key] or type(value)~="number" or value~=value or value<0 or value>5 then return false end
+    end
+    return true
+end
 local outfits={Girl=131929545,["Robloxian 2.0"]=131929576}
 local bodyRegions={Head=true,Torso=true,LeftArm=true,RightArm=true,LeftLeg=true,RightLeg=true}
 local r6BodyPartNames={Head="Head",Torso="Torso",LeftArm="LeftArm",RightArm="RightArm",LeftLeg="LeftLeg",RightLeg="RightLeg"}
@@ -49,7 +58,7 @@ local function bodyClone(part)
     for _,item in ipairs(clone:GetDescendants()) do if item:IsA("JointInstance") then item:Destroy() end end
     return clone
 end
-return function(player,onStatus)
+return function(player,onStatus,managedRespawn)
     local alive,generation=true,0
     local snapshot,added,skin,hidden=nil,{},{},{}
     local gear=nil
@@ -61,6 +70,7 @@ return function(player,onStatus)
     local reapplying,replayGeneration,replayToken=false,nil,0
     local function copySettings()
         local copy={accessories={},colors={},bodyParts={},hideOriginals=settings.hideOriginals,body=settings.body,gear=settings.gear,face=settings.face}
+        if settings.scales then copy.scales=table.clone(settings.scales) end
         for i,id in ipairs(settings.accessories) do copy.accessories[i]=id end
         for region,color in pairs(settings.colors) do copy.colors[region]={color[1],color[2],color[3]} end
         for region,value in pairs(settings.bodyParts) do copy.bodyParts[region]=value end
@@ -74,6 +84,7 @@ return function(player,onStatus)
         end)
         if ok and type(saved)=="table" then
             if type(saved.face)=="number" and saved.face>0 and saved.face%1==0 and saved.face<9007199254740992 then settings.face=saved.face end
+            if validScales(saved.scales) then settings.scales=table.clone(saved.scales) end
             settings.hideOriginals=saved.hideOriginals==true
             if type(saved.body)=="string" then settings.body=saved.body end
             if type(saved.bodyParts)=="table" then
@@ -157,6 +168,11 @@ return function(player,onStatus)
             if ctx.humanoid.RigType==Enum.HumanoidRigType.R6 then
                 local head=ctx.character:FindFirstChild("Head")
                 if head and head:IsA("BasePart") then saved.r6Head=bodyClone(head) end
+            end
+            saved.scales={}
+            for _,name in pairs(scaleFields)do
+                local value=ctx.humanoid:FindFirstChild(name)
+                if value and value:IsA("NumberValue") then saved.scales[name]=value.Value end
             end
             snapshot=saved
         end
@@ -360,26 +376,41 @@ return function(player,onStatus)
         removeR6RegionMeshes(ctx,region)
         for _,mesh in ipairs(r6MeshesFor(region,snapshot and snapshot.meshes)) do mesh:Clone().Parent=ctx.character end
     end
+    local wearableTemplates,wearableOrder={},{}
+    local function wearable(ctx,id,kind)
+        local key=kind..":"..string.format("%.0f",id)
+        local cached=wearableTemplates[key]
+        if cached then return cached:Clone() end
+        local ok,objects=pcall(function()return game:GetObjects("rbxassetid://"..string.format("%.0f",id))end)
+        assert(ok and type(objects)=="table" and #objects>0,"Roblox could not load that "..kind:lower()..". It may be private or unavailable.")
+        if not valid(ctx)then dispose(objects);check(ctx)end
+        local function matches(item)return item:IsA(kind) or (kind=="Accessory" and item:IsA("Hat"))end
+        local source
+        for _,root in ipairs(objects)do
+            strip(root)
+            if matches(root)then source=root;break end
+            for _,item in ipairs(root:GetDescendants())do if matches(item)then source=item;break end end
+            if source then break end
+        end
+        if not source then dispose(objects);error("That catalog item is not a wearable "..kind:lower()..".")end
+        local template=source:Clone();dispose(objects)
+        local handle=template:FindFirstChild("Handle")
+        if not handle or not handle:IsA("BasePart")then template:Destroy();error("That item has no usable Handle.")end
+        game:GetService("ContentProvider"):PreloadAsync({template})
+        if not valid(ctx)then template:Destroy();check(ctx)end
+        wearableTemplates[key]=template;wearableOrder[#wearableOrder+1]=key
+        if #wearableOrder>32 then
+            local oldest=table.remove(wearableOrder,1)
+            wearableTemplates[oldest]:Destroy();wearableTemplates[oldest]=nil
+        end
+        return template:Clone()
+    end
     local api={}
     function api.equipAccessory(value)
         local ctx=context()
         local id=idFrom(value,"catalog")
         assert(#added<20,"Remove an added accessory before adding more (20 maximum).")
-        local ok,objects=pcall(function() return game:GetObjects("rbxassetid://"..string.format("%.0f",id)) end)
-        assert(ok and type(objects)=="table" and #objects>0,"Roblox could not load that accessory. It may be private or unavailable.")
-        if not valid(ctx) then dispose(objects);check(ctx) end
-        local accessory
-        for _,root in ipairs(objects) do
-            strip(root)
-            if root:IsA("Accessory") or root:IsA("Hat") then accessory=root;break end
-            for _,item in ipairs(root:GetDescendants()) do
-                if item:IsA("Accessory") or item:IsA("Hat") then accessory=item;break end
-            end
-            if accessory then break end
-        end
-        if not accessory then dispose(objects);error("That item is not a wearable accessory. Use a hat, mask, or hair catalog link.") end
-        local candidate=accessory:Clone()
-        dispose(objects)
+        local candidate=wearable(ctx,id,"Accessory")
         strip(candidate)
         -- The original Dusekkar script gates these existing effects to user 916.
         if id==1474657 then
@@ -401,18 +432,7 @@ return function(player,onStatus)
     end
     function api.equipGear(value)
         local ctx=context();local id=idFrom(value,"catalog")
-        local ok,objects=pcall(function() return game:GetObjects("rbxassetid://"..string.format("%.0f",id)) end)
-        assert(ok and type(objects)=="table" and #objects>0,"Roblox could not load that gear. It may be private or unavailable.")
-        if not valid(ctx) then dispose(objects);check(ctx) end
-        local source
-        for _,root in ipairs(objects) do
-            strip(root)
-            if root:IsA("Tool") then source=root;break end
-            for _,item in ipairs(root:GetDescendants()) do if item:IsA("Tool") then source=item;break end end
-            if source then break end
-        end
-        if not source then dispose(objects);error("That item is not wearable gear (Tool).") end
-        local candidate=source:Clone();dispose(objects)
+        local candidate=wearable(ctx,id,"Tool")
         local handle=candidate:FindFirstChild("Handle")
         if not handle or not handle:IsA("BasePart") then candidate:Destroy();error("That gear has no usable Handle.") end
         strip(candidate)
@@ -595,6 +615,19 @@ return function(player,onStatus)
         end
         return table.concat(lines,"\n")
     end
+    function api.setScales(values)
+        assert(validScales(values),"Invalid avatar proportions.")
+        local ctx=context()
+        if ctx.humanoid.RigType~=Enum.HumanoidRigType.R15 then return "Avatar proportions require R15." end
+        for key in pairs(values)do
+            local value=ctx.humanoid:FindFirstChild(scaleFields[key])
+            assert(value and value:IsA("NumberValue"),"This character does not support avatar proportions.")
+        end
+        capture(ctx,true)
+        for key,value in pairs(values)do ctx.humanoid[scaleFields[key]].Value=value end
+        settings.scales=table.clone(values);save()
+        return "Avatar proportions applied."
+    end
     function api.setSkin(color,region)
         local ctx=context();region=region or "All"
         assert(region=="All" or groups[region],"Choose a body region.")
@@ -608,16 +641,11 @@ return function(player,onStatus)
         end
         return "Skin color applied (visible to you)."
     end
-    function api.applyBody(value)
-        local ctx=context()
+    local fullBodyTemplates={}
+    local function bodySource(ctx,value)
         local isR6=ctx.humanoid.RigType==Enum.HumanoidRigType.R6
-        if value=="Blocky" and isR6 then
-            capture(ctx)
-            for _,item in ipairs(ctx.character:GetChildren()) do if item:IsA("CharacterMesh") then item:Destroy() end end
-            snapshot.bodyChanged=true
-            if not reapplying then settings.body=value;save() end
-            return "Blocky body applied (visible to you)."
-        end
+        local cacheKey=tostring(ctx.humanoid.RigType)..":"..tostring(value)
+        if fullBodyTemplates[cacheKey]then return fullBodyTemplates[cacheKey]:Clone()end
         local outfit=outfits[value]
         if value~="Blocky" and not outfit then
             local id=idFrom(value,"bundles")
@@ -642,6 +670,23 @@ return function(player,onStatus)
         if not valid(ctx) then if ok and template then template:Destroy() end;check(ctx) end
         assert(ok and template,"Roblox blocked generating this body package in this client.")
         strip(template)
+        game:GetService("ContentProvider"):PreloadAsync({template})
+        check(ctx)
+        for key,old in pairs(fullBodyTemplates)do old:Destroy();fullBodyTemplates[key]=nil end
+        fullBodyTemplates[cacheKey]=template:Clone()
+        return template
+    end
+    function api.applyBody(value)
+        local ctx=context()
+        local isR6=ctx.humanoid.RigType==Enum.HumanoidRigType.R6
+        if value=="Blocky" and isR6 then
+            capture(ctx)
+            for _,item in ipairs(ctx.character:GetChildren()) do if item:IsA("CharacterMesh") then item:Destroy() end end
+            snapshot.bodyChanged=true
+            if not reapplying then settings.body=value;save() end
+            return "Blocky body applied (visible to you)."
+        end
+        local template=bodySource(ctx,value)
         local applied,message=pcall(function()
             if isR6 then
                 local meshes={}
@@ -671,14 +716,15 @@ return function(player,onStatus)
         return "Body package applied (visible to you)."
     end
     local bodyPartTemplates,bodyPartOrder={},{}
-    function api.applyBodyPart(region,value)
-        local ctx=context()
+    local function bodyPartSource(ctx,region,value)
         assert(bodyRegions[region],"Choose a body region.")
         local isR6=ctx.humanoid.RigType==Enum.HumanoidRigType.R6
         local field=region;local names=regionNames(region)
         local text=tostring(value or ""):match("^%s*(.-)%s*$")
         local isBundle=text:match("^https?://[^/]+/bundles/%d+") ~= nil
-        local cacheKey=tostring(ctx.humanoid.RigType)..":"..region..":"..text
+        local scaleKey={}
+        for _,key in ipairs({"height","width","depth","head","bodyType","proportion"})do scaleKey[#scaleKey+1]=tostring((settings.scales or {})[key] or "")end
+        local cacheKey=tostring(ctx.humanoid.RigType)..":"..region..":"..text..":"..table.concat(scaleKey,",")
         local cached=bodyPartTemplates[cacheKey]
         local id=cached and cached.id
         if not isBundle and not cached then id=idFrom(value,"catalog") end
@@ -704,11 +750,11 @@ return function(player,onStatus)
             source:Destroy()
             assert(type(selected)=="number" and selected>0,"That bundle has no selected "..region..".")
             id=selected
-        else
+        elseif settings.bodyParts[region]~=value then
             local service=game:GetService("MarketplaceService")
             local ok,info=pcall(function() return service:GetProductInfoAsync(id,Enum.InfoType.Asset) end)
             check(ctx)
-            assert(ok and type(info)=="table" and info.AssetTypeId, "Roblox could not validate that catalog asset.")
+            assert(ok and type(info)=="table" and info.AssetTypeId, "Roblox could not validate "..region.." ("..tostring(id)..").")
             local expected={Head={[17]=true,[79]=true},Torso={[27]=true},RightArm={[28]=true},LeftArm={[29]=true},LeftLeg={[30]=true},RightLeg={[31]=true}}
             assert(expected[region][info.AssetTypeId],"That catalog item is not a "..region.." body part.")
         end
@@ -716,6 +762,7 @@ return function(player,onStatus)
         if cached then ok,template=pcall(function()return cached.model:Clone()end)
         else
             local description=Instance.new("HumanoidDescription");description[field]=id
+            for key,value in pairs(settings.scales or {})do description[descriptionScales[key]]=value end
             ok,template=pcall(function()return Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType)end)
             description:Destroy()
         end
@@ -724,6 +771,8 @@ return function(player,onStatus)
         strip(template)
         local function remember()
             if cached then return end
+            game:GetService("ContentProvider"):PreloadAsync({template})
+            check(ctx)
             bodyPartTemplates[cacheKey]={id=id,model=template:Clone()}
             bodyPartOrder[#bodyPartOrder+1]=cacheKey
             if #bodyPartOrder>12 then
@@ -731,6 +780,14 @@ return function(player,onStatus)
                 bodyPartTemplates[old].model:Destroy();bodyPartTemplates[old]=nil
             end
         end
+        return template,remember
+    end
+    function api.applyBodyPart(region,value)
+        local ctx=context()
+        local isR6=ctx.humanoid.RigType==Enum.HumanoidRigType.R6
+        local names=regionNames(region)
+        local template,remember=bodyPartSource(ctx,region,value)
+        remember()
         if isR6 then
             local applied,message=pcall(function()
                 capture(ctx)
@@ -746,7 +803,6 @@ return function(player,onStatus)
                     for _,mesh in ipairs(meshes) do mesh:Clone().Parent=ctx.character end
                 end
             end)
-            if applied then remember()end
             template:Destroy()
             assert(applied,message)
             snapshot.bodyChanged=true
@@ -756,7 +812,6 @@ return function(player,onStatus)
         local parts={}
         for _,name in ipairs(names) do local part=template:FindFirstChild(name);if part and part:IsA("BasePart") then parts[name]=part end end
         local applied,message=pcall(function() capture(ctx,true);replaceParts(ctx,parts,names) end)
-        if applied then remember()end
         template:Destroy()
         assert(applied,message)
         snapshot.bodyChanged=true
@@ -776,8 +831,8 @@ return function(player,onStatus)
         return "Original "..region.." restored."
     end
     local faceTemplates={}
-    function api.applyFace(value)
-        local ctx=context();local id=idFrom(value,"catalog")
+    local function faceSource(ctx,value)
+        local id=idFrom(value,"catalog")
         local texture=faceTemplates[id]
         if not texture then
             local ok,objects=pcall(function()return game:GetObjects("rbxassetid://"..string.format("%.0f",id))end)
@@ -790,8 +845,15 @@ return function(player,onStatus)
             end
             dispose(objects)
             assert(type(texture)=="string" and texture~="","That catalog item is not a classic face.")
+            game:GetService("ContentProvider"):PreloadAsync({texture})
+            check(ctx)
             faceTemplates[id]=texture
         end
+        return texture,id
+    end
+    function api.applyFace(value)
+        local ctx=context()
+        local texture,id=faceSource(ctx,value)
         if settings.bodyParts.Head then
             local ok,headId=pcall(idFrom,settings.bodyParts.Head,"catalog")
             if ok and (headId==134082579 or headId==15093053680) then api.restoreBodyPart("Head") end
@@ -851,6 +913,10 @@ return function(player,onStatus)
             end
             snapshot.bodyChanged=false
         end
+        for name,value in pairs(snapshot.scales or {})do
+            local scale=ctx.humanoid:FindFirstChild(name)
+            if scale and scale:IsA("NumberValue") then scale.Value=value end
+        end
         restoreSkinAppearance(ctx)
         restoreFaceAppearance(ctx)
         return "Original appearance restored."
@@ -886,13 +952,28 @@ return function(player,onStatus)
     end
     function api.getSettings() return copySettings() end
     local operations={}
-    for _,name in ipairs({"equipAccessory","equipGear","removeGear","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","applyBody","applyBodyPart","restoreBodyPart","applyFace","restoreFace","restoreSkin","restoreBody","restore"}) do
+    for _,name in ipairs({"equipAccessory","equipGear","removeGear","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","setScales","applyBody","applyBodyPart","restoreBodyPart","applyFace","restoreFace","restoreSkin","restoreBody","restore"}) do
         local operation=api[name]
         operations[name]=operation
         api[name]=function(...)
             assert(not reapplying,"Wait for saved cosmetics to finish restoring.")
             return operation(...)
         end
+    end
+    function api.prepareSaved()
+        local ctx=context()
+        if settings.body and not(settings.body=="Blocky" and ctx.humanoid.RigType==Enum.HumanoidRigType.R6)then
+            local template=bodySource(ctx,settings.body);template:Destroy()
+        end
+        for region,value in pairs(settings.bodyParts)do
+            local template,remember=bodyPartSource(ctx,region,value);remember();template:Destroy()
+        end
+        for _,id in ipairs(settings.accessories)do local template=wearable(ctx,id,"Accessory");template:Destroy()end
+        if settings.gear then local template=wearable(ctx,settings.gear.id,"Tool");template:Destroy()end
+        if settings.face then
+            faceSource(ctx,settings.face)
+        end
+        check(ctx)
     end
     function api.reapplySaved()
         local ctx=context()
@@ -904,21 +985,24 @@ return function(player,onStatus)
         local desired=copySettings()
         local failures={}
         local ok,message=pcall(function()
+            notify("Restoring original appearance...",true)
             restoreAppearance(desired.hideOriginals)
-            local function apply(operation,...)
+            local function apply(label,operation,...)
                 check(ctx)
+                notify("Restoring "..label.."...",true)
                 local success,err=pcall(operation,...)
                 check(ctx)
                 if not success then table.insert(failures,(tostring(err):gsub("^.-:%d+:%s*",""))) end
             end
-            if desired.body then apply(operations.applyBody,desired.body) end
-            for region,value in pairs(desired.bodyParts) do apply(operations.applyBodyPart,region,value) end
-            if desired.face then apply(operations.applyFace,desired.face)end
-            if desired.hideOriginals then apply(operations.removeCurrentAccessories) end
-            for _,id in ipairs(desired.accessories) do apply(operations.equipAccessory,id) end
-            if desired.gear and desired.gear.id then apply(operations.equipGear,desired.gear.id) end
-            if desired.colors.All then apply(operations.setSkin,Color3.new(desired.colors.All[1],desired.colors.All[2],desired.colors.All[3]),"All") end
-            for region,color in pairs(desired.colors) do if region~="All" then apply(operations.setSkin,Color3.new(color[1],color[2],color[3]),region) end end
+            if desired.scales then apply("proportions",operations.setScales,desired.scales) end
+            if desired.body then apply("body",operations.applyBody,desired.body) end
+            for region,value in pairs(desired.bodyParts) do apply(region,operations.applyBodyPart,region,value) end
+            if desired.face then apply("face",operations.applyFace,desired.face)end
+            if desired.hideOriginals then apply("hidden accessories",operations.removeCurrentAccessories) end
+            for _,id in ipairs(desired.accessories) do apply("accessory "..id,operations.equipAccessory,id) end
+            if desired.gear and desired.gear.id then apply("gear "..desired.gear.id,operations.equipGear,desired.gear.id) end
+            if desired.colors.All then apply("skin color",operations.setSkin,Color3.new(desired.colors.All[1],desired.colors.All[2],desired.colors.All[3]),"All") end
+            for region,color in pairs(desired.colors) do if region~="All" then apply(region.." color",operations.setSkin,Color3.new(color[1],color[2],color[3]),region) end end
         end)
         if token==replayToken then reapplying=false end
         check(ctx)
@@ -939,7 +1023,6 @@ return function(player,onStatus)
                     appearance=ok and loaded
                 end
                 if humanoid and humanoid.Health>0 and c:FindFirstChild("Head") and (appearance or attempt>=50) then
-                    task.wait(0.25)
                     if not alive or generation~=ticket or player.Character~=c then return end
                     local ok,err=pcall(api.reapplySaved)
                     if not ok and alive and generation==ticket then notify("Could not restore saved cosmetics: "..tostring(err),false) end
@@ -951,15 +1034,19 @@ return function(player,onStatus)
         end)
     end
     local changed=player.CharacterAdded:Connect(function(c)
-        generation=generation+1;forget();schedule(c)
+        generation=generation+1;forget();if not managedRespawn then schedule(c)end
     end)
     function api.destroy()
         if not alive then return end
         generation=generation+1
         changed:Disconnect()
         if snapshot and snapshot.character==player.Character then pcall(restoreAppearance) end
+        for _,template in pairs(fullBodyTemplates)do template:Destroy()end
+        fullBodyTemplates={}
         for _,entry in pairs(bodyPartTemplates)do entry.model:Destroy()end
         bodyPartTemplates={};bodyPartOrder={}
+        for _,template in pairs(wearableTemplates)do template:Destroy()end
+        wearableTemplates={};wearableOrder={}
         forget();alive=false
     end
     return api

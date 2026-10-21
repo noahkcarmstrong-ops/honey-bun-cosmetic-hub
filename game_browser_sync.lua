@@ -22,10 +22,13 @@ local function call(method,path,token,body)
     assert(tonumber(code)==200,"Browser relay returned HTTP "..tostring(code or "unknown"))
     return result.Body and HttpService:JSONDecode(result.Body) or {}
 end
-return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNames,getViews)
+return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNames,getViews,sharing)
     local api,token,connected,lastJson,lastRevision={},nil,false,nil,0
     local generation=0
     local lastNameState=nil
+    local lastSharingPreference=nil
+    local sharingConnected=false
+    local scheduleSnapshot
     local larpEnabled,larpName,lastSnapshot=false,"",nil
     local socket,socketReady,socketMine,nextSocketTry=nil,false,0,0
     local incoming,pumping={},false
@@ -46,6 +49,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         for callback in pairs(snapshotListeners)do pcall(callback,lastSnapshot)end
     end
     local function notifySharing(value)
+        if type(value)=="table" then
+            if value.type=="snapshot" then sharingConnected=true
+            elseif value.type=="status" then sharingConnected=false end
+            if scheduleSnapshot then scheduleSnapshot()end
+        end
         for callback in pairs(sharingListeners)do pcall(callback,value)end
     end
     local file="larpblox-browser-pair-"..tostring(player.UserId)..".txt"
@@ -145,7 +153,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             return c and hex(c) or "ffffff"
         end
         local definition={assets={},bodyColors={headColor=color("Head","Head"),torsoColor=color("Torso","UpperTorso"),leftArmColor=color("LeftArm","Left Arm"),rightArmColor=color("RightArm","Right Arm"),leftLegColor=color("LeftLeg","Left Leg"),rightLegColor=color("RightLeg","Right Leg")},scales={},playerAvatarType={playerAvatarType=humanoid.RigType==Enum.HumanoidRigType.R6 and "R6" or "R15"}}
-        for _,pair in ipairs({{"HeightScale","height"},{"WidthScale","width"},{"DepthScale","depth"},{"HeadScale","head"},{"BodyTypeScale","bodyType"},{"ProportionScale","proportion"}})do local v=desc[pair[1]];if type(v)=="number" and v==v and v<math.huge then definition.scales[pair[2]]=v end end
+        for _,pair in ipairs({{"HeightScale","height"},{"WidthScale","width"},{"DepthScale","depth"},{"HeadScale","head"},{"BodyTypeScale","bodyType"},{"ProportionScale","proportion"}})do local live=humanoid:FindFirstChild(({height="BodyHeightScale",width="BodyWidthScale",depth="BodyDepthScale",head="HeadScale",bodyType="BodyTypeScale",proportion="BodyProportionScale"})[pair[2]]);local v=live and live:IsA("NumberValue") and live.Value or desc[pair[1]];if type(v)=="number" and v==v and v<math.huge then definition.scales[pair[2]]=v end end
         local items,seen={},{}
         local function add(id,name,assetType,include,meta)
             if include and safeId(id) and not seen[id] and #items<100 then
@@ -161,6 +169,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         local source=desc
         if settings.body and settings.body~="Blocky" then source=bodyDescription(settings.body) end
         if source~=desc then definition.scales.bodyType=source.BodyTypeScale;definition.scales.proportion=source.ProportionScale end
+        for key,value in pairs(settings.scales or {})do definition.scales[key]=value end
         for region,typeId in pairs(bodyTypes)do
             local id=source[region]
             if settings.body=="Blocky" and (region~="Head" or humanoid.RigType~=Enum.HumanoidRigType.R6) then id=0 end
@@ -184,7 +193,16 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if readable then add(id,property,assetType,true)end
             end
         end
-        return {version=1,userId=tostring(player.UserId),definition=definition,items=items}
+        local emotes={}
+        if sharing and sharing.getMotion then
+            local equipped=sharing.getMotion().getSlots()
+            for index=1,8 do local item=equipped[index];if item then emotes[#emotes+1]={slot=index,id=item.id,name=item.name} end end
+        end
+        local backgroundId,backgrounds
+        if sharing and sharing.getBackgroundState then backgroundId,backgrounds=sharing.getBackgroundState() end
+        if backgroundId and backgroundId>0 then definition.backgroundId=backgroundId;definition.backgroundRequestModel={id=backgroundId} end
+        return {version=1,userId=tostring(player.UserId),definition=definition,items=items,emotes=emotes,backgroundId=backgroundId,backgrounds=backgrounds,
+            sharing={enabled=desiredSharing~=nil and desiredSharing.enabled==true,connected=sharingConnected}}
     end
     local function validSnapshot(value)
         assert(type(value)=="table" and value.version==1 and tostring(value.userId)==tostring(player.UserId),"Browser snapshot is for a different account.")
@@ -201,6 +219,25 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         for _,v in pairs(scales)do assert(type(v)=="number" and v==v and v<math.huge and v>=0 and v<=5,"Browser scales are invalid.")end
         local rig=value.definition.playerAvatarType;assert(type(rig)=="table" and (rig.playerAvatarType=="R6" or rig.playerAvatarType=="R15"),"Browser avatar type is invalid.")
         for _,item in ipairs(value.items)do assert(type(item)=="table" and safeId(item.id) and type(item.name)=="string" and #item.name<=128 and item.itemType=="Asset" and safeId(item.assetType),"Browser item is invalid.")end
+        local background=value.backgroundId or value.definition.backgroundId or (value.definition.backgroundRequestModel and value.definition.backgroundRequestModel.id)
+        if background~=nil then assert(background==0 or safeId(background),"Invalid background ID.") end
+        if value.backgrounds~=nil then
+            assert(type(value.backgrounds)=="table" and #value.backgrounds<=100,"Invalid background collection.")
+            local seen={}
+            for _,item in ipairs(value.backgrounds)do
+                assert(type(item)=="table" and safeId(item.id) and not seen[item.id] and type(item.name)=="string" and #item.name<=128,"Invalid collected background.")
+                seen[item.id]=true
+            end
+            if background and background>0 then assert(seen[background],"Collect this background in the extension first.") end
+        end
+        if value.emotes~=nil then
+            assert(type(value.emotes)=="table" and #value.emotes<=8,"Invalid browser emotes.")
+            local seen={}
+            for _,item in ipairs(value.emotes) do
+                assert(type(item)=="table" and type(item.slot)=="number" and item.slot%1==0 and item.slot>=1 and item.slot<=8 and not seen[item.slot] and safeId(item.id) and type(item.name)=="string" and #item.name<=128,"Invalid browser emote.")
+                seen[item.slot]=true
+            end
+        end
         return value
     end
     local function applyCommand(value)
@@ -215,12 +252,9 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         local ok,msg=pcall(function()
             local before=snapshot()
             for _,item in ipairs(before.items)do if accessoryTypes[item.assetType] then current[item.id]=true end end
-            for _,entry in ipairs({{"Head","headColor"},{"Torso","torsoColor"},{"LeftArm","leftArmColor"},{"RightArm","rightArmColor"},{"LeftLeg","leftLegColor"},{"RightLeg","rightLegColor"}})do
-                local wanted=value.definition.bodyColors[entry[2]]:lower()
-                if before.definition.bodyColors[entry[2]]~=wanted then
-                    local loaded,reason=pcall(avatar.setSkin,Color3.fromRGB(tonumber(wanted:sub(1,2),16),tonumber(wanted:sub(3,4),16),tonumber(wanted:sub(5,6),16)),entry[1])
-                    if not loaded then loadErrors[#loadErrors+1]=entry[1].." color: "..tostring(reason)end
-                end
+            if next(value.definition.scales)~=nil and avatar.setScales then
+                local loaded,reason=pcall(avatar.setScales,value.definition.scales)
+                if not loaded then loadErrors[#loadErrors+1]="Proportions: "..tostring(reason)end
             end
             local currentBody,desiredBody={},{ }
             for _,item in ipairs(before.items)do local region=bodyTypeRegions[item.assetType];if region then currentBody[region]=item.id end end
@@ -247,6 +281,13 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                     if not originalBody[region] then originalBody[region]=currentBody[region] end
                     local loaded,reason=pcall(avatar.applyBodyPart,region,wanted)
                     if loaded then browserBody[region]=wanted else loadErrors[#loadErrors+1]=region..": "..tostring(reason)end
+                end
+            end
+            for _,entry in ipairs({{"Head","headColor"},{"Torso","torsoColor"},{"LeftArm","leftArmColor"},{"RightArm","rightArmColor"},{"LeftLeg","leftLegColor"},{"RightLeg","rightLegColor"}})do
+                local wanted=value.definition.bodyColors[entry[2]]:gsub("^#",""):lower()
+                if before.definition.bodyColors[entry[2]]~=wanted or next(desiredBody)~=nil or bodySettings.body then
+                    local loaded,reason=pcall(avatar.setSkin,Color3.fromRGB(tonumber(wanted:sub(1,2),16),tonumber(wanted:sub(3,4),16),tonumber(wanted:sub(5,6),16)),entry[1])
+                    if not loaded then loadErrors[#loadErrors+1]=entry[1].." color: "..tostring(reason)end
                 end
             end
             local currentFace,desiredFace
@@ -298,7 +339,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if slot then
                     wantedClothes[item.assetType]=true
                     if visibleClothes[item.assetType]~=item.id then clothes[slot[2]](item.id)end
-                elseif animationTypes[item.assetType] then wantedAnimations[#wantedAnimations+1]={id=item.id,assetType=item.assetType}
+                elseif animationTypes[item.assetType] then wantedAnimations[#wantedAnimations+1]={id=item.id,assetType=item.assetType,name=item.name}
                 elseif item.assetType~=19 and not accessoryTypes[item.assetType] and item.assetType~=17 and item.assetType~=18 and item.assetType~=27 and item.assetType~=28 and item.assetType~=29 and item.assetType~=30 and item.assetType~=31 and item.assetType~=79 then failed[#failed+1]=item.name end
             end
             for assetType,slot in pairs(clothingTypes)do if not wantedClothes[assetType] and currentClothes[slot[1]]~=0 and clothes[slot[3]] then clothes[slot[3]]()end end
@@ -309,13 +350,24 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 for _,item in ipairs(wantedAnimations)do desiredAnimations[item.assetType]=item.id;if currentAnimations[item.assetType]~=item.id then changedAnimations=true end end
                 for assetType in pairs(currentAnimations)do if not desiredAnimations[assetType] then changedAnimations=true end end
                 if changedAnimations then
-                    local loaded,reason=pcall(function()if #wantedAnimations>0 then animationApi.equipAssets(wantedAnimations) elseif settings.bundleId or settings.assets then animationApi.restore()end end)
+                    local loaded,reason=pcall(function()animationApi.setAvatarAssets(wantedAnimations) end)
                     if not loaded then loadErrors[#loadErrors+1]="Movement animations: "..tostring(reason)end
                 end
             elseif #wantedAnimations>0 then loadErrors[#loadErrors+1]="Reload the connected script to enable movement animations." end
+            if value.emotes~=nil and sharing and sharing.getMotion then
+                local loaded,reason=pcall(function()sharing.getMotion().replaceSlots(value.emotes)end)
+                if not loaded then loadErrors[#loadErrors+1]="Emotes: "..tostring(reason) end
+            end
             if #loadErrors>0 then error(table.concat(loadErrors,"; "))end
         end)
-        if ok then lastRevision=revision;lastDefinition=value.definition;commandSnapshotPending=true end
+        if ok then
+            if sharing and sharing.setBackgroundState then
+                local id=value.backgroundId or value.definition.backgroundId or (value.definition.backgroundRequestModel and value.definition.backgroundRequestModel.id)
+                sharing.setBackgroundState(id,value.backgrounds)
+            end
+            lastRevision=revision;lastDefinition=value.definition;commandSnapshotPending=true
+            if sharing and sharing.onChanged then sharing.onChanged() end
+        end
         if not ok then status("Browser outfit failed: "..tostring(msg)) elseif #failed>0 then status("Browser outfit applied; unsupported items: "..table.concat(failed,", ")) else status("Browser outfit applied locally.") end
     end
     local function applyNameState(value)
@@ -331,6 +383,15 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             end
         end
         larpEnabled=state~="disabled";larpName=name
+        if sharing and (state=="disabled" or (value and value.sharing~=nil)) then
+            assert(not value or value.sharing==nil or type(value.sharing)=="boolean","Browser sharing preference is invalid.")
+            local enabled=state~="disabled" and value.sharing==true
+            if enabled~=lastSharingPreference then
+                sharing.setEnabled(enabled)
+                lastSharingPreference=enabled
+                if scheduleSnapshot then scheduleSnapshot()end
+            end
+        end
         if state==lastNameState then return end
         if getNames then
             local names=getNames()
@@ -343,7 +404,8 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         notifySnapshot()
     end
     local function closeSocket()
-        socketMine=socketMine+1;socketReady=false;socketSupportsSharing=false
+        socketMine=socketMine+1;socketReady=false;socketSupportsSharing=false;sharingConnected=false
+        if scheduleSnapshot then scheduleSnapshot()end
         local previous=socket;socket=nil
         if previous then pcall(function()previous:Close()end)end
     end
@@ -372,7 +434,6 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         updateViews()
         if made then notifySnapshot()end
     end
-    local scheduleSnapshot
     local function disconnectAll(connections)
         for _,connection in ipairs(connections)do pcall(function()connection:Disconnect()end)end
         table.clear(connections)
@@ -464,7 +525,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         local playerGui=player:FindFirstChildOfClass("PlayerGui")
         if playerGui then
             connectSignal(playerGui.AttributeChanged,appearanceConnections,function(attribute)
-                if type(attribute)=="string" and attribute:find("CosmeticUI",1,true)then scheduleSnapshot()end
+                if type(attribute)=="string" and (attribute:find("CosmeticUI",1,true) or attribute=="HoneyBunCosmeticEmotes" or attribute=="HoneyBunCosmeticAnimationBundle")then scheduleSnapshot()end
             end)
         end
         connectSignal(player.CharacterAdded,appearanceConnections,bindCharacter)
@@ -511,7 +572,10 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         if mine~=generation then pcall(function()candidate:Close()end);return end
         socket=candidate
         candidate.OnClose:Connect(function()
-            if socket==candidate then socket=nil;socketReady=false;lastJson=nil end
+            if socket==candidate then
+                socket=nil;socketReady=false;lastJson=nil;sharingConnected=false
+                scheduleSnapshot()
+            end
         end)
         candidate.OnMessage:Connect(function(message)
             if socket~=candidate or generation~=mine or socketMine~=serial then return end
@@ -600,7 +664,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         startAppearanceWatchers()
         task.spawn(loop);return true
     end
-    function api.disconnect()generation=generation+1;stopAppearanceWatchers();closeSocket();incoming={};retryCommand=nil;connected=false;token=nil;lastJson=nil;lastNameState=nil;applyNameState(nil);if getViews then getViews().update({enabled=false})end;status("Browser disconnected.")end
+    function api.disconnect()generation=generation+1;stopAppearanceWatchers();closeSocket();incoming={};retryCommand=nil;connected=false;token=nil;lastJson=nil;lastNameState=nil;sharingConnected=false;applyNameState(nil);lastSharingPreference=nil;if getViews then getViews().update({enabled=false})end;status("Browser disconnected.")end
     function api.isConnected()return connected end
     function api.status()return connected and (socketReady and "Browser connected via WebSocket." or "Browser connected (HTTP fallback).") or "Browser disconnected."end
     function api.publish()assert(connected,"Connect the browser first.");local value=snapshot();local encoded=HttpService:JSONEncode(value);if encoded~=lastJson then send("game",value);lastJson=encoded end;return value end
@@ -619,6 +683,8 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             assert(socketSupportsSharing,"Update Larpblox Desktop to use shared appearances.")
         end
         desiredSharing=value
+        if not value.enabled then sharingConnected=false end
+        if scheduleSnapshot then scheduleSnapshot()end
         if socketReady and socketSupportsSharing then
             socket:Send(HttpService:JSONEncode({type="sharing",value=value}))
         end

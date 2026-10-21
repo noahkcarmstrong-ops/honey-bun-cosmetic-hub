@@ -17,7 +17,7 @@ For a selectable branch, use `autoexec.lua` and change its first-line `branch` v
 ## Local names
 
 > [!NOTE]
-> Enable **Connection → Share Larp appearance** to share supported looks and Larp names with other Larpblox users in the same server. Both clients must have sharing enabled.
+> Enable **Share appearance** on the browser's Avatar page to share supported looks and Larp names with other Larpblox users in the same server. Both clients must have sharing enabled. Larpblox Desktop connects the browser and game automatically.
 
 Use **Larpblox Desktop 0.1.3 or newer**. Sharing travels from the game to desktop over localhost WebSocket, then through the public WebSocket relay. Changes are pushed as they happen instead of polling every three seconds. Desktop owns reconnects and presence; no browser extension update is needed for this transport. If desktop is older, update it before enabling sharing.
 
@@ -76,19 +76,22 @@ Package changes preserve the source body's hidden parts, including Korblox Death
 
 ## Emotes
 
-1. Open **EMOTES** and select one of the eight wheel slots.
-2. Paste a Roblox emote catalog link or ID and click **Assign to slot**.
-3. Use **Open Roblox emote wheel**, or **Preview slot** to try your selection. **Reset slot** restores that slot's original assignment.
+1. Open **Emotes**.
+2. Hover over a slot to play it on the preview avatar. Moving off the wheel returns the preview to idle.
+3. Click a **+** to add an emote, or click an occupied slot to replace it.
+4. Browse or search the emote thumbnails, select one, then choose **Add** or **Replace**. Use **Link or ID** if you already have a catalog link. Cancel leaves the slot unchanged.
 
-Wheel assignments save for the session and reapply after respawning or Refresh. Roblox's standard wheel requires an R15 avatar and the game's emote menu to be enabled. Private or restricted emotes may not play.
+The top-level tabs separate **Animations** and **Emotes**. The **Background** control in Settings lists backgrounds collected through the browser extension. Selecting one updates both previews and syncs back to the extension; choosing **None** clears it. Background purchases remain in the extension.
+
+Open **Settings** and turn on **Emote while walking** to keep catalog emotes playing as you move. Turn it off or jump to stop the emote. This option requires standard Roblox emote controls and executor callback access.
+
+Only the chosen slot changes. Your other equipped emotes stay in place. Assignments save and reapply after respawning or reloading the interface. Roblox's standard wheel requires an R15 avatar and the game's emote menu to be enabled. Private or restricted emotes may not play.
 
 ## Animations
 
-1. Open **ANIMATIONS** and paste a Roblox movement animation bundle link, such as `https://www.roblox.com/bundles/82/Robot`.
-2. Click **Equip animation bundle**, then walk or run to try it.
-3. Click **Restore original animations** to return to your original movement set.
+Click **Bundle** to browse animation sets, or click an individual **Idle**, **Walk**, **Run**, **Jump**, **Fall**, **Climb**, or **Swim** row to browse that type. Select an animation and choose **Apply**. **Link or ID** remains available for catalog links. **Current avatar** restores the active real or larp avatar's animation for that type.
 
-The bundle changes its included walk, run, idle, jump, fall, climb, and swimming animations while keeping your current appearance. Idle variants and swimming idle are preserved when included. The equipped bundle saves for the session and returns after resets or Refresh. This requires an R15 avatar with Roblox's standard Animate controls; games with custom movement systems may not support it. A bundle that fails to load leaves your equipped movement set in place. Tabs scroll sideways on narrow screens.
+The avatar preview shows changes without moving your character. Saved choices return after resets or reloading the interface. Animation changes require an R15 avatar with Roblox's standard Animate controls; games with custom movement systems may not support them.
 
 ## Saved characters
 
