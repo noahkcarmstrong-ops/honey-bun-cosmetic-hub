@@ -124,7 +124,7 @@ local function isSystemChat(object)
     while ancestor do
         if ancestor==coreGui then return system end
         -- Native TextChat records identify system messages with sender ID 0.
-        if ancestor.Name:match("^0%-%{%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x%}$")then system=true end
+        if tostring(ancestor.Name or ""):match("^0%-%{%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x%}$")then system=true end
         ancestor=ancestor.Parent
     end
     return false
@@ -302,6 +302,7 @@ local function bindChat()
         -- Preserve the game's callback and its filtering/status/formatting.
         if readable and (previous==nil or type(previous)=="function") and (member~="OnChatWindowAdded" or config) then
             local transform=function(properties,message)
+                if not message then return properties end
                 local source=message.TextSource
                 if not source then
                     local text=properties and properties.Text
@@ -328,12 +329,19 @@ local function bindChat()
                 properties.PrefixText=value
                 return properties
             end
-            local state=previous and interceptCallback(previous,transform)
+            -- Only our formatting is optional. Never let it prevent Roblox or
+            -- the game's existing callback from displaying a chat message.
+            local function safeTransform(properties,message)
+                local ok,result=pcall(transform,properties,message)
+                if ok then return result end
+                return properties
+            end
+            local state=previous and interceptCallback(previous,safeTransform)
             if state then
-                chatBindings[member]={state=state,transform=transform}
+                chatBindings[member]={state=state,transform=safeTransform}
             else
                 local hook=function(message)
-                    return transform(previous and previous(message) or nil,message)
+                    return safeTransform(previous and previous(message) or nil,message)
                 end
                 if pcall(function() service[member]=hook end) then
                     chatBindings[member]={previous=previous,hook=hook}
