@@ -428,7 +428,8 @@ return function(player,onStatus,readAsset,managedRespawn)
         local template=source:Clone();dispose(objects)
         local handle=template:FindFirstChild("Handle")
         if not handle or not handle:IsA("BasePart")then template:Destroy();error("That item has no usable Handle.")end
-        game:GetService("ContentProvider"):PreloadAsync({template})
+        -- Let Roblox stream textures on attachment; waiting here serializes
+        -- every accessory behind the slowest texture in the previous one.
         if not valid(ctx)then template:Destroy();check(ctx)end
         wearableTemplates[key]=template;wearableOrder[#wearableOrder+1]=key
         if #wearableOrder>32 then
