@@ -6,7 +6,7 @@ local BODY_TYPES={[17]="Head",[27]="Torso",[28]="RightArm",[29]="LeftArm",[30]="
 local BODY_REGIONS={"Head","Torso","RightArm","LeftArm","LeftLeg","RightLeg"}
 local SCALE_VALUES={height="BodyHeightScale",width="BodyWidthScale",depth="BodyDepthScale",head="HeadScale",bodyType="BodyTypeScale",proportion="BodyProportionScale"}
 local CLOTHES_TYPES={[2]="ShirtGraphic",[11]="Shirt",[12]="Pants"}
-local ANIMATION_TYPES={[48]=true,[50]=true,[51]=true,[52]=true,[53]=true,[54]=true,[55]=true,[56]=true}
+local ANIMATION_TYPES={[48]=true,[50]=true,[51]=true,[52]=true,[53]=true,[54]=true,[55]=true,[56]=true,[78]=true}
 local COLOR_REGIONS={{"Head","headColor"},{"Torso","torsoColor"},{"LeftArm","leftArmColor"},{"RightArm","rightArmColor"},{"LeftLeg","leftLegColor"},{"RightLeg","rightLegColor"}}
 
 local function safeId(value)
@@ -227,7 +227,27 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                 end
             end
         end
-        connections[#connections+1]=character.DescendantAdded:Connect(function(object)if properties(object)then changed()end end)
+        local attachmentRetryQueued=false
+        connections[#connections+1]=character.DescendantAdded:Connect(function(object)
+            if properties(object)then changed()end
+            local parent=object.Parent
+            if object:IsA("Attachment") and parent and parent:IsA("BasePart") and parent.Parent==character
+                and entry.accessoriesComplete==false and not attachmentRetryQueued then
+                attachmentRetryQueued=true
+                task.defer(function()
+                    attachmentRetryQueued=false
+                    if not active or not sharing or not isAlive() or peers[userId]~=entry
+                        or entry.player.Character~=character or entry.accessoriesComplete~=false then return end
+                    local record=latestRecords[userId]
+                    if record then
+                        diagnose(userId,"retry_accessories",object.Name)
+                        -- Retain the completed body/clothing state and existing
+                        -- accessories; applyRecord retries only missing items.
+                        pending[userId]=record;processPending()
+                    end
+                end)
+            end
+        end)
         connections[#connections+1]=character.DescendantRemoving:Connect(function(object)if expected[object]then changed()end end)
         for _,object in ipairs(character:GetChildren())do watch(object)end
         local head=character:FindFirstChild("Head")

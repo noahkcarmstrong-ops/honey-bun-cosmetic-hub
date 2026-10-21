@@ -242,6 +242,21 @@ return function(player,onStatus,readAsset,managedRespawn)
             assert(accessory.Parent==c,"Roblox could not attach this layered accessory.")
             return
         end
+        -- Let Roblox apply its accessory fitting/scaling rules before using
+        -- the client-side weld fallback. A raw catalog handle is not fitted.
+        if accessory:IsA("Accessory") then
+            local humanoid=c:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                local ok=pcall(humanoid.AddAccessory,humanoid,accessory)
+                if ok then
+                    for _,joint in ipairs(handle:GetChildren())do
+                        if joint:IsA("JointInstance") and
+                            ((joint.Part0==handle and joint.Part1 and joint.Part1:IsDescendantOf(c))
+                                or (joint.Part1==handle and joint.Part0 and joint.Part0:IsDescendantOf(c)))then return end
+                    end
+                end
+            end
+        end
         local target,bodyAttachment,handleAttachment
         for _,a in ipairs(handle:GetChildren()) do
             if a:IsA("Attachment") then
@@ -299,10 +314,10 @@ return function(player,onStatus,readAsset,managedRespawn)
         -- Replace visual children too, including when restoring or changing heads.
         if target.Name=="Head" then
             for _,item in ipairs(target:GetChildren()) do
-                if item:IsA("SurfaceAppearance") or item:IsA("Decal") then item:Destroy() end
+                if item:IsA("SurfaceAppearance") or item:IsA("Decal") or item:IsA("FaceControls") or item:IsA("Bone") then item:Destroy() end
             end
             for _,item in ipairs(source:GetChildren()) do
-                if item:IsA("Decal") or (item:IsA("SurfaceAppearance") and target:IsA("MeshPart")) then
+                if item:IsA("Decal") or (target:IsA("MeshPart") and (item:IsA("SurfaceAppearance") or item:IsA("FaceControls") or item:IsA("Bone"))) then
                     item:Clone().Parent=target
                 elseif item:IsA("SurfaceAppearance") and target:IsA("Part") then
                     local mesh=target:FindFirstChildOfClass("SpecialMesh")
@@ -312,9 +327,15 @@ return function(player,onStatus,readAsset,managedRespawn)
         end
         if source.Transparency~=nil then target.Transparency=source.Transparency end
         for _,attachment in ipairs(source:GetChildren()) do
-            if attachment:IsA("Attachment") and attachment.Name:match("RigAttachment$") then
+            if attachment:IsA("Attachment") then
                 local existing=target:FindFirstChild(attachment.Name)
-                if existing and existing:IsA("Attachment") then existing.CFrame=attachment.CFrame end
+                if existing and existing:IsA("Attachment") then
+                    if attachment.Name:match("RigAttachment$")then existing.CFrame=attachment.CFrame end
+                elseif not existing then
+                    -- Generated body parts also carry hat/hair/face attachment
+                    -- points. Preserve those when the replicated part is early.
+                    attachment:Clone().Parent=target
+                end
             end
         end
     end

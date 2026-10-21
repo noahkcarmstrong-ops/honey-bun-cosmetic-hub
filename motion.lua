@@ -169,6 +169,7 @@ return function(player,onStatus,managedRespawn)
         runtime={callbacks=setmetatable({}, {__mode="k"}),muted=setmetatable({}, {__mode="k"})}
         environment.__LarpbloxEmoteEvents=runtime
     end
+    runtime.callbackHooks=runtime.callbackHooks or setmetatable({}, {__mode="k"})
     local scheduleBinding
     local function stopWalkingEmote()
         local track=walkingTrack;walkingTrack=nil
@@ -189,23 +190,36 @@ return function(player,onStatus,managedRespawn)
         if runningConnection then runningConnection:Disconnect();runningConnection=nil end
         if walkingHook then
             local hook=walkingHook;walkingHook=nil
-            pcall(function()
-                if getcallbackvalue(hook.object,"OnInvoke")==hook.callback then hook.object.OnInvoke=hook.original end
-            end)
+            if hook.dispatch and hook.dispatch.handler==hook.callback then hook.dispatch.handler=nil end
         end
     end
     local function bindWalking()
         if not (walkingEnabled or jumpingEnabled)then unbindWalking();return true end
-        assert(type(getcallbackvalue)=="function","Your executor cannot enable movement during emotes.")
+        assert(type(getcallbackvalue)=="function" and type(hookfunction)=="function","Your executor cannot enable movement during emotes.")
         local character,humanoid=context()
         local animate=character:FindFirstChild("Animate")
         local play=animate and animate:FindFirstChild("PlayEmote")
         if not play or not play:IsA("BindableFunction")then return false end
-        if walkingHook and walkingHook.object==play and getcallbackvalue(play,"OnInvoke")==walkingHook.callback then return true end
-        local originalCallback=getcallbackvalue(play,"OnInvoke")
+        local nativeCallback=getcallbackvalue(play,"OnInvoke")
+        local dispatch=runtime.callbackHooks[nativeCallback]
+        if walkingHook and walkingHook.object==play and walkingHook.dispatch==dispatch
+            and dispatch and dispatch.handler==walkingHook.callback then return true end
+        local originalCallback=nativeCallback
         local animator=humanoid:FindFirstChildOfClass("Animator")
         if type(originalCallback)~="function" or not animator then return false end
         unbindWalking()
+        if not dispatch then
+            dispatch={}
+            local trampoline
+            trampoline=hookfunction(nativeCallback,function(...)
+                local handler=dispatch.handler
+                if handler then return handler(...)end
+                return trampoline(...)
+            end)
+            dispatch.original=trampoline
+            runtime.callbackHooks[nativeCallback]=dispatch
+        end
+        originalCallback=dispatch.original
         local function callback(emote,...)
             if not alive or not (walkingEnabled or jumpingEnabled)then return originalCallback(emote,...)end
             if typeof(emote)~="Instance" or not emote:IsA("Animation")then return originalCallback(emote,...)end
@@ -238,8 +252,8 @@ return function(player,onStatus,managedRespawn)
             newTrack:Play(0.15)
             return true,newTrack
         end
-        walkingHook={object=play,original=originalCallback,callback=callback}
-        play.OnInvoke=callback
+        walkingHook={object=play,native=nativeCallback,dispatch=dispatch,callback=callback}
+        dispatch.handler=callback
         walkingState=humanoid.StateChanged:Connect(function(_,state)
             if state==Enum.HumanoidStateType.Dead or (state==Enum.HumanoidStateType.Jumping and not jumpingEnabled)then stopWalkingEmote()end
         end)
@@ -283,7 +297,7 @@ return function(player,onStatus,managedRespawn)
         local function watch(object)
             if object:IsA("BindableFunction") and object.Name=="PlayEmote"then
                 local handler=function(value)
-                    if not walkingHook or value~=walkingHook.callback then scheduleBinding()end
+                    if not walkingHook or value~=walkingHook.native then scheduleBinding()end
                 end
                 runtime.callbacks[object]=handler;observedCallbacks[object]=handler
                 scheduleBinding()
@@ -304,12 +318,12 @@ return function(player,onStatus,managedRespawn)
         end
     end
     function api.setEmoteWhileWalking(enabled)
-        assert(type(getcallbackvalue)=="function","Your executor cannot enable movement during emotes.")
+        assert(type(getcallbackvalue)=="function" and type(hookfunction)=="function","Your executor cannot enable movement during emotes.")
         walkingEnabled=enabled==true;saveEmoteOptions();scheduleBinding();return walkingEnabled
     end
     function api.getEmoteWhileWalking()return walkingEnabled end
     function api.setEmoteWhileJumping(enabled)
-        assert(type(getcallbackvalue)=="function","Your executor cannot enable movement during emotes.")
+        assert(type(getcallbackvalue)=="function" and type(hookfunction)=="function","Your executor cannot enable movement during emotes.")
         jumpingEnabled=enabled==true;saveEmoteOptions();scheduleBinding();return jumpingEnabled
     end
     function api.getEmoteWhileJumping()return jumpingEnabled end

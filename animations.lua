@@ -1,7 +1,7 @@
 -- Movement bundles for Roblox's standard R15 Animate script.
 local Http=game:GetService("HttpService")
-local assetStates={[48]="climb",[50]="fall",[51]="idle",[52]="jump",[53]="run",[54]="swim",[55]="walk",[56]="pose"}
-local states={idle=true,walk=true,run=true,jump=true,fall=true,climb=true,swim=true,swimidle=true,pose=true}
+local assetStates={[48]="climb",[50]="fall",[51]="idle",[52]="jump",[53]="run",[54]="swim",[55]="walk",[56]="pose",[78]="mood"}
+local states={idle=true,walk=true,run=true,jump=true,fall=true,climb=true,swim=true,swimidle=true,pose=true,mood=true}
 local function bundleId(value)
     local digits=tostring(value or ""):match("^%s*(%d+)%s*$")
     local path=tostring(value or ""):match("^%s*https?://www%.roblox%.com/bundles/(%d+)")
@@ -29,7 +29,7 @@ return function(player,onStatus,managedRespawn)
             assert(type(item)=="table","Animation component #"..index.." is invalid.")
             local id=tonumber(item.id);local assetType=tonumber(item.assetType)
             assert(id and id>0 and id%1==0 and id<9007199254740992 and validAssetType(assetType),
-                "Animation components need a valid catalog asset ID and supported assetType (48, 50-56).")
+                "Animation components need a valid catalog asset ID and supported assetType (48, 50-56, 78).")
             result[#result+1]={id=id,assetType=assetType,name=type(item.name)=="string" and item.name:sub(1,128) or nil}
         end
         return result
@@ -148,7 +148,7 @@ return function(player,onStatus,managedRespawn)
         local ctx=context()
         local prepared={}
         for state,entries in pairs(groups) do
-            local folder=Instance.new("Folder");folder.Name=state
+            local folder=Instance.new(state=="mood" and "StringValue" or "Folder");folder.Name=state
             for _,entry in ipairs(entries) do
                 local animation=Instance.new("Animation");animation.Name=entry.name;animation.AnimationId=entry.id;animation.Parent=folder
                 local weight=Instance.new("NumberValue");weight.Name="Weight";weight.Value=entry.weight;weight.Parent=animation

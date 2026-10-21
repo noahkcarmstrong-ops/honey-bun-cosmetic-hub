@@ -3,7 +3,7 @@ local HttpService=game:GetService("HttpService")
 local MarketplaceService=game:GetService("MarketplaceService")
 local PORT=38261
 local accessoryTypes={[8]=true,[41]=true,[42]=true,[43]=true,[44]=true,[45]=true,[46]=true,[47]=true,[64]=true,[65]=true,[66]=true,[67]=true,[68]=true,[69]=true,[70]=true,[71]=true,[72]=true,[76]=true,[77]=true}
-local animationTypes={[48]="ClimbAnimation",[50]="FallAnimation",[51]="IdleAnimation",[52]="JumpAnimation",[53]="RunAnimation",[54]="SwimAnimation",[55]="WalkAnimation",[56]="PoseAnimation"}
+local animationTypes={[48]="ClimbAnimation",[50]="FallAnimation",[51]="IdleAnimation",[52]="JumpAnimation",[53]="RunAnimation",[54]="SwimAnimation",[55]="WalkAnimation",[56]="PoseAnimation",[78]="MoodAnimation"}
 local SCALE_PROPERTIES={height="BodyHeightScale",width="BodyWidthScale",depth="BodyDepthScale",head="HeadScale",bodyType="BodyTypeScale",proportion="BodyProportionScale"}
 local function safeId(v)return type(v)=="number" and v==v and v>0 and v%1==0 and v<9007199254740992 end
 local function hex(c)

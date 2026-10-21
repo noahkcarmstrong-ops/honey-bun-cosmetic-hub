@@ -60,20 +60,21 @@ return function(getSource,log,isEnabled)
     local function discardSource(id)
         local previous=sources[id]
         if not previous then return end
+        for _,connection in ipairs(previous.connections or {})do connection:Disconnect()end
         for _,object in ipairs(previous.resources)do object:Destroy()end
         sources[id]=nil
     end
-    local function sourceFor(id,refresh)
+    local function sourceFor(id,refresh,force)
         if isEnabled and not isEnabled(id)then discardSource(id);return nil end
         local previous=sources[id]
         if previous and not refresh then return previous end
         local source=getSource(id)
         if not source then return previous end
-        if previous and previous.origin==source.character and previous.version==source.version then return previous end
+        if previous and not force and previous.origin==source.character and previous.version==source.version then return previous end
         local model=Instance.new("Model")
         local frozen={character=model,origin=source.character,version=source.version,
             colors=table.clone(source.colors or {}),originalClothes=table.clone(source.originalClothes or {}),
-            parts={},hidden={},resources={model}}
+            parts={},hidden={},resources={model},connections={}}
         local ok,err=pcall(function()
             for _,object in ipairs(source.character:GetChildren())do
                 local copy
@@ -128,6 +129,38 @@ return function(getSource,log,isEnabled)
             return previous
         end
         discardSource(id);sources[id]=frozen
+        local refreshQueued=false
+        local function refreshWhenAlive()
+            if refreshQueued then return end
+            local humanoid=source.character:FindFirstChildOfClass("Humanoid")
+            if not humanoid or humanoid.Health<=0 then return end
+            refreshQueued=true
+            task.defer(function()
+                refreshQueued=false
+                if not alive or sources[id]~=frozen then return end
+                local current=source.character:FindFirstChildOfClass("Humanoid")
+                if current and current.Health>0 then sourceFor(id,true,true)end
+            end)
+        end
+        frozen.connections[#frozen.connections+1]=source.character.DescendantAdded:Connect(function(object)
+            if (object.Parent==source.character and (object:IsA("Accessory") or object:IsA("Hat")
+                or object:IsA("Clothing") or object:IsA("ShirtGraphic")))
+                or (object:IsA("JointInstance") and object:FindFirstAncestorOfClass("Accessory"))then refreshWhenAlive()end
+        end)
+        for _,accessory in ipairs(source.character:GetChildren())do
+            if accessory:IsA("Accessory") or accessory:IsA("Hat")then
+                local handle=accessory:FindFirstChild("Handle")
+                if handle then for _,joint in ipairs(handle:GetChildren())do
+                    if joint:IsA("JointInstance") and (not joint.Part0 or not joint.Part1)then
+                        frozen.connections[#frozen.connections+1]=joint:GetPropertyChangedSignal("Part0"):Connect(refreshWhenAlive)
+                        frozen.connections[#frozen.connections+1]=joint:GetPropertyChangedSignal("Part1"):Connect(refreshWhenAlive)
+                    end
+                end end
+            end
+        end
+        local count=0
+        for _,object in ipairs(model:GetChildren())do if object:IsA("Accessory") or object:IsA("Hat")then local handle=object:FindFirstChild("Handle");if handle and handle.Transparency<1 then count=count+1 end end end
+        emit("corpse_source_cached",{peerId=id,accessories=count})
         return frozen
     end
     local function copyVisual(target,source,size,transparency)
@@ -184,6 +217,7 @@ return function(getSource,log,isEnabled)
             end
         end
         record.applied=true
+        local copiedAccessories=0
         local ok,err=pcall(function()
             local replacedKinds={}
             for _,part in ipairs(source.character:GetChildren())do
@@ -236,7 +270,7 @@ return function(getSource,log,isEnabled)
                                     local weld=Instance.new("WeldConstraint");weld.Part0=anchor;weld.Part1=child;weld.Parent=child
                                 end
                             end
-                            copy.Parent=model;record.added[#record.added+1]=copy
+                            copy.Parent=model;record.added[#record.added+1]=copy;copiedAccessories=copiedAccessories+1
                         end
                     end
                 elseif part:IsA("Clothing") or part:IsA("ShirtGraphic") or part:IsA("CharacterMesh")then
@@ -256,7 +290,7 @@ return function(getSource,log,isEnabled)
             end
         end)
         if not ok then restore(record)end
-        emit(ok and "corpse_applied" or "corpse_failed",{peerId=player.UserId,detail=ok and model.Name or tostring(err),waitMs=math.floor((os.clock()-record.createdAt)*1000)})
+        emit(ok and "corpse_applied" or "corpse_failed",{peerId=player.UserId,detail=ok and model.Name or tostring(err),waitMs=math.floor((os.clock()-record.createdAt)*1000),accessories=copiedAccessories})
     end
     local function consider(model)
         if not model or not model:IsA("Model") or bodies[model] or Players:GetPlayerFromCharacter(model) or not owner(model)then return end
