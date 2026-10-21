@@ -453,6 +453,15 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local loaded=player.CharacterAppearanceLoaded:Connect(function(character)
             if player.Character==character then
                 if characterConnection then characterConnection:Disconnect();characterConnection=nil end
+                local entry=peers[tostring(player.UserId)]
+                if entry and entry.character==character and entry.appearanceStarted then
+                    -- A game can reload appearance on the same character.
+                    -- Invalidate the applied state, not its controllers/caches.
+                    entry.snapshot=nil
+                    entry.appearanceStarted=nil
+                    entry.accessoriesComplete=nil
+                    entry.animationAssets=nil
+                end
                 task.defer(replay)
             end
         end)
