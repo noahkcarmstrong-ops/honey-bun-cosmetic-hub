@@ -21,6 +21,38 @@ local function validScales(values)
     return true
 end
 local outfits={Girl=131929545,["Robloxian 2.0"]=131929576}
+local function accessoryMeta(value)
+    if value==nil then return nil end
+    assert(type(value)=="table","Invalid accessory adjustments.")
+    local result={}
+    for _,field in ipairs({"scale","position","rotation"})do
+        if value[field]~=nil then
+            assert(type(value[field])=="table","Invalid accessory "..field..".")
+            local vector={}
+            for _,axis in ipairs({"X","Y","Z"})do
+                local n=value[field][axis]
+                local limit=field=="rotation" and 360 or (field=="position" and 10 or 5)
+                assert(type(n)=="number" and n==n and math.abs(n)<=limit and (field~="scale" or n>0),"Invalid accessory "..field..".")
+                vector[axis]=n
+            end
+            result[field]=vector
+        end
+    end
+    for _,field in ipairs({"order","puffiness","version"})do
+        local n=value[field]
+        if type(n)=="number" and n==n and math.abs(n)<=1000 then result[field]=n end
+    end
+    return next(result) and result or nil
+end
+local function sameMeta(a,b)
+    for _,field in ipairs({"scale","position","rotation"})do
+        for _,axis in ipairs({"X","Y","Z"})do
+            if (a and a[field] and a[field][axis])~=(b and b[field] and b[field][axis])then return false end
+        end
+    end
+    for _,field in ipairs({"order","puffiness","version"})do if (a and a[field])~=(b and b[field])then return false end end
+    return true
+end
 local azurelightAccessoryId=14565851673
 local bodyRegions={Head=true,Torso=true,LeftArm=true,RightArm=true,LeftLeg=true,RightLeg=true}
 local r6BodyPartNames={Head="Head",Torso="Torso",LeftArm="LeftArm",RightArm="RightArm",LeftLeg="LeftLeg",RightLeg="RightLeg"}
@@ -74,6 +106,8 @@ return function(player,onStatus,readAsset,managedRespawn)
     local function copySettings()
         local copy={accessories={},colors={},bodyParts={},hideOriginals=settings.hideOriginals,body=settings.body,gear=settings.gear,face=settings.face}
         if settings.scales then copy.scales=table.clone(settings.scales) end
+        copy.accessoryMeta={}
+        for id,meta in pairs(settings.accessoryMeta or {})do copy.accessoryMeta[id]=accessoryMeta(meta)end
         for i,id in ipairs(settings.accessories) do copy.accessories[i]=id end
         for region,color in pairs(settings.colors) do copy.colors[region]={color[1],color[2],color[3]} end
         for region,value in pairs(settings.bodyParts) do copy.bodyParts[region]=value end
@@ -88,6 +122,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         if ok and type(saved)=="table" then
             if type(saved.face)=="number" and saved.face>0 and saved.face%1==0 and saved.face<9007199254740992 then settings.face=saved.face end
             if validScales(saved.scales) then settings.scales=table.clone(saved.scales) end
+            settings.accessoryMeta={}
             settings.hideOriginals=saved.hideOriginals==true
             if type(saved.body)=="string" then settings.body=saved.body end
             if type(saved.bodyParts)=="table" then
@@ -100,6 +135,8 @@ return function(player,onStatus,readAsset,managedRespawn)
                 for _,id in ipairs(saved.accessories) do
                     if type(id)=="number" and id>0 and id%1==0 and id<9007199254740992 and #settings.accessories<20 then
                         table.insert(settings.accessories,id)
+                        local ok,meta=pcall(accessoryMeta,type(saved.accessoryMeta)=="table" and saved.accessoryMeta[tostring(id)] or nil)
+                        if ok then settings.accessoryMeta[tostring(id)]=meta end
                     end
                 end
             end
@@ -310,6 +347,14 @@ return function(player,onStatus,readAsset,managedRespawn)
         else
             error("This body part cannot be changed safely on this avatar. Your gear was left alone.")
         end
+        -- Size and its native baseline belong to the same body asset. Leaving
+        -- the previous package's baseline makes later native rescaling distort it.
+        for _,name in ipairs({"OriginalSize","AvatarPartScaleType"})do
+            local old=target:FindFirstChild(name)
+            local original=source:FindFirstChild(name)
+            if old then old:Destroy()end
+            if original then original:Clone().Parent=target end
+        end
         -- ApplyMesh copies geometry/TextureID, but not modern heads' face surface.
         -- Replace visual children too, including when restoring or changing heads.
         if target.Name=="Head" then
@@ -330,7 +375,11 @@ return function(player,onStatus,readAsset,managedRespawn)
             if attachment:IsA("Attachment") then
                 local existing=target:FindFirstChild(attachment.Name)
                 if existing and existing:IsA("Attachment") then
-                    if attachment.Name:match("RigAttachment$")then existing.CFrame=attachment.CFrame end
+                    existing.CFrame=attachment.CFrame
+                    local old=existing:FindFirstChild("OriginalPosition")
+                    if old then old:Destroy()end
+                    local original=attachment:FindFirstChild("OriginalPosition")
+                    if original then original:Clone().Parent=existing end
                 elseif not existing then
                     -- Generated body parts also carry hat/hair/face attachment
                     -- points. Preserve those when the replicated part is early.
@@ -450,6 +499,37 @@ return function(player,onStatus,readAsset,managedRespawn)
         local template=source:Clone();dispose(objects)
         local handle=template:FindFirstChild("Handle")
         if not handle or not handle:IsA("BasePart")then template:Destroy();error("That item has no usable Handle.")end
+        -- Some executors return catalog MeshParts as unit Parts/SpecialMeshes.
+        -- Restore the native mesh bounds once, before caching, so AddAccessory
+        -- can fit the handle using Roblox's own scaling and attachment logic.
+        local mesh=handle:IsA("Part") and handle:FindFirstChildOfClass("SpecialMesh")
+        if kind=="Accessory" and mesh and mesh.MeshType==Enum.MeshType.FileMesh
+            and mesh.MeshId~="" and mesh.Offset==Vector3.zero
+            and not template:FindFirstChildWhichIsA("WrapLayer",true)then
+            local converted,native=pcall(function()
+                local content=Content and Content.fromUri and Content.fromUri(mesh.MeshId) or mesh.MeshId
+                return game:GetService("AssetService"):CreateMeshPartAsync(content,{})
+            end)
+            if not valid(ctx)then
+                if converted and native then native:Destroy()end
+                template:Destroy();check(ctx)
+            end
+            if converted and native and native:IsA("MeshPart")then
+                native.Name=handle.Name;native.CFrame=handle.CFrame
+                native.Size=native.Size*mesh.Scale;native.TextureID=mesh.TextureId
+                native.Color=Color3.new(handle.Color.R*mesh.VertexColor.X,handle.Color.G*mesh.VertexColor.Y,handle.Color.B*mesh.VertexColor.Z)
+                native.Material=handle.Material;native.Transparency=handle.Transparency
+                native.Reflectance=handle.Reflectance
+                for name,value in pairs(handle:GetAttributes())do native:SetAttribute(name,value)end
+                for _,child in ipairs(handle:GetChildren())do
+                    if child~=mesh and not child:IsA("JointInstance") and not child:IsA("WeldConstraint")then child:Clone().Parent=native end
+                end
+                local original=native:FindFirstChild("OriginalSize")
+                if not original then original=Instance.new("Vector3Value");original.Name="OriginalSize";original.Parent=native end
+                if original:IsA("Vector3Value")then original.Value=native.Size end
+                native.Parent=template;handle:Destroy();handle=native
+            end
+        end
         -- Let Roblox stream textures on attachment; waiting here serializes
         -- every accessory behind the slowest texture in the previous one.
         if not valid(ctx)then template:Destroy();check(ctx)end
@@ -477,9 +557,56 @@ return function(player,onStatus,readAsset,managedRespawn)
         end)
     end
     local api={}
-    function api.equipAccessory(value)
+    local function adjustAccessory(entry,meta)
+        local handle=entry.object:FindFirstChild("Handle")
+        assert(handle and handle:IsA("BasePart"),"This accessory has no Handle.")
+        if entry.object:FindFirstChildWhichIsA("WrapLayer",true)then return end
+        local baseline=entry.adjustmentBaseline
+        if not baseline and not meta then return end
+        if not baseline then
+            baseline={size=handle.Size,attachments={},meshes={}}
+            local original=handle:FindFirstChild("OriginalSize")
+            if original and original:IsA("Vector3Value")then baseline.originalSize=original.Value end
+            baseline.originalPositions={}
+            for _,child in ipairs(handle:GetChildren())do
+                if child:IsA("Attachment")then
+                    baseline.attachments[child]=child.CFrame
+                    local position=child:FindFirstChild("OriginalPosition")
+                    if position and position:IsA("Vector3Value")then baseline.originalPositions[position]=position.Value end
+                elseif child:IsA("SpecialMesh")then baseline.meshes[child]={scale=child.Scale,offset=child.Offset}
+                elseif child:IsA("JointInstance") and child.Part0==handle then baseline.joint=child;baseline.c0=child.C0 end
+            end
+            entry.adjustmentBaseline=baseline
+        end
+        local function vector(field,default)
+            local v=meta and meta[field]
+            return v and Vector3.new(v.X,v.Y,v.Z) or default
+        end
+        local scale=vector("scale",Vector3.one)
+        handle.Size=baseline.size*scale
+        local original=handle:FindFirstChild("OriginalSize")
+        if baseline.originalSize and original and original:IsA("Vector3Value")then original.Value=baseline.originalSize*scale end
+        for position,value in pairs(baseline.originalPositions)do position.Value=value*scale end
+        for mesh,original in pairs(baseline.meshes)do mesh.Scale=original.scale*scale;mesh.Offset=original.offset*scale end
+        for attachment,frame in pairs(baseline.attachments)do attachment.CFrame=CFrame.new(frame.Position*scale)*frame.Rotation end
+        local joint=baseline.joint
+        if joint and joint.Parent then
+            local bodyScale=Vector3.one
+            local humanoid=entry.object.Parent and entry.object.Parent:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.RigType==Enum.HumanoidRigType.R15 then
+                local function number(name)local n=humanoid:FindFirstChild(name);return n and n.Value or 1 end
+                bodyScale=joint.Part1 and joint.Part1.Name=="Head" and Vector3.one*number("HeadScale")
+                    or Vector3.new(number("BodyWidthScale"),number("BodyHeightScale"),number("BodyDepthScale"))
+            end
+            local rotation=vector("rotation",Vector3.zero)*math.pi/180
+            local adjustment=CFrame.new(vector("position",Vector3.zero)*bodyScale)*CFrame.Angles(rotation.X,rotation.Y,rotation.Z)
+            joint.C0=(CFrame.new(baseline.c0.Position*scale)*baseline.c0.Rotation)*adjustment:Inverse()
+        end
+    end
+    function api.equipAccessory(value,metadata)
         local ctx=context()
         local id=idFrom(value,"catalog")
+        local meta=accessoryMeta(metadata)
         assert(#added<20,"Remove an added accessory before adding more (20 maximum).")
         local candidate=wearable(ctx,id,"Accessory")
         strip(candidate)
@@ -503,10 +630,26 @@ return function(player,onStatus,readAsset,managedRespawn)
         capture(ctx)
         candidate.Parent=ctx.character
         nextKey=nextKey+1
-        table.insert(added,{key=nextKey,id=id,name=candidate.Name,object=candidate})
+        local entry={key=nextKey,id=id,name=candidate.Name,object=candidate,meta=meta}
+        adjustAccessory(entry,meta)
+        table.insert(added,entry)
         if id==1527622 then bunnyExplosion(ctx,candidate) end
-        if not reapplying then table.insert(settings.accessories,id);save() end
+        if not reapplying then
+            table.insert(settings.accessories,id)
+            settings.accessoryMeta=settings.accessoryMeta or {};settings.accessoryMeta[tostring(id)]=meta;save()
+        end
         return "Equipped "..candidate.Name.." (visible to you)."
+    end
+    function api.setAccessoryMetadata(key,metadata)
+        local meta=accessoryMeta(metadata)
+        for _,entry in ipairs(added)do
+            if entry.key==key then
+                if sameMeta(entry.meta,meta)then return end
+                adjustAccessory(entry,meta);entry.meta=meta
+                settings.accessoryMeta=settings.accessoryMeta or {};settings.accessoryMeta[tostring(entry.id)]=meta;save()
+                return
+            end
+        end
     end
     function api.equipGear(value)
         error("Larpblox gear is temporarily disabled while equip state synchronization is fixed.")
@@ -557,7 +700,7 @@ return function(player,onStatus,readAsset,managedRespawn)
     function api.listAccessories()
         local list={}
         for _,entry in ipairs(added) do
-            if entry.object.Parent==player.Character then table.insert(list,{key=entry.key,id=entry.id,name=entry.name}) end
+            if entry.object.Parent==player.Character then table.insert(list,{key=entry.key,id=entry.id,name=entry.name,meta=accessoryMeta(entry.meta)}) end
         end
         return list
     end
@@ -566,6 +709,7 @@ return function(player,onStatus,readAsset,managedRespawn)
             if entry.key==key then
                 entry.object:Destroy();table.remove(added,i)
                 if not reapplying then
+                    if settings.accessoryMeta then settings.accessoryMeta[tostring(entry.id)]=nil end
                     for index,id in ipairs(settings.accessories) do if id==entry.id then table.remove(settings.accessories,index);break end end
                     save()
                 end
@@ -584,7 +728,7 @@ return function(player,onStatus,readAsset,managedRespawn)
     end
     function api.clearAccessories()
         clearAdded()
-        if not reapplying then settings.accessories={};save() end
+        if not reapplying then settings.accessories={};settings.accessoryMeta={};save() end
         return "Removed accessories added by this hub."
     end
     local function attachedToAvatar(item,c)
@@ -1093,7 +1237,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         return {character=snapshot.character,parts=snapshot.parts,head=snapshot.r6Head,colors=snapshot.colors,hidden=hidden,version=appearanceVersion}
     end
     local operations={}
-    for _,name in ipairs({"equipAccessory","equipGear","removeGear","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","setScales","applyBody","applyBodyParts","applyBodyPart","restoreBodyPart","applyFace","restoreFace","restoreSkin","restoreBody","restore"}) do
+    for _,name in ipairs({"equipAccessory","setAccessoryMetadata","equipGear","removeGear","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","setScales","applyBody","applyBodyParts","applyBodyPart","restoreBodyPart","applyFace","restoreFace","restoreSkin","restoreBody","restore"}) do
         local operation=api[name]
         operations[name]=operation
         api[name]=function(...)
@@ -1141,7 +1285,7 @@ return function(player,onStatus,readAsset,managedRespawn)
             for region,value in pairs(desired.bodyParts) do apply(region,operations.applyBodyPart,region,value) end
             if desired.face then apply("face",operations.applyFace,desired.face)end
             if desired.hideOriginals then apply("hidden accessories",operations.removeCurrentAccessories) end
-            for _,id in ipairs(desired.accessories) do apply("accessory "..id,operations.equipAccessory,id) end
+            for _,id in ipairs(desired.accessories) do apply("accessory "..id,operations.equipAccessory,id,(desired.accessoryMeta or {})[tostring(id)]) end
             if desired.colors.All then apply("skin color",operations.setSkin,Color3.new(desired.colors.All[1],desired.colors.All[2],desired.colors.All[3]),"All") end
             for region,color in pairs(desired.colors) do if region~="All" then apply(region.." color",operations.setSkin,Color3.new(color[1],color[2],color[3]),region) end end
         end)

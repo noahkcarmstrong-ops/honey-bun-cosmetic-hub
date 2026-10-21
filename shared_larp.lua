@@ -413,11 +413,16 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             end
             if fresh then entry.avatar.removeCurrentAccessories();entry.appearanceStarted=true end
             local equipped={}
-            for _,item in ipairs(entry.avatar.listAccessories())do equipped[item.id]=true end
+            for _,item in ipairs(entry.avatar.listAccessories())do equipped[item.id]=item.key end
+            local accessoryMetadata={}
+            for _,asset in ipairs(snapshot.definition.assets)do accessoryMetadata[asset.id]=asset.meta end
             -- Load additions first so existing accessories remain visible while assets load.
             for id in pairs(wanted)do
                 if not equipped[id]then
-                    local loaded,reason=pcall(entry.avatar.equipAccessory,id)
+                    local loaded,reason=pcall(entry.avatar.equipAccessory,id,accessoryMetadata[id])
+                    if not loaded then accessoryFailures[#accessoryFailures+1]=tostring(id)..": "..tostring(reason)end
+                elseif entry.avatar.setAccessoryMetadata then
+                    local loaded,reason=pcall(entry.avatar.setAccessoryMetadata,equipped[id],accessoryMetadata[id])
                     if not loaded then accessoryFailures[#accessoryFailures+1]=tostring(id)..": "..tostring(reason)end
                 end
                 if not current()then return end

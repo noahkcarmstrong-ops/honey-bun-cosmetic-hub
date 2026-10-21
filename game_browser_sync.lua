@@ -185,7 +185,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 seen[id]=true;items[#items+1]={id=id,name=string.sub(label,1,128),itemType="Asset",assetType=assetType};definition.assets[#definition.assets+1]={id=id,meta=meta}
             end
         end
-        local added={};for _,entry in ipairs(getAvatar():listAccessories())do added[entry.id]=true;local typeId=assetTypes[entry.id] or 8;add(entry.id,entry.name,typeId,true)end
+        local added={};for _,entry in ipairs(getAvatar():listAccessories())do added[entry.id]=true;local typeId=assetTypes[entry.id] or 8;add(entry.id,entry.name,typeId,true,entry.meta)end
         if getAvatar().listGear then for _,entry in ipairs(getAvatar():listGear())do add(entry.id,entry.name,19,true) end end
         local ok,entries=pcall(function()return desc:GetAccessories(true)end)
         if ok and type(entries)=="table" then for _,entry in ipairs(entries)do local id=entry.AssetId;local typeId=assetTypes[id] or 8;add(id,entry.Name,typeId,not settings.hideOriginals or added[id],entry.IsLayered and {order=entry.Order or 0,puffiness=entry.Puffiness or 0} or nil)end end
@@ -329,7 +329,14 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if not loaded then loadErrors[#loadErrors+1]="Face: "..tostring(reason)end
                 browserFace=false
             end
-            local changed=false;for id in pairs(desired)do if not current[id]then changed=true end end;for id in pairs(current)do if not desired[id]then changed=true end end
+            local accessoryMetadata={}
+            for _,asset in ipairs(value.definition.assets)do accessoryMetadata[asset.id]=asset.meta end
+            local managed={};for _,entry in ipairs(avatar.listAccessories())do managed[entry.id]=true end
+            local function needsManaged(id)
+                local meta=accessoryMetadata[id]
+                return not managed[id] and meta and (meta.scale or meta.position or meta.rotation)
+            end
+            local changed=false;for id in pairs(desired)do if not current[id] or needsManaged(id)then changed=true end end;for id in pairs(current)do if not desired[id]then changed=true end end
             if changed then
                 -- Keep unchanged instances: some already-worn hats cannot be loaded again.
                 local entries=avatar.listAccessories();local localIds={};local present={}
@@ -337,7 +344,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 local hideOriginals=false
                 for id in pairs(current)do
                     if not localIds[id] then
-                        if desired[id] then present[id]=true else hideOriginals=true end
+                        if desired[id] and not needsManaged(id) then present[id]=true else hideOriginals=true end
                     end
                 end
                 if hideOriginals then avatar.removeCurrentAccessories();present={} end
@@ -346,8 +353,16 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 end
                 for _,item in ipairs(value.items)do
                     if accessoryTypes[item.assetType] and not present[item.id] then
-                        local loaded,reason=pcall(avatar.equipAccessory,item.id)
+                        local loaded,reason=pcall(avatar.equipAccessory,item.id,accessoryMetadata[item.id])
                         if loaded then present[item.id]=true else loadErrors[#loadErrors+1]=item.name..": "..tostring(reason) end
+                    end
+                end
+            end
+            if avatar.setAccessoryMetadata then
+                for _,entry in ipairs(avatar.listAccessories())do
+                    if desired[entry.id]then
+                        local loaded,reason=pcall(avatar.setAccessoryMetadata,entry.key,accessoryMetadata[entry.id])
+                        if not loaded then loadErrors[#loadErrors+1]="Accessory adjustments: "..tostring(reason)end
                     end
                 end
             end
