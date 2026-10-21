@@ -654,6 +654,7 @@ local function reapplyAll(editor,expectedCharacter)
     end
     return #failures==0 and "Saved selections restored." or ("Some saved selections could not load: "..failures[1]),#failures==0
 end
+local actionFinished=Instance.new("BindableEvent")
 local function action(callback,independent)
     if busy or not alive then return end
     actionRunning=true;busy=true
@@ -666,6 +667,7 @@ local function action(callback,independent)
             return callback(api())
         end)
         actionRunning=false;busy=false
+        actionFinished:Fire()
         if not alive then return end
         previewRevision=previewRevision+1
         statusText=ok and (message or "Done.") or ("Could not apply: "..tostring(message):gsub("^.-:%d+:%s*",""))
@@ -1251,26 +1253,39 @@ render=function()
     end
 end
 local respawnGeneration=0
+local readyConnections={}
+local function clearReadiness()
+    for _,connection in ipairs(readyConnections)do connection:Disconnect()end
+    readyConnections={}
+end
 local respawn=Players.LocalPlayer.CharacterAdded:Connect(function(character)
     respawnGeneration=respawnGeneration+1
     local ticket=respawnGeneration
+    clearReadiness()
     if not alive then return end
-    statusText="Preparing avatar..."
-    render()
-    task.defer(function()
-        local started=os.clock()
-        while alive and ticket==respawnGeneration and Players.LocalPlayer.Character==character do
+    statusText="Preparing avatar...";render()
+    local pending,finished=false,false
+    local function ready()
+        if pending or finished then return end
+        pending=true
+        task.defer(function()
+            pending=false
+            if not alive or ticket~=respawnGeneration or Players.LocalPlayer.Character~=character then return end
             local humanoid=character:FindFirstChildOfClass("Humanoid")
-            local ok,appearance=pcall(function()return Players.LocalPlayer:HasAppearanceLoaded()end)
-            if humanoid and humanoid.Health>0 and character:FindFirstChild("Head") and not busy
-                and ((ok and appearance) or os.clock()-started>=5)then
-                action(function()return reapplyAll(api(),character)end,true)
-                return
-            end
-            if os.clock()-started>10 then return end
-            task.wait(0.05)
-        end
-    end)
+            if not humanoid or humanoid.Health<=0 or not character:FindFirstChild("Head") or busy
+                or not Players.LocalPlayer:HasAppearanceLoaded()then return end
+            finished=true;clearReadiness()
+            action(function()return reapplyAll(api(),character)end,true)
+        end)
+    end
+    local function watch(object)
+        if object:IsA("Humanoid")then readyConnections[#readyConnections+1]=object.HealthChanged:Connect(ready)end
+    end
+    readyConnections[#readyConnections+1]=character.DescendantAdded:Connect(function(object)watch(object);ready()end)
+    for _,object in ipairs(character:GetDescendants())do watch(object)end
+    readyConnections[#readyConnections+1]=Players.LocalPlayer.CharacterAppearanceLoaded:Connect(ready)
+    readyConnections[#readyConnections+1]=actionFinished.Event:Connect(ready)
+    ready()
 end)
 
 gui.Destroying:Connect(function()
@@ -1278,7 +1293,7 @@ gui.Destroying:Connect(function()
     pcall(view.destroy)
     connection:Disconnect()
     for object,tween in pairs(tweens) do tween:Cancel();tweens[object]=nil end
-    respawn:Disconnect()
+    respawn:Disconnect();clearReadiness();actionFinished:Destroy()
     if atmosphereAPI then pcall(atmosphereAPI.destroy) end
     if mm2EmoteBarAPI then pcall(mm2EmoteBarAPI.destroy) end
     if mm2EmotesNativeAPI then pcall(mm2EmotesNativeAPI.destroy) end

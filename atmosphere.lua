@@ -5,9 +5,8 @@ return function(game,schema)
     local custom
     local generation = 0
     local destroyed = false
-    local keeper,blueprint,skyAdded
-    local renderName="LarpbloxSkyOverride_"..tostring({})
-    local boundRun
+    local blueprint,skyAdded
+    local overrideConnections={}
     local appliedId,lastFailure
     local repairs=0
     local daylight=true
@@ -82,9 +81,8 @@ return function(game,schema)
     local advancedEnforce,advancedRestore
 
     local function stopOverride()
+        for _,connection in ipairs(overrideConnections)do connection:Disconnect()end;overrideConnections={}
         if skyAdded then skyAdded:Disconnect();skyAdded=nil end
-        if keeper then keeper:Disconnect();keeper=nil end
-        if boundRun then pcall(function()boundRun:UnbindFromRenderStep(renderName)end);boundRun=nil end
     end
     local function removeCompeting(child)
         if destroyed then return end
@@ -143,18 +141,26 @@ return function(game,schema)
         end
     end
     local function startOverride()
-        if skyAdded or keeper or boundRun then return end
+        if skyAdded then return end
         if lighting.ChildAdded then skyAdded=lighting.ChildAdded:Connect(removeCompeting) end
-        local run=service("RunService")
-        if run then
-            local priority=2001
-            pcall(function()priority=Enum.RenderPriority.Last.Value+1 end)
-            local bound=false
-            if run.BindToRenderStep then bound=pcall(function()run:BindToRenderStep(renderName,priority,enforceSky)end) end
-            if bound then boundRun=run
-            elseif run.RenderStepped then keeper=run.RenderStepped:Connect(enforceSky)
-            elseif run.Heartbeat then keeper=run.Heartbeat:Connect(enforceSky) end
+        local enforcing=false
+        local function changed()
+            if enforcing or destroyed then return end
+            enforcing=true
+            local ok,err=pcall(enforceSky)
+            enforcing=false
+            if not ok then lastFailure=tostring(err)end
         end
+        local watched=setmetatable({}, {__mode="k"})
+        local function watch(object)
+            if watched[object]then return end
+            watched[object]=true
+            overrideConnections[#overrideConnections+1]=object.Changed:Connect(changed)
+        end
+        watch(lighting)
+        for _,object in ipairs(lighting:GetChildren())do watch(object)end
+        overrideConnections[#overrideConnections+1]=lighting.ChildAdded:Connect(function(object)watch(object);changed()end)
+        overrideConnections[#overrideConnections+1]=lighting.ChildRemoved:Connect(changed)
         enforceSky()
     end
 

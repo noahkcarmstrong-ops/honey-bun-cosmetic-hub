@@ -191,9 +191,9 @@ return function(player,onStatus,managedRespawn)
         assert(sorts[sort],"Choose a valid catalog sort order.")
         local key=kind..":"..query:lower()..":"..sort
         local saved=searches[key]
-        if saved and page==1 and not saved.loading and os.clock()-saved.time>300 then saved=nil end
-        if not saved then saved={results={},time=os.clock(),loading=false,finished=false};searches[key]=saved end
-        while saved.loading do task.wait()end
+        if saved and page==1 and not saved.loading and os.clock()-saved.time>300 then saved.completed:Destroy();saved=nil end
+        if not saved then saved={results={},time=os.clock(),loading=false,finished=false,completed=Instance.new("BindableEvent")};searches[key]=saved end
+        if saved.loading then saved.completed.Event:Wait()end
         if saved.results[page]then return saved.results[page],page<#saved.results or not saved.finished end
         assert(page==#saved.results+1,"Return to the previous catalog page first.")
         if saved.finished then return {},false end
@@ -218,7 +218,7 @@ return function(player,onStatus,managedRespawn)
             saved.results[page]=items
             return items
         end)
-        saved.loading=false
+        saved.loading=false;saved.completed:Fire()
         if not ok then error(result,0)end
         return result,not saved.finished
     end
@@ -349,27 +349,50 @@ return function(player,onStatus,managedRespawn)
         if folder then for _,item in ipairs(folder:GetDescendants()) do if item:IsA("Animation") and item.AnimationId~="" then ids[#ids+1]=item.AnimationId end end end
         return ids
     end
+    local readyConnections={}
+    local function cancelReady()
+        for _,connection in ipairs(readyConnections)do connection:Disconnect()end
+        readyConnections={}
+    end
+    local function whenReady(character,ready,callback)
+        cancelReady()
+        local pending,finished=false,false
+        local function changed()
+            if pending or finished then return end
+            pending=true
+            task.defer(function()
+                pending=false
+                if finished or not alive or player.Character~=character then return end
+                if not ready()then return end
+                finished=true;cancelReady();callback()
+            end)
+        end
+        local function watch(object)
+            if object:IsA("Humanoid")then
+                readyConnections[#readyConnections+1]=object.HealthChanged:Connect(changed)
+            elseif object:IsA("LocalScript") and object.Name=="Animate"then
+                readyConnections[#readyConnections+1]=object:GetPropertyChangedSignal("Disabled"):Connect(changed)
+            end
+        end
+        readyConnections[#readyConnections+1]=character.DescendantAdded:Connect(function(object)watch(object);changed()end)
+        readyConnections[#readyConnections+1]=player.CharacterAppearanceLoaded:Connect(changed)
+        for _,object in ipairs(character:GetDescendants())do watch(object)end
+        changed()
+    end
     local changed=player.CharacterAdded:Connect(function(character)
         generation=generation+1;local ticket=generation
         restoreCurrent()
         snapshot=avatarSnapshot;avatarSnapshot=nil;restoreCurrent()
         if managedRespawn or (not savedId and not savedAssets and not avatarAssets) then return end
-        task.spawn(function()
-            for attempt=1,100 do
-                if not alive or generation~=ticket or player.Character~=character or (not savedId and not savedAssets and not avatarAssets) then return end
-                local ready=pcall(context)
-                local ok,appearance=pcall(function() return player:HasAppearanceLoaded() end)
-                if ready and ((ok and appearance) or attempt>=50) then
-                    local applied,message=pcall(api.reapplySaved)
-                    if not applied and onStatus then onStatus("Could not restore animation bundle: "..tostring(message)) end
-                    return
-                end
-                task.wait(0.1)
-            end
-            if alive and generation==ticket and onStatus then onStatus("Movement controls not ready. Use Reapply saved cosmetics after spawning.") end
+        whenReady(character,function()
+            return pcall(context) and player:HasAppearanceLoaded()
+        end,function()
+            local ok,message=pcall(api.reapplySaved)
+            if not ok and onStatus then onStatus("Could not restore saved animation bundle: "..tostring(message))end
         end)
     end)
     function api.destroy()
+        cancelReady()
         if not alive then return end
         alive=false;generation=generation+1;changed:Disconnect();pcall(restoreCurrent)
         snapshot=avatarSnapshot;avatarSnapshot=nil;pcall(restoreCurrent)

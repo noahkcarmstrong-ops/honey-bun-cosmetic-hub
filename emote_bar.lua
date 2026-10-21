@@ -7,7 +7,6 @@ return function(playerGui,catalog,onStatus,gameObject)
     local last="Waiting for the Game Emotes bar."
     local cas=gameObject:GetService("ContextActionService")
     local input=gameObject:GetService("UserInputService")
-    local run=gameObject:GetService("RunService")
     local function read(o,k)local ok,v=pcall(function()return o[k]end);if ok then return v end end
     local function is(o,c)local ok,v=pcall(function()return o:IsA(c)end);return ok and v end
     local function kids(o)return o and o:GetChildren() or {} end
@@ -133,23 +132,41 @@ return function(playerGui,catalog,onStatus,gameObject)
         end
         return Enum.ContextActionResult.Sink
     end
-    local heartbeat;local elapsed=0
+    local observers={}
+    local updating=false
+    local scheduled=false
     function api.enable()
         assert(not dead,"Emote bar is closed.")
         if enabled then return true,last end
         entries=catalog.list("Emote");enabled=true
         cas:BindActionAtPriority("LarpbloxMM2Emotes",keyAction,false,3000,Enum.KeyCode.Q,Enum.KeyCode.E,Enum.KeyCode.One,Enum.KeyCode.Two,Enum.KeyCode.Three,Enum.KeyCode.Four,Enum.KeyCode.Five,Enum.KeyCode.Six,Enum.KeyCode.Seven,Enum.KeyCode.Eight)
         mount()
-        heartbeat=run.Heartbeat:Connect(function(dt)
-            elapsed=elapsed+dt;if elapsed<0.15 then return end;elapsed=0
-            if pagesRoot and (not pagesRoot:IsDescendantOf(playerGui) or not header:IsDescendantOf(playerGui)
-                or (owned[1] and owned[1].Parent~=pagesRoot) or (originals[1] and originals[1].object.Parent~=pagesRoot)) then reset()end
-            if not pagesRoot then mount()else paint()end
-        end)
+        local function changed(object)
+            if not enabled or updating or scheduled or (object and ours(object))then return end
+            scheduled=true
+            task.defer(function()
+                scheduled=false
+                if not enabled then return end
+                updating=true
+                if pagesRoot and (not pagesRoot:IsDescendantOf(playerGui) or not header:IsDescendantOf(playerGui)
+                    or (owned[1] and owned[1].Parent~=pagesRoot) or (originals[1] and originals[1].object.Parent~=pagesRoot))then reset()end
+                if not pagesRoot then mount()else paint()end
+                updating=false
+            end)
+        end
+        local function watch(object)
+            if object:IsA("GuiObject") and not ours(object)then
+                observers[#observers+1]=object:GetPropertyChangedSignal("Visible"):Connect(function()changed(object)end)
+            end
+        end
+        for _,object in ipairs(playerGui:GetDescendants())do watch(object)end
+        observers[#observers+1]=playerGui.DescendantAdded:Connect(function(object)watch(object);changed(object)end)
+        observers[#observers+1]=playerGui.DescendantRemoving:Connect(changed)
+
         return true,last
     end
     function api.disable()
-        enabled=false;if heartbeat then heartbeat:Disconnect();heartbeat=nil end
+        enabled=false;for _,connection in ipairs(observers)do connection:Disconnect()end;observers={}
         cas:UnbindAction("LarpbloxMM2Emotes");reset();last="Original Game Emotes bar restored."
     end
     function api.destroy()api.disable();dead=true end

@@ -158,26 +158,49 @@ return function(player,onStatus,managedRespawn)
         if #errors>0 then error("Could not reapply saved clothes ("..table.concat(errors,"; ")..")") end
         return #messages==0 and "No saved classic clothes selected." or "Reapplied saved classic clothes."
     end
+    local readyConnections={}
+    local function cancelReady()
+        for _,connection in ipairs(readyConnections)do connection:Disconnect()end
+        readyConnections={}
+    end
+    local function whenReady(character,ready,callback)
+        cancelReady()
+        local pending,finished=false,false
+        local function changed()
+            if pending or finished then return end
+            pending=true
+            task.defer(function()
+                pending=false
+                if finished or not alive or player.Character~=character then return end
+                if not ready()then return end
+                finished=true;cancelReady();callback()
+            end)
+        end
+        local function watch(object)
+            if object:IsA("Humanoid")then
+                readyConnections[#readyConnections+1]=object.HealthChanged:Connect(changed)
+            elseif object:IsA("LocalScript") and object.Name=="Animate"then
+                readyConnections[#readyConnections+1]=object:GetPropertyChangedSignal("Disabled"):Connect(changed)
+            end
+        end
+        readyConnections[#readyConnections+1]=character.DescendantAdded:Connect(function(object)watch(object);changed()end)
+        readyConnections[#readyConnections+1]=player.CharacterAppearanceLoaded:Connect(changed)
+        for _,object in ipairs(character:GetDescendants())do watch(object)end
+        changed()
+    end
     local changed=player.CharacterAdded:Connect(function(character)
         generation=generation+1;for _,kind in ipairs({"Shirt","Pants","ShirtGraphic"}) do local s=state[kind];if s then clearApplied(s);for _,item in ipairs(s.originals) do item:Destroy() end;state[kind]=nil end end
         if managedRespawn then return end
-        local ticket=generation;task.spawn(function()
-            for attempt=1,100 do
-                if not alive or ticket~=generation or player.Character~=character then return end
-                local humanoid=character:FindFirstChildOfClass("Humanoid")
-                local ok,ready=pcall(function() return player:HasAppearanceLoaded() end)
-                if humanoid and humanoid.Health>0 and ((ok and ready) or attempt>=50) then
-                    if not alive or ticket~=generation or player.Character~=character then return end
-                    local applied,message=pcall(api.reapplySaved)
-                    if not applied and onStatus then onStatus("Could not restore saved clothes: "..tostring(message)) end
-                    return
-                end
-                task.wait(0.1)
-            end
-            if alive and ticket==generation and onStatus then onStatus("Avatar is not ready. Reapply saved cosmetics after it finishes spawning.") end
+        whenReady(character,function()
+            local h=character:FindFirstChildOfClass("Humanoid")
+            return h and h.Health>0 and player:HasAppearanceLoaded()
+        end,function()
+            local ok,message=pcall(api.reapplySaved)
+            if not ok and onStatus then onStatus("Could not restore saved clothes: "..tostring(message))end
         end)
     end)
     function api.destroy()
+        cancelReady()
         if not alive then return end
         alive=false;generation=generation+1;changed:Disconnect()
         for _,kind in ipairs({"Shirt","Pants","ShirtGraphic"}) do

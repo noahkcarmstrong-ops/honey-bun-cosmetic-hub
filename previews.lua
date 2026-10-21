@@ -214,22 +214,24 @@ return function(player)
         end
         if meshFailures[id] then return nil end
         if meshPending[id] then
-            if not task or not task.wait then return nil end
-            while alive and meshPending[id]do task.wait()end
+            meshPending[id].Event:Wait()
             return alive and meshSources[id] and cleanMesh(meshSources[id]) or nil
         end
-        meshPending[id]=true
+        local completed=Instance.new("BindableEvent")
+        meshPending[id]=completed
         local ok,source=pcall(function()
             local content=Content and Content.fromUri and Content.fromUri(id) or id
             return game:GetService("AssetService"):CreateMeshPartAsync(content,{})
         end)
-        meshPending[id]=nil
-        if not alive then if ok and source then source:Destroy()end;return nil end
+        local function finished()
+            meshPending[id]=nil;completed:Fire();task.defer(function()completed:Destroy()end)
+        end
+        if not alive then if ok and source then source:Destroy()end;finished();return nil end
         if ok and source and read(source,"ClassName")=="MeshPart" then
             for _,child in ipairs(source:GetChildren())do child:Destroy()end
-            rememberMesh(id,source);return cleanMesh(source)
+            rememberMesh(id,source);finished();return cleanMesh(source)
         end
-        meshFailures[id]=true
+        meshFailures[id]=true;finished()
     end
     local function createRecord(record, parent, current)
         local native=record.class=="MeshPart" and nativeMesh(record)

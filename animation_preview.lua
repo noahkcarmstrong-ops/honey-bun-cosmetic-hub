@@ -27,6 +27,8 @@ return function(viewport,player,source,onError)
                     local nextTrack=animator:LoadAnimation(animation);animation:Destroy()
                     if not alive or ticket~=playGeneration then nextTrack:Destroy();return end
                     resetBounds=true
+                    nextTrack.KeyframeReached:Connect(function()if poseChanged then poseChanged()end end)
+                    nextTrack.DidLoop:Connect(function()if poseChanged then poseChanged()end end)
                     track=nextTrack;track.Priority=Enum.AnimationPriority.Action;track.Looped=true;track:Play(0.15)
                 end
             end)
@@ -34,10 +36,11 @@ return function(viewport,player,source,onError)
         end)
     end
     local resized
+    local poseChanged
     local function clear()
         if track then pcall(function()track:Stop(0);track:Destroy()end);track=nil end
         for _,child in ipairs(viewport:GetChildren()) do child:Destroy() end
-        model=nil;animator=nil;currentId=nil
+        model=nil;animator=nil;currentId=nil;poseChanged=nil
         if resized then resized:Disconnect();resized=nil end
         playGeneration=playGeneration+1
     end
@@ -108,14 +111,13 @@ return function(viewport,player,source,onError)
                 end
                 updateTarget()
                 camera.CFrame=framing.camera or target
-                local elapsed=0
-                resized=game:GetService("RunService").RenderStepped:Connect(function(delta)
-                    elapsed=elapsed+delta
-                    if elapsed>=0.08 then elapsed=0;updateTarget() end
-                    -- Ease into the full animation envelope instead of following each limb.
-                    camera.CFrame=camera.CFrame:Lerp(target,1-math.exp(-delta/0.8))
-                    framing.camera=camera.CFrame
-                end)
+                poseChanged=function()
+                    if not alive or generation~=ticket then return end
+                    updateTarget()
+                    game:GetService("TweenService"):Create(camera,TweenInfo.new(0.8),{CFrame=target}):Play()
+                    framing.camera=target
+                end
+                resized=viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(poseChanged)
                 camera.Parent=viewport;viewport.CurrentCamera=camera
                 viewport.Ambient=Color3.fromRGB(190,190,190);viewport.LightColor=Color3.new(1,1,1)
                 viewport.LightDirection=Vector3.new(-1,-1,-1)

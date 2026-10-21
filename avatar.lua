@@ -1043,32 +1043,50 @@ return function(player,onStatus,readAsset,managedRespawn)
         if token==replayToken then notify(result,false) end
         return result
     end
-    local function schedule(c)
-        local ticket=generation
-        task.spawn(function()
-            for attempt=1,100 do
-                if not alive or generation~=ticket or player.Character~=c then return end
-                local humanoid=c:FindFirstChildOfClass("Humanoid")
-                local appearance=true
-                if player.HasAppearanceLoaded then
-                    local ok,loaded=pcall(function() return player:HasAppearanceLoaded() end)
-                    appearance=ok and loaded
-                end
-                if humanoid and humanoid.Health>0 and c:FindFirstChild("Head") and (appearance or attempt>=50) then
-                    if not alive or generation~=ticket or player.Character~=c then return end
-                    local ok,err=pcall(api.reapplySaved)
-                    if not ok and alive and generation==ticket then notify("Could not restore saved cosmetics: "..tostring(err),false) end
-                    return
-                end
-                task.wait(0.1)
+    local readyConnections={}
+    local function cancelReady()
+        for _,connection in ipairs(readyConnections)do connection:Disconnect()end
+        readyConnections={}
+    end
+    local function whenReady(character,ready,callback)
+        cancelReady()
+        local pending,finished=false,false
+        local function changed()
+            if pending or finished then return end
+            pending=true
+            task.defer(function()
+                pending=false
+                if finished or not alive or player.Character~=character then return end
+                if not ready()then return end
+                finished=true;cancelReady();callback()
+            end)
+        end
+        local function watch(object)
+            if object:IsA("Humanoid")then
+                readyConnections[#readyConnections+1]=object.HealthChanged:Connect(changed)
+            elseif object:IsA("LocalScript") and object.Name=="Animate"then
+                readyConnections[#readyConnections+1]=object:GetPropertyChangedSignal("Disabled"):Connect(changed)
             end
-            if alive and generation==ticket then notify("Avatar is not ready. Use Reapply saved cosmetics when it finishes loading.",false) end
+        end
+        readyConnections[#readyConnections+1]=character.DescendantAdded:Connect(function(object)watch(object);changed()end)
+        readyConnections[#readyConnections+1]=player.CharacterAppearanceLoaded:Connect(changed)
+        for _,object in ipairs(character:GetDescendants())do watch(object)end
+        changed()
+    end
+    local function schedule(c)
+        whenReady(c,function()
+            local h=c:FindFirstChildOfClass("Humanoid")
+            return h and h.Health>0 and c:FindFirstChild("Head") and player:HasAppearanceLoaded()
+        end,function()
+            local ok,err=pcall(api.reapplySaved)
+            if not ok and alive then notify("Could not restore saved cosmetics: "..tostring(err),false)end
         end)
     end
     local changed=player.CharacterAdded:Connect(function(c)
         generation=generation+1;forget();if not managedRespawn then schedule(c)end
     end)
     function api.destroy()
+        cancelReady()
         if not alive then return end
         generation=generation+1
         changed:Disconnect()

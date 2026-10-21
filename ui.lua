@@ -298,15 +298,25 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
         local errorMessage,setError=React.useState("")
         React.useEffect(function()
             local previous
-            local connection=game:GetService("RunService").RenderStepped:Connect(function()
+            local function resize()
                 local viewport=ref.current
                 local scroll=viewport and viewport:FindFirstAncestorWhichIsA("ScrollingFrame")
                 if not scroll then return end
                 local top=viewport.AbsolutePosition.Y-scroll.AbsolutePosition.Y+scroll.CanvasPosition.Y
                 local available=math.max(180,math.floor(scroll.AbsoluteSize.Y-top-8))
                 if available~=previous then previous=available;setHeight(available) end
-            end)
-            return function()connection:Disconnect()end
+            end
+            local viewport=ref.current
+            local connections={}
+            if viewport then
+                for _,property in ipairs({"AbsoluteSize","AbsolutePosition"})do connections[#connections+1]=viewport:GetPropertyChangedSignal(property):Connect(resize)end
+                local scroll=viewport:FindFirstAncestorWhichIsA("ScrollingFrame")
+                if scroll then
+                    for _,property in ipairs({"AbsoluteSize","CanvasPosition"})do connections[#connections+1]=scroll:GetPropertyChangedSignal(property):Connect(resize)end
+                end
+            end
+            resize()
+            return function()for _,connection in ipairs(connections)do connection:Disconnect()end end
         end,{})
         React.useEffect(function()
             setError("")
@@ -471,7 +481,7 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
         React.useEffect(function()
             local previous=nil
             if editing then setHovered(nil);if props.onHover then props.onHover(nil) end end
-            local connection=game:GetService("RunService").RenderStepped:Connect(function()
+            local function updateHover()
                 local instance=ref.current
                 local nextSlot=nil
                 if instance and not props.disabled and not editing then
@@ -484,8 +494,17 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
                     if visible then nextSlot=slotAt(instance,game:GetService("UserInputService"):GetMouseLocation()) end
                 end
                 if nextSlot~=previous then previous=nextSlot;setHovered(nextSlot);if props.onHover then props.onHover(nextSlot) end end
-            end)
-            return function()connection:Disconnect()end
+            end
+            local connections={game:GetService("UserInputService").InputChanged:Connect(updateHover)}
+            local ancestor=ref.current
+            while ancestor do
+                if ancestor:IsA("GuiObject")then
+                    for _,property in ipairs({"Visible","AbsoluteSize","AbsolutePosition"})do connections[#connections+1]=ancestor:GetPropertyChangedSignal(property):Connect(updateHover)end
+                elseif ancestor:IsA("ScreenGui")then connections[#connections+1]=ancestor:GetPropertyChangedSignal("Enabled"):Connect(updateHover)end
+                ancestor=ancestor.Parent
+            end
+            updateHover()
+            return function()for _,connection in ipairs(connections)do connection:Disconnect()end end
         end,{props.disabled,editing})
         local active=hovered
         local activeSlot=active and props.slots[active] or nil

@@ -48,7 +48,6 @@ function M.create(player,getPreviews)
     local rootVisibility={}
     local guardingVisibility=false
     local mutatingPanel=false
-    local unbindGuard
     local changingMask=false
     local currentSnapshot,currentImage,previewData,previewKey,previewCharacter
     local previewBuild
@@ -430,69 +429,10 @@ function M.create(player,getPreviews)
             end)
         end)
     end
-    -- Native try-on models can be inserted after the item/name callbacks.
-    -- Mask them at the last render priority, before any frame can display them.
-    pcall(function()
-        local run=game:GetService("RunService")
-        local function guard()
-            if modeEnabled then maskPreview(false,true)end
-            if fallbackGui and fallbackGui.Enabled and (not modeEnabled or not previewLabel or not previewLabel.Parent or not visible(previewLabel))then
-                fallbackGui.Enabled=false
-                if fallbackEntry and fallbackEntry.overlay then fallbackEntry.overlay.Visible=false end
-            end
-        end
-        if run.BindToRenderStep then
-            local binding="LarpbloxInspectGuard_"..tostring(player.UserId)
-            local priority=Enum.RenderPriority and Enum.RenderPriority.Last.Value or 2000
-            run:BindToRenderStep(binding,priority,guard)
-            unbindGuard=function()run:UnbindFromRenderStep(binding)end
-        else connections[#connections+1]=run.RenderStepped:Connect(guard)end
-    end)
     local api={}
-    local recoveryScheduled,recoverySince,recoverySignature=false,nil,nil
-    local recoveryAttempts=0
-    local function scheduleRecovery()
-        if recoveryScheduled or not modeEnabled or not task or not task.delay then return end
-        recoveryScheduled=true
-        task.delay(1,function()
-            recoveryScheduled=false
-            if not modeEnabled then return end
-            local label,_,root=ownTitle(currentName,true)
-            if not label or not active or not currentSnapshot then
-                recoverySince=nil;recoveryAttempts=0
-            else
-                if recoverySignature~=lastSignature then
-                    recoverySignature=lastSignature;recoverySince=nil;recoveryAttempts=0
-                end
-                local loading,cards=false,0
-                for _,object in ipairs(root:GetDescendants())do
-                    if object.Name:match("^Skeleton%d+$") and visible(object) then loading=true end
-                    if object.Name=="ItemCardFooterTitle" and visible(object) then cards=cards+1 end
-                end
-                if not loading or cards>0 then
-                    recoverySince=nil;recoveryAttempts=0
-                elseif recoveryAttempts<3 then
-                    local now=os.clock()
-                    recoverySince=recoverySince or now
-                    if now-recoverySince>=6*2^recoveryAttempts then
-                        recoveryAttempts=recoveryAttempts+1;recoverySince=now
-                        -- A successful API call can still leave Roblox's cards stuck.
-                        -- Recreate only the own description, never the account inspector.
-                        lastSignature=nil
-                        local attempts=recoveryAttempts
-                        local ok,err=pcall(api.update,{enabled=true,name=currentName,snapshot=currentSnapshot,image=currentImage})
-                        recoverySignature=lastSignature;recoveryAttempts=attempts
-                        status=ok and ("Retrying stalled Roblox item cards ("..attempts.."/3).") or ("Item card retry failed: "..tostring(err))
-                    end
-                end
-            end
-            scheduleRecovery()
-        end)
-    end
     function api.update(options)
         local enabled=options.enabled==true
         modeEnabled=enabled
-        if enabled then scheduleRecovery()else recoverySince=nil;recoverySignature=nil;recoveryAttempts=0 end
         currentSnapshot=options.snapshot
         if enabled and currentSnapshot and task and task.spawn then
             local thumbs={};for _,item in ipairs(currentSnapshot.items or {})do thumbs[#thumbs+1]="rbxthumb://type=Asset&id="..tostring(item.id).."&w=150&h=150"end
@@ -534,7 +474,6 @@ function M.create(player,getPreviews)
     end
     function api.report()return status end
     function api.destroy(preserveNative)
-        if unbindGuard then unbindGuard();unbindGuard=nil end
         previewData=nil;previewKey=nil;currentImage=nil
         api.update({enabled=false,name="",preserveNative=preserveNative==true})
         for _,connection in ipairs(connections)do connection:Disconnect()end

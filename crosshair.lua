@@ -1,17 +1,15 @@
 -- MM2 sheriff/hero crosshair, sized independently of the source image.
 return function(game)
     local Players = game:GetService("Players")
-    local RunService = game:GetService("RunService")
     local Input = game:GetService("UserInputService")
     local player = Players.LocalPlayer
     local mouse = player:GetMouse()
-    local renderName = "HoneyBunMM2Crosshair"
 
     local image = ""
     local live = false
     local savedIcon
     local lastApplied
-    local connection
+    local watchers,characterWatchers={},{}
     local destroyed = false
     local savedMouseEnabled
     local size = 40
@@ -23,10 +21,8 @@ return function(game)
     cursor.Size=UDim2.fromOffset(size,size);cursor.Visible=false
 
     local function disconnect()
-        if connection then connection:Disconnect(); connection = nil end
-        if RunService.UnbindFromRenderStep then
-            pcall(function() RunService:UnbindFromRenderStep(renderName) end)
-        end
+        for _,c in ipairs(watchers)do c:Disconnect()end;watchers={}
+        for _,c in ipairs(characterWatchers)do c:Disconnect()end;characterWatchers={}
     end
 
     local function isGun(child)
@@ -66,8 +62,10 @@ return function(game)
         end
     end
 
+    local updating=false
     local function update()
-        if destroyed then return end
+        if destroyed or updating then return end
+        updating=true
         local character = player.Character
         local shouldLive = image ~= "" and hasLiveCharacter() and equippedGun(character)
         if shouldLive then
@@ -86,19 +84,28 @@ return function(game)
         else
             restore()
         end
+        updating=false
     end
 
     local function bind()
-        if RunService.BindToRenderStep and RunService.UnbindFromRenderStep then
-            local priority = 2001
-            if Enum and Enum.RenderPriority and Enum.RenderPriority.Last then
-                priority = (Enum.RenderPriority.Last.Value or 2000) + 1
+        local function watchCharacter(character)
+            for _,c in ipairs(characterWatchers)do c:Disconnect()end;characterWatchers={}
+            if character then
+                local function watch(object)
+                    if object:IsA("Humanoid")then characterWatchers[#characterWatchers+1]=object.HealthChanged:Connect(update)
+                    elseif object:IsA("Tool")then characterWatchers[#characterWatchers+1]=object:GetPropertyChangedSignal("Name"):Connect(update)end
+                end
+                for _,object in ipairs(character:GetChildren())do watch(object)end
+                characterWatchers[#characterWatchers+1]=character.ChildAdded:Connect(function(object)watch(object);update()end)
+                characterWatchers[#characterWatchers+1]=character.ChildRemoved:Connect(update)
             end
-            local ok = pcall(function() RunService:BindToRenderStep(renderName, priority, update) end)
-            if ok then return end
+            update()
         end
-        local event = RunService.RenderStepped or RunService.Heartbeat
-        if event and event.Connect then connection = event:Connect(update) end
+        watchers[#watchers+1]=player.CharacterAdded:Connect(watchCharacter)
+        watchers[#watchers+1]=mouse.Move:Connect(update)
+        watchers[#watchers+1]=mouse:GetPropertyChangedSignal("Icon"):Connect(update)
+        watchers[#watchers+1]=Input:GetPropertyChangedSignal("MouseIconEnabled"):Connect(update)
+        watchCharacter(player.Character)
     end
 
     bind()
