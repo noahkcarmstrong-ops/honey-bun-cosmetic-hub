@@ -286,10 +286,30 @@ return function(player)
         return object
     end
     local api = {}
-    local function captureCharacter(character)
+    local function headAccessoryParts(character)
+        local marked={}
+        local head=character:FindFirstChild("Head")
+        if not head then return marked end
+        for _,accessory in ipairs(character:GetChildren())do
+            if accessory:IsA("Accessory") or accessory:IsA("Hat") then
+                local attached=false
+                for _,joint in ipairs(accessory:GetDescendants())do
+                    if joint:IsA("JointInstance") and (joint.Part0==head or joint.Part1==head) then attached=true;break end
+                end
+                if attached then
+                    for _,part in ipairs(accessory:GetDescendants())do
+                        if partClasses[part.ClassName] then marked[part]=true end
+                    end
+                end
+            end
+        end
+        return marked
+    end
+    local function captureCharacter(character,headAccessories)
         assert(character, "Wait for your avatar to finish spawning")
         local root = (character.FindFirstChild and character:FindFirstChild("HumanoidRootPart")) or read(character, "PrimaryPart")
         assert(root, "Wait for your avatar to finish spawning")
+        headAccessories=headAccessories or headAccessoryParts(character)
         local records, indices = {}, {}
         local hasPart = false
         local descendants = character.GetDescendants and character:GetDescendants() or {}
@@ -308,6 +328,7 @@ return function(player)
             if visualClasses[class] and appearanceInstance(instance, character) and not hasForeignToolAncestor(instance, character) and #records < MAX_RECORDS then
                 local parent = indices[read(instance, "Parent")] or 0
                 local record = capture(instance, root, parent)
+                if headAccessories[instance] then record.headAccessory=true end
                 if record.class == "Part" or record.class == "MeshPart" or record.class == "UnionOperation" or record.class == "WedgePart" or record.class == "CornerWedgePart" or record.class == "TrussPart" then
                     if record.cframe and record.size then table.insert(records, record); indices[instance] = #records; hasPart = true end
                 else
@@ -332,15 +353,36 @@ return function(player)
             -- graph directly without parenting the preview into the game.
             local root=model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
             assert(root,"Generated avatar has no root part.")
-            local edges={}
+            local edges,joints={},{}
+            local headAccessories=headAccessoryParts(model)
             for _,joint in ipairs(model:GetDescendants())do
+                local a,b,offset
                 if joint:IsA("JointInstance") and joint.Part0 and joint.Part1 then
-                    local a,b=joint.Part0,joint.Part1
+                    a,b=joint.Part0,joint.Part1
+                    offset=joint.C0*(joint:IsA("Motor6D") and joint.Transform or CFrame.new())*joint.C1:Inverse()
+                elseif joint:IsA("AnimationConstraint") and joint.Attachment0 and joint.Attachment1 then
+                    -- New R15 rigs use attachment-based animation joints instead
+                    -- of Motor6Ds. Their generated CFrames are not a posed rig.
+                    local first,second=joint.Attachment0,joint.Attachment1
+                    a,b=first:FindFirstAncestorWhichIsA("BasePart"),second:FindFirstAncestorWhichIsA("BasePart")
+                    if a and b then
+                        local c0=a.CFrame:ToObjectSpace(first.WorldCFrame)
+                        local c1=b.CFrame:ToObjectSpace(second.WorldCFrame)
+                        offset=c0*joint.Transform*c1:Inverse()
+                    end
+                end
+                if a and b and offset then
                     edges[a]=edges[a] or {};edges[b]=edges[b] or {}
-                    local offset=joint.C0*(joint:IsA("Motor6D") and joint.Transform or CFrame.new())*joint.C1:Inverse()
                     edges[a][#edges[a]+1]={part=b,offset=offset}
                     edges[b][#edges[b]+1]={part=a,offset=offset:Inverse()}
+                    joints[#joints+1]=joint
                 end
+            end
+            -- Only this temporary model is detached. Prevent connected assembly
+            -- movement from undoing the transforms as we resolve each part.
+            for _,joint in ipairs(joints)do joint:Destroy()end
+            for _,part in ipairs(model:GetDescendants())do
+                if part:IsA("BasePart") then part.Anchored=true end
             end
             local queue,seen={root},{[root]=true}
             local index=1
@@ -360,7 +402,7 @@ return function(player)
                     if copy then rememberMesh(part.MeshId,copy) end
                 end
             end
-            return captureCharacter(model)
+            return captureCharacter(model,headAccessories)
         end)
         model:Destroy()
         if not ok then error(result) end
@@ -389,6 +431,7 @@ return function(player)
                 humanoid:Destroy();world:Destroy();return false
             end
             made[index]=object
+            if record.headAccessory==true then object:SetAttribute("LarpbloxPreviewHeadAccessory",true) end
         end
         local root=Instance.new("Part");root.Name="HumanoidRootPart";root.Size=Vector3.new(2,2,1)
         root.CFrame=CFrame.new(0,0,0);root.Transparency=1;root.Anchored=true;root.CanCollide=false;root.Parent=model
