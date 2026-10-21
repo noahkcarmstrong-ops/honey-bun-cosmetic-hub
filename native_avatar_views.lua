@@ -196,6 +196,7 @@ function M.create(player, getPreviews, describeSnapshot)
     local pending = {}
     local directImages={}
     local ownedOverlays={}
+    local failedImages={}
     local stagingFolder
     local outfitSnapshot,previewBuild,previewKey
     local ensurePreview
@@ -304,6 +305,16 @@ function M.create(player, getPreviews, describeSnapshot)
     end
     local function matchPortraitMask(image,overlay)
         local native=image:FindFirstChildOfClass("UICorner")
+        -- Native thumbnails may put their mask on a same-sized wrapper.
+        local ancestor=image.Parent
+        for _=1,3 do
+            if native or not ancestor or not ancestor:IsA("GuiObject") then break end
+            local size=ancestor.AbsoluteSize
+            local imageSize=image.AbsoluteSize
+            if math.abs(size.X-imageSize.X)>1 or math.abs(size.Y-imageSize.Y)>1 then break end
+            native=ancestor:FindFirstChildOfClass("UICorner")
+            ancestor=ancestor.Parent
+        end
         local corner=overlay:FindFirstChildOfClass("UICorner")
         if native then
             if not corner then corner=Instance.new("UICorner");corner.Parent=overlay end
@@ -324,6 +335,7 @@ function M.create(player, getPreviews, describeSnapshot)
         overlay.Name = "LarpbloxOwnAvatarPreview"
         overlay.Position = UDim2.fromScale(0, 0); overlay.Size = UDim2.fromScale(1, 1)
         overlay.BackgroundTransparency = 1; overlay.BorderSizePixel = 0
+        overlay.ClipsDescendants = true
         overlay.Visible = false
         overlay.ZIndex = read(image, "ZIndex") or 1; overlay.Parent = image
         if imageSource then overlay.Image = imageSource;overlay.ScaleType=read(image,"ScaleType") or Enum.ScaleType.Fit end
@@ -346,7 +358,7 @@ function M.create(player, getPreviews, describeSnapshot)
         end
         -- Native full-body slots use the Roblox-rendered PNG. Headshots need
         -- a distinct crop/render, so never squeeze a full-body image into them.
-        local imageSource, snapshot = fullPortrait(image) and currentImage or nil, previewSnapshot
+        local imageSource, snapshot = fullPortrait(image) and currentImage and not failedImages[currentImage] and currentImage or nil, previewSnapshot
         if not imageSource and (not snapshot or previewKey~=signature(outfitSnapshot)) then ensurePreview();return end
         local overlay = makeOverlay(image, imageSource)
         if imageSource then
@@ -405,6 +417,11 @@ function M.create(player, getPreviews, describeSnapshot)
                 local source=nativeImageSources[image];nativeImageSources[image]=nil
                 if source then image.Image=source end
             end
+            -- Roblox can clone/reuse a thumbnail carrying an old preview child.
+            -- Such copies are outside our ownership tables and must not stack.
+            for _,child in ipairs(image:GetChildren())do
+                if child~=overlay and child~=previous and child.Name=="LarpbloxOwnAvatarPreview" and not ownedOverlays[child] then child:Destroy()end
+            end
             overlays[image]=overlay;overlayKeys[image]=staged.key
             -- Claim the mask before exposing the new portrait. Visibility
             -- listeners must never observe both the fallback and replacement.
@@ -418,6 +435,21 @@ function M.create(player, getPreviews, describeSnapshot)
                 if overlay.IsLoaded then commit() end
             end)
             if overlay.IsLoaded then commit() end
+            task.spawn(function()
+                local loaded=false
+                local ok=pcall(function()
+                    game:GetService("ContentProvider"):PreloadAsync({overlay},function(_,result)
+                        if result==Enum.AssetFetchStatus.Success then loaded=true end
+                    end)
+                end)
+                if pending[image]~=staged then return end
+                if ok and (loaded or overlay.IsLoaded)then commit()
+                else
+                    failedImages[imageSource]=true
+                    discard()
+                    if alive and enabled then render(image)end
+                end
+            end)
             return
         end
         local ok, previews = pcall(getPreviews)
