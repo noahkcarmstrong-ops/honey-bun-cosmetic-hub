@@ -161,7 +161,8 @@ return function(player,onStatus,managedRespawn)
     local jumpingEnabled=gui and gui:GetAttribute("HoneyBunCosmeticUI_emoteWhileJumping")==true
     local isolated=gui and gui:GetAttribute("HoneyBunCosmeticUI_isolateEmote")==true
     local walkingHook,walkingTrack,walkingState,runningConnection,trackStopped,animationPlayed
-    local pausedAnimate,animateWasDisabled
+    local isolationStep
+    local suppressed={}
     local bindTicket=0
     local scheduleBinding
     local function stopWalkingEmote()
@@ -169,13 +170,13 @@ return function(player,onStatus,managedRespawn)
         if trackStopped then trackStopped:Disconnect();trackStopped=nil end
         if animationPlayed then animationPlayed:Disconnect();animationPlayed=nil end
         if track then pcall(function()track:Stop(0.15);track:Destroy()end)end
-        if pausedAnimate then
-            local animate=pausedAnimate;pausedAnimate=nil
-            pcall(function()animate.Disabled=animateWasDisabled end)
-            if alive and not animateWasDisabled then
-                task.delay(0.1,function()if alive and scheduleBinding then scheduleBinding()end end)
-            end
+        if isolationStep then isolationStep:Disconnect();isolationStep=nil end
+        for other,state in pairs(suppressed)do
+            pcall(function()
+                if other.IsPlaying then other:AdjustSpeed(state.speed);other:AdjustWeight(state.weight,0.15)end
+            end)
         end
+        suppressed={}
     end
     local function unbindWalking()
         stopWalkingEmote()
@@ -209,11 +210,23 @@ return function(player,onStatus,managedRespawn)
             walkingTrack=newTrack
             newTrack.Priority=Enum.AnimationPriority.Action
             if isolated then
-                pausedAnimate=animate;animateWasDisabled=animate.Disabled;animate.Disabled=true
+                local function suppress(track)
+                    if track==newTrack then return end
+                    if not suppressed[track]then suppressed[track]={speed=track.Speed,weight=track.WeightTarget}end
+                    track:AdjustWeight(0,0)
+                end
                 animationPlayed=animator.AnimationPlayed:Connect(function(track)
-                    if walkingTrack==newTrack and track~=newTrack then track:Stop(0)end
+                    if walkingTrack==newTrack then suppress(track)end
                 end)
-                for _,track in ipairs(animator:GetPlayingAnimationTracks())do if track~=newTrack then track:Stop(0)end end
+                for _,track in ipairs(animator:GetPlayingAnimationTracks())do suppress(track)end
+                -- Animate must remain alive to accept the next emote. Its
+                -- blends can restore locomotion weights without playing a
+                -- new track, so only guard the small active track set here.
+                isolationStep=game:GetService("RunService").PreAnimation:Connect(function()
+                    for track in pairs(suppressed)do
+                        if track.IsPlaying and track.WeightTarget~=0 then track:AdjustWeight(0,0)end
+                    end
+                end)
             end
             trackStopped=newTrack.Stopped:Connect(function()if walkingTrack==newTrack then stopWalkingEmote()end end)
             newTrack:Play(0.15)
