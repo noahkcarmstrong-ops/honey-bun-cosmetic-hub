@@ -161,17 +161,22 @@ return function(player,onStatus,managedRespawn)
     local jumpingEnabled=gui and gui:GetAttribute("HoneyBunCosmeticUI_emoteWhileJumping")==true
     local isolated=gui and gui:GetAttribute("HoneyBunCosmeticUI_isolateEmote")==true
     local walkingHook,walkingTrack,walkingState,runningConnection,trackStopped,animationPlayed
-    local isolationStep
     local suppressed={}
-    local bindTicket=0
+    local callbackConnections,observedCallbacks={},{}
+    local environment=type(getgenv)=="function" and getgenv() or _G
+    local runtime=environment.__LarpbloxEmoteEvents
+    if not runtime then
+        runtime={callbacks=setmetatable({}, {__mode="k"}),muted=setmetatable({}, {__mode="k"})}
+        environment.__LarpbloxEmoteEvents=runtime
+    end
     local scheduleBinding
     local function stopWalkingEmote()
         local track=walkingTrack;walkingTrack=nil
         if trackStopped then trackStopped:Disconnect();trackStopped=nil end
         if animationPlayed then animationPlayed:Disconnect();animationPlayed=nil end
         if track then pcall(function()track:Stop(0.15);track:Destroy()end)end
-        if isolationStep then isolationStep:Disconnect();isolationStep=nil end
         for other,state in pairs(suppressed)do
+            runtime.muted[other]=nil
             pcall(function()
                 if other.IsPlaying then other:AdjustSpeed(state.speed);other:AdjustWeight(state.weight,0.15)end
             end)
@@ -210,23 +215,24 @@ return function(player,onStatus,managedRespawn)
             walkingTrack=newTrack
             newTrack.Priority=Enum.AnimationPriority.Action
             if isolated then
+                if not runtime.weightHook then
+                    local originalWeight
+                    originalWeight=hookfunction(newTrack.AdjustWeight,function(track,weight,fade)
+                        if runtime.muted[track]then weight=0 end
+                        return originalWeight(track,weight,fade)
+                    end)
+                    runtime.weightHook=true
+                end
                 local function suppress(track)
                     if track==newTrack then return end
                     if not suppressed[track]then suppressed[track]={speed=track.Speed,weight=track.WeightTarget}end
+                    runtime.muted[track]=true
                     track:AdjustWeight(0,0)
                 end
                 animationPlayed=animator.AnimationPlayed:Connect(function(track)
                     if walkingTrack==newTrack then suppress(track)end
                 end)
                 for _,track in ipairs(animator:GetPlayingAnimationTracks())do suppress(track)end
-                -- Animate must remain alive to accept the next emote. Its
-                -- blends can restore locomotion weights without playing a
-                -- new track, so only guard the small active track set here.
-                isolationStep=game:GetService("RunService").PreAnimation:Connect(function()
-                    for track in pairs(suppressed)do
-                        if track.IsPlaying and track.WeightTarget~=0 then track:AdjustWeight(0,0)end
-                    end
-                end)
             end
             trackStopped=newTrack.Stopped:Connect(function()if walkingTrack==newTrack then stopWalkingEmote()end end)
             newTrack:Play(0.15)
@@ -244,27 +250,51 @@ return function(player,onStatus,managedRespawn)
         end)
         return true
     end
+    local bindingPending=false
     scheduleBinding=function()
-        bindTicket=bindTicket+1
-        local ticket=bindTicket
-        if not (walkingEnabled or jumpingEnabled)then unbindWalking();return end
-        task.spawn(function()
-            -- OnInvoke is a callback, not a property: Roblox exposes no change
-            -- signal for it. Animate can replace it after spawning or loading a
-            -- description, so cheaply check ownership while this feature is on.
-            local failures=0
-            while alive and ticket==bindTicket do
-                local ok,ready=pcall(bindWalking)
-                if ok and ready then
-                    failures=0
-                    task.wait(0.5)
-                else
-                    failures=failures+1
-                    if failures==60 and onStatus then onStatus("Waiting for this character's emote controls.")end
-                    task.wait(failures<60 and 0.1 or 0.5)
-                end
-            end
+        if bindingPending or not alive then return end
+        bindingPending=true
+        task.defer(function()
+            bindingPending=false
+            if not alive then return end
+            local ok,ready=pcall(bindWalking)
+            if not ok and onStatus then onStatus(tostring(ready))end
         end)
+    end
+    local function watchEmoteControls(character)
+        for _,connection in ipairs(callbackConnections)do connection:Disconnect()end
+        callbackConnections={}
+        for object,handler in pairs(observedCallbacks)do
+            if runtime.callbacks[object]==handler then runtime.callbacks[object]=nil end
+        end
+        observedCallbacks={}
+        if not character then return end
+        if not runtime.assignmentHook and type(hookmetamethod)=="function"then
+            local original
+            original=hookmetamethod(game,"__newindex",newcclosure(function(object,key,value)
+                original(object,key,value)
+                if key=="OnInvoke"then
+                    local handler=runtime.callbacks[object]
+                    if handler then handler(value)end
+                end
+            end))
+            runtime.assignmentHook=true
+        end
+        local function watch(object)
+            if object:IsA("BindableFunction") and object.Name=="PlayEmote"then
+                local handler=function(value)
+                    if not walkingHook or value~=walkingHook.callback then scheduleBinding()end
+                end
+                runtime.callbacks[object]=handler;observedCallbacks[object]=handler
+                scheduleBinding()
+            elseif object:IsA("Animator") or object:IsA("Humanoid")then scheduleBinding()end
+        end
+        callbackConnections[#callbackConnections+1]=character.DescendantAdded:Connect(watch)
+        callbackConnections[#callbackConnections+1]=character.DescendantRemoving:Connect(function(object)
+            if observedCallbacks[object]then runtime.callbacks[object]=nil;observedCallbacks[object]=nil;scheduleBinding()end
+        end)
+        for _,object in ipairs(character:GetDescendants())do watch(object)end
+        scheduleBinding()
     end
     local function saveEmoteOptions()
         if gui then
@@ -284,6 +314,7 @@ return function(player,onStatus,managedRespawn)
     end
     function api.getEmoteWhileJumping()return jumpingEnabled end
     function api.setIsolateEmote(enabled)
+        assert(not enabled or type(hookfunction)=="function","Your executor cannot isolate emote animations.")
         isolated=enabled==true;stopWalkingEmote();saveEmoteOptions();return isolated
     end
     function api.getIsolateEmote()return isolated end
@@ -297,9 +328,9 @@ return function(player,onStatus,managedRespawn)
         assert(sorts[sort],"Choose a valid catalog sort order.")
         local key=query:lower()..":"..sort
         local saved=catalogCache[key]
-        if saved and page==1 and not saved.loading and os.clock()-saved.time>300 then saved=nil end
-        if not saved then saved={results={},time=os.clock(),loading=false,finished=false};catalogCache[key]=saved end
-        while saved.loading do task.wait()end
+        if saved and page==1 and not saved.loading and os.clock()-saved.time>300 then saved.completed:Destroy();saved=nil end
+        if not saved then saved={results={},time=os.clock(),loading=false,finished=false,completed=Instance.new("BindableEvent")};catalogCache[key]=saved end
+        if saved.loading then saved.completed.Event:Wait()end
         if saved.results[page]then return saved.results[page],page<#saved.results or not saved.finished end
         assert(page==#saved.results+1,"Return to the previous catalog page first.")
         if saved.finished then return {},false end
@@ -324,6 +355,7 @@ return function(player,onStatus,managedRespawn)
             return items
         end)
         saved.loading=false
+        saved.completed:Fire()
         if not ok then error(result,0)end
         return result,not saved.finished
     end
@@ -416,7 +448,7 @@ return function(player,onStatus,managedRespawn)
                 wheelConnections[#wheelConnections+1]=instance.EquippedEmotesChanged:Connect(reconcileWheel)
             elseif instance:IsA("Humanoid")then
                 watched[instance]=true
-                wheelConnections[#wheelConnections+1]=instance.ApplyDescriptionFinished:Connect(reconcileWheel)
+                wheelConnections[#wheelConnections+1]=instance.ApplyDescriptionFinished:Connect(function()reconcileWheel();scheduleBinding()end)
             end
         end
         wheelConnections[#wheelConnections+1]=character.DescendantAdded:Connect(function(instance)
@@ -434,28 +466,18 @@ return function(player,onStatus,managedRespawn)
         unbindWalking()
         scheduleBinding()
         watchWheel(character)
-        if managedRespawn then return end
-        task.spawn(function()
-            for attempt=1,100 do
-                if not alive or generation~=ticket or player.Character~=character then return end
-                local humanoid=character:FindFirstChildOfClass("Humanoid")
-                local ok,ready=pcall(function() return player:HasAppearanceLoaded() end)
-                if humanoid and humanoid.Health>0 and humanoid:FindFirstChildOfClass("HumanoidDescription") and ((ok and ready) or attempt>=50) then
-                    local applied,message=pcall(api.reapplySaved)
-                    if not applied and onStatus then onStatus("Could not restore saved emotes: "..tostring(message)) end
-                    return
-                end
-                task.wait(0.1)
-            end
-            if alive and generation==ticket and onStatus then onStatus("Emote wheel not ready. Use Reapply saved cosmetics after spawning.") end
-        end)
+        watchEmoteControls(character)
     end)
     function api.destroy()
         if not alive then return end
-        alive=false;generation=generation+1;bindTicket=bindTicket+1;changed:Disconnect();unbindWalking();pcall(restoreWheel);original=nil
+        alive=false;generation=generation+1;changed:Disconnect();unbindWalking();pcall(restoreWheel);original=nil
         for _,connection in ipairs(wheelConnections)do connection:Disconnect()end
         wheelConnections={}
+        for _,entry in pairs(catalogCache)do entry.completed:Fire();entry.completed:Destroy()end
+        catalogCache={}
+        watchEmoteControls(nil)
     end
+    watchEmoteControls(player.Character)
     watchWheel(player.Character)
     scheduleBinding()
     return api
