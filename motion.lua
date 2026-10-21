@@ -148,13 +148,29 @@ return function(player,onStatus,managedRespawn)
         save();return true
     end
     local walkingEnabled=gui and gui:GetAttribute("HoneyBunCosmeticUI_emoteWhileWalking")==true
-    local walkingHook,walkingTrack,walkingState
+    local jumpingEnabled=gui and gui:GetAttribute("HoneyBunCosmeticUI_emoteWhileJumping")==true
+    local isolated=gui and gui:GetAttribute("HoneyBunCosmeticUI_isolateEmote")==true
+    local walkingHook,walkingTrack,walkingState,runningConnection,trackStopped,animationPlayed
+    local pausedAnimate,animateWasDisabled
+    local bindTicket=0
+    local scheduleBinding
     local function stopWalkingEmote()
-        if walkingTrack then pcall(function()walkingTrack:Stop(0.15);walkingTrack:Destroy()end);walkingTrack=nil end
+        local track=walkingTrack;walkingTrack=nil
+        if trackStopped then trackStopped:Disconnect();trackStopped=nil end
+        if animationPlayed then animationPlayed:Disconnect();animationPlayed=nil end
+        if track then pcall(function()track:Stop(0.15);track:Destroy()end)end
+        if pausedAnimate then
+            local animate=pausedAnimate;pausedAnimate=nil
+            pcall(function()animate.Disabled=animateWasDisabled end)
+            if alive and not animateWasDisabled then
+                task.delay(0.1,function()if alive and scheduleBinding then scheduleBinding()end end)
+            end
+        end
     end
     local function unbindWalking()
         stopWalkingEmote()
         if walkingState then walkingState:Disconnect();walkingState=nil end
+        if runningConnection then runningConnection:Disconnect();runningConnection=nil end
         if walkingHook then
             local hook=walkingHook;walkingHook=nil
             pcall(function()
@@ -163,43 +179,84 @@ return function(player,onStatus,managedRespawn)
         end
     end
     local function bindWalking()
-        unbindWalking()
-        if not walkingEnabled then return end
-        assert(type(getcallbackvalue)=="function","Your executor cannot enable emotes while walking.")
+        if not (walkingEnabled or jumpingEnabled)then unbindWalking();return true end
+        assert(type(getcallbackvalue)=="function","Your executor cannot enable movement during emotes.")
         local character,humanoid=context()
         local animate=character:FindFirstChild("Animate")
         local play=animate and animate:FindFirstChild("PlayEmote")
-        assert(play and play:IsA("BindableFunction"),"This character does not use Roblox's standard emote controls.")
+        if not play or not play:IsA("BindableFunction")then return false end
+        if walkingHook and walkingHook.object==play and getcallbackvalue(play,"OnInvoke")==walkingHook.callback then return true end
         local originalCallback=getcallbackvalue(play,"OnInvoke")
-        assert(type(originalCallback)=="function","Wait for your character's emote controls to load.")
         local animator=humanoid:FindFirstChildOfClass("Animator")
-        assert(animator,"Wait for your avatar to finish spawning.")
+        if type(originalCallback)~="function" or not animator then return false end
+        unbindWalking()
         local function callback(emote,...)
-            if not alive or not walkingEnabled then return originalCallback(emote,...) end
-            if typeof(emote)~="Instance" or not emote:IsA("Animation") then return originalCallback(emote,...) end
+            if not alive or not (walkingEnabled or jumpingEnabled)then return originalCallback(emote,...)end
+            if typeof(emote)~="Instance" or not emote:IsA("Animation")then return originalCallback(emote,...)end
             stopWalkingEmote()
             local ok,newTrack=pcall(function()return animator:LoadAnimation(emote)end)
-            if not ok then return originalCallback(emote,...) end
+            if not ok then return originalCallback(emote,...)end
             walkingTrack=newTrack
             newTrack.Priority=Enum.AnimationPriority.Action
+            if isolated then
+                pausedAnimate=animate;animateWasDisabled=animate.Disabled;animate.Disabled=true
+                animationPlayed=animator.AnimationPlayed:Connect(function(track)
+                    if walkingTrack==newTrack and track~=newTrack then track:Stop(0)end
+                end)
+                for _,track in ipairs(animator:GetPlayingAnimationTracks())do if track~=newTrack then track:Stop(0)end end
+            end
+            trackStopped=newTrack.Stopped:Connect(function()if walkingTrack==newTrack then stopWalkingEmote()end end)
             newTrack:Play(0.15)
             return true,newTrack
         end
         walkingHook={object=play,original=originalCallback,callback=callback}
         play.OnInvoke=callback
         walkingState=humanoid.StateChanged:Connect(function(_,state)
-            if state==Enum.HumanoidStateType.Jumping or state==Enum.HumanoidStateType.Dead then stopWalkingEmote() end
+            if state==Enum.HumanoidStateType.Dead or (state==Enum.HumanoidStateType.Jumping and not jumpingEnabled)then stopWalkingEmote()end
+        end)
+        runningConnection=humanoid.Running:Connect(function(speed)
+            local state=humanoid:GetState()
+            local airborne=state==Enum.HumanoidStateType.Jumping or state==Enum.HumanoidStateType.Freefall
+            if speed>0.1 and not walkingEnabled and not (jumpingEnabled and airborne)then stopWalkingEmote()end
+        end)
+        return true
+    end
+    scheduleBinding=function()
+        bindTicket=bindTicket+1
+        local ticket=bindTicket
+        if not (walkingEnabled or jumpingEnabled)then unbindWalking();return end
+        task.spawn(function()
+            -- Bound only to character/control initialization, never per frame.
+            for attempt=1,60 do
+                if not alive or ticket~=bindTicket then return end
+                local ok,ready=pcall(bindWalking)
+                if ok and ready then return end
+                task.wait(0.1)
+            end
+            if alive and ticket==bindTicket and onStatus then onStatus("Waiting for this character's emote controls.")end
         end)
     end
-    function api.setEmoteWhileWalking(enabled)
-        local previous=walkingEnabled
-        walkingEnabled=enabled==true
-        local ok,message=pcall(bindWalking)
-        if not ok then walkingEnabled=previous;pcall(bindWalking);error(message) end
-        if gui then gui:SetAttribute("HoneyBunCosmeticUI_emoteWhileWalking",walkingEnabled) end
-        return walkingEnabled
+    local function saveEmoteOptions()
+        if gui then
+            gui:SetAttribute("HoneyBunCosmeticUI_emoteWhileWalking",walkingEnabled)
+            gui:SetAttribute("HoneyBunCosmeticUI_emoteWhileJumping",jumpingEnabled)
+            gui:SetAttribute("HoneyBunCosmeticUI_isolateEmote",isolated)
+        end
     end
-    function api.getEmoteWhileWalking() return walkingEnabled end
+    function api.setEmoteWhileWalking(enabled)
+        assert(type(getcallbackvalue)=="function","Your executor cannot enable movement during emotes.")
+        walkingEnabled=enabled==true;saveEmoteOptions();scheduleBinding();return walkingEnabled
+    end
+    function api.getEmoteWhileWalking()return walkingEnabled end
+    function api.setEmoteWhileJumping(enabled)
+        assert(type(getcallbackvalue)=="function","Your executor cannot enable movement during emotes.")
+        jumpingEnabled=enabled==true;saveEmoteOptions();scheduleBinding();return jumpingEnabled
+    end
+    function api.getEmoteWhileJumping()return jumpingEnabled end
+    function api.setIsolateEmote(enabled)
+        isolated=enabled==true;stopWalkingEmote();saveEmoteOptions();return isolated
+    end
+    function api.getIsolateEmote()return isolated end
     local catalogCache={}
     function api.searchEmotes(query,page,sort)
         query=tostring(query or ""):match("^%s*(.-)%s*$"):sub(1,100)
@@ -280,7 +337,7 @@ return function(player,onStatus,managedRespawn)
     end
     function api.reapplySaved()
         applyWheel()
-        if walkingEnabled then bindWalking() end
+        scheduleBinding()
         return "Saved emote wheel assignments restored."
     end
     function api.restore()
@@ -291,6 +348,7 @@ return function(player,onStatus,managedRespawn)
         generation=generation+1;local ticket=generation
         original=nil
         unbindWalking()
+        scheduleBinding()
         if managedRespawn then return end
         task.spawn(function()
             for attempt=1,100 do
@@ -309,7 +367,8 @@ return function(player,onStatus,managedRespawn)
     end)
     function api.destroy()
         if not alive then return end
-        alive=false;generation=generation+1;changed:Disconnect();unbindWalking();pcall(restoreWheel);original=nil
+        alive=false;generation=generation+1;bindTicket=bindTicket+1;changed:Disconnect();unbindWalking();pcall(restoreWheel);original=nil
     end
+    scheduleBinding()
     return api
 end
