@@ -218,7 +218,8 @@ function M.create(player, getPreviews, describeSnapshot)
     end
     local function verificationText(object)
         local text=plainText(read(object,"Text"))
-        return (currentName~="" and (text=="@"..currentName or text==currentName)) or text==tostring(read(player,"Name") or "")
+        if text:sub(1,1)=="@" then return false end
+        return (currentName~="" and text==currentName) or text==tostring(read(player,"Name") or "")
             or text==tostring(read(player,"DisplayName") or "") or (currentDisplayName~="" and text==currentDisplayName)
     end
     local function verifiedRosterRow(object)
@@ -268,6 +269,19 @@ function M.create(player, getPreviews, describeSnapshot)
             if not seen[label] then pcall(function() badge:Destroy() end);verificationBadges[label]=nil end
         end
         renderingVerification=false
+    end
+    local verificationQueued=false
+    local function queueVerification(object)
+        if not alive or not enabled or not verified or verificationQueued then return end
+        if object then
+            local class=read(object,"ClassName")
+            if (class~="TextLabel" and class~="TextButton") or not verificationText(object) then return end
+        end
+        verificationQueued=true
+        task.defer(function()
+            verificationQueued=false
+            if alive and enabled and verified then renderVerification() end
+        end)
     end
     local function bindVerificationCharacter(character)
         for _,connection in ipairs(verificationCharacterConnections) do pcall(function() connection:Disconnect() end) end
@@ -651,7 +665,7 @@ function M.create(player, getPreviews, describeSnapshot)
                     elseif hiddenImages[image] then destroyOverlay(image) end
                 end
             end
-            if verified then renderVerification() end
+            if verified then queueVerification(object) end
         end) end)
         if connection then textConnections[object] = connection end
     end
@@ -674,7 +688,7 @@ function M.create(player, getPreviews, describeSnapshot)
         for index, root in ipairs(roots) do pcall(function() connections["root" .. index] = root.DescendantAdded:Connect(function(object)
             watch(object); watchPeopleText(object)
             if enabled and isAvatarImage(object,player,{name=currentName}) then render(object) end
-            if enabled and verified then renderVerification() end
+            queueVerification(object)
         end) end) end
         for index,root in ipairs(roots)do
             pcall(function()connections["removed"..index]=root.DescendantRemoving:Connect(function(object)
