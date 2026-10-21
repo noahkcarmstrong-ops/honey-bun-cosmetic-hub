@@ -1037,7 +1037,7 @@ render=function()
     view.setStatus(statusText)
     view.setPersistence(persistence and persistence.status() or persistenceNotice)
     if statusText:lower():find("could not",1,true) or statusText:lower():find("failed",1,true) then
-        caption(statusText,44,{color=Color3.fromRGB(170,45,45),autoSize=true})
+        append(view.StatusNotice,{message=statusText})
     end
     if activePage=="Settings" then
         caption("Preview",28,{size=18,color=theme.ink})

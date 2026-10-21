@@ -391,7 +391,7 @@ return function(game,schema)
                 if group.target=="Atmosphere"and field.key=="Enabled"then values.Enabled=object.Parent==lighting
                 else local ok,value=pcall(function()return object[field.key]end);if ok then values[field.key]=encode(value)end end
             end
-            if temporary then defaults[group.id]=table.clone(values);temporary:Destroy()end
+            if temporary then if values.Enabled~=nil then values.Enabled=false end;defaults[group.id]=table.clone(values);temporary:Destroy()end
             result[group.id]=values
         end
         return result

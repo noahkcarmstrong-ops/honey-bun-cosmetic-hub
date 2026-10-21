@@ -98,7 +98,7 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
             end,
             slotProps = {
                 root = {Name = props.name or "Input"},
-                textbox = {Font = Enum.Font.SourceSans, TextSize = 15,
+                textbox = {Font = Enum.Font.SourceSans, TextSize = props.textSize or 15,
                     MultiLine = props.multiline or false, TextWrapped = props.multiline or false,
                     TextTruncate = Enum.TextTruncate.None},
                 corner = {CornerRadius = UDim.new(0, 2)},
@@ -131,29 +131,62 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
             Right=e(ui.Stack,{width=wide and UDim.new(1-(props.ratio or 0.56),-8)or UDim.new(1,0),layoutOrder=2,gap=14,children=props.right}),
         })
     end
+    local editor={surface=Color3.fromRGB(247,249,252),header=Color3.fromRGB(230,236,243),border=Color3.fromRGB(202,212,224),ink=Color3.fromRGB(35,48,68)}
+    ui.editor=editor
+    function ui.Switch(props)
+        return e(Prism.Switch,{checked=props.value,onChange=props.onChange,disabled=props.disabled,size="md",width=44,height=28,position=props.position,
+            styleOverrides=function(_,context)return {trackColor=context.checked and colors.blue or Color3.fromRGB(177,188,202),thumbColor=Color3.new(1,1,1),trackStrokeTransparency=1}end,
+            slotProps={root={Name=props.name or "Toggle",ZIndex=4}},
+        })
+    end
     function ui.Section(props)
         local open,setOpen=React.useState(props.open~=false)
-        return e(ui.Stack,{layoutOrder=props.layoutOrder,gap=0,children={
-            Header=e(ui.Button,{name=props.name,label="",width=UDim.new(1,0),height=38,onPress=function()setOpen(not open)end,children={
-                Title=e(ui.Text,{text=props.title,size=17,font=Enum.Font.SourceSansSemibold,color=colors.ink,position=UDim2.fromOffset(12,0),width=UDim.new(1,-48),height=38}),
-                Arrow=e(ui.Text,{text=open and "−"or "+",width=20,height=38,position=UDim2.new(1,-30,0,0),align=Enum.TextXAlignment.Center}),
+        local panel=props.variant=="panel"
+        local headerHeight=panel and 40 or 38
+        local nodes={
+            Header=e(ui.Button,{name=props.name,label="",width=UDim.new(1,0),height=headerHeight,borderless=panel,background=panel and editor.header or nil,onPress=function()setOpen(not open)end,children={
+                Icon=props.icon and e(Prism.Icon,{name=props.icon,size=21,color=editor.ink,position=UDim2.fromOffset(14,9)})or nil,
+                Title=e(ui.Text,{text=props.title,size=panel and 21 or 17,font=Enum.Font.SourceSansSemibold,color=panel and editor.ink or colors.ink,position=UDim2.fromOffset(props.icon and 46 or 12,0),width=UDim.new(1,props.enabled~=nil and -134 or -76),height=headerHeight}),
+                Arrow=e(Prism.Icon,{name=open and "chevron-up"or "chevron-right",size=17,color=editor.ink,position=UDim2.new(1,-30,0,(headerHeight-17)/2)}),
             }}),
-            Body=open and e(ui.Stack,{layoutOrder=1,padding=12,gap=10,children=props.children})or nil,
-        }})
+            Toggle=props.enabled~=nil and e(ui.Switch,{name=(props.name or props.title).."Enabled",value=props.enabled,onChange=props.onToggle,disabled=props.disabled,position=UDim2.new(1,-86,0,6)})or nil,
+            Body=open and e(ui.Stack,{layoutOrder=1,padding=panel and 14 or 12,gap=panel and 6 or 10,children=props.children})or nil,
+        }
+        -- Header and body share one surface; the switch stays outside the disclosure button.
+        local stackChildren={Header=e("Frame",{Size=UDim2.new(1,0,0,headerHeight),BackgroundTransparency=1},{Header=nodes.Header,Toggle=nodes.Toggle}),Body=nodes.Body}
+        if panel then
+            stackChildren.Corner=e("UICorner",{CornerRadius=UDim.new(0,5)})
+            stackChildren.Border=e("UIStroke",{Color=editor.border,Thickness=1})
+        end
+        return e("Frame",{Name=props.name and props.name.."Panel"or "Section",Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundColor3=editor.surface,BackgroundTransparency=panel and 0 or 1,BorderSizePixel=0,LayoutOrder=props.layoutOrder},{
+            Layout=e("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder}),
+            Header=stackChildren.Header,Body=stackChildren.Body,Corner=stackChildren.Corner,Border=stackChildren.Border,
+        })
     end
     function ui.NumberField(props)
+        local function format(number)
+            if props.format then return props.format(number)end
+            return (string.format("%.2f",number):gsub("%.?0+$",""))
+        end
         local value,setValue=React.useState(props.value or props.min)
-        local draft,setDraft=React.useState(tostring(props.value or props.min))
-        React.useEffect(function()setValue(props.value or props.min);setDraft(string.format("%.2f",props.value or props.min):gsub("%.?0+$",""))end,{props.value})
+        local draft,setDraft=React.useState(format(props.value or props.min))
+        React.useEffect(function()setValue(props.value or props.min);setDraft(format(props.value or props.min))end,{props.value})
         local function change(nextValue)
             nextValue=math.clamp(nextValue,props.min,props.max)
-            if props.onChange(nextValue)~=false then setValue(nextValue);setDraft(string.format("%.2f",nextValue):gsub("%.?0+$",""))end
+            if props.onChange(nextValue)~=false then setValue(nextValue);setDraft(format(nextValue))end
         end
-        return e("Frame",{Size=UDim2.new(1,0,0,40),BackgroundTransparency=1,LayoutOrder=props.layoutOrder},{
-            Label=e(ui.Text,{text=props.label,width=112,height=40,size=14,color=colors.ink}),
-            Slider=e(Prism.Slider,{value=value,min=props.min,max=props.max,step=props.step or 0.01,size="sm",width=UDim.new(1,-202),height=30,position=UDim2.fromOffset(116,5),disabled=props.disabled,onChange=change,onChangeEnd=props.onCommit,
-                slotProps={track={BackgroundColor3=colors.edge},range={BackgroundColor3=colors.blue},thumb={BackgroundColor3=colors.blue}}}),
-            Value=e(ui.Input,{name=props.name,value=draft,onChange=setDraft,onCommit=function(text)local number=tonumber(text);if number and number==number then change(number)else setDraft(tostring(value))end;if props.onCommit then props.onCommit()end end,width=74,height=34,position=UDim2.new(1,-74,0,3),disabled=props.disabled}),
+        local labelWidth=props.labelWidth or 112
+        local inputWidth=props.inputWidth or 74
+        return e("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1,LayoutOrder=props.layoutOrder},{
+            Label=e(ui.Text,{text=props.label,width=labelWidth,height=38,size=props.textSize or 14,color=props.textSize and editor.ink or colors.ink}),
+            Slider=e(Prism.Slider,{value=value,min=props.min,max=props.max,step=props.step or 0.01,size="lg",width=UDim.new(1,-labelWidth-inputWidth-20),height=30,position=UDim2.fromOffset(labelWidth+4,4),disabled=props.disabled,onChange=change,onChangeEnd=props.onCommit,
+                styleOverrides=function()return {thumbColor=Color3.new(1,1,1),thumbStrokeColor=colors.blue,thumbStrokeTransparency=0,trackColor=editor.border,rangeColor=colors.blue}end,
+                slotProps={thumbStroke={Thickness=1},track={Size=UDim2.new(1,0,0,6)}}}),
+            Value=e(ui.Input,{name=props.name,value=draft,onChange=setDraft,textSize=props.textSize,onCommit=function(text)
+                local number=props.parse and props.parse(text)or tonumber(text)
+                if number and number==number then change(number)else setDraft(format(value))end
+                if props.onCommit then props.onCommit()end
+            end,width=inputWidth,height=34,position=UDim2.new(1,-inputWidth,0,2),disabled=props.disabled}),
         })
     end
     function ui.ToggleField(props)
@@ -168,10 +201,12 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
         React.useEffect(function()setDraft(props.value or "#FFFFFF")end,{props.value})
         local hex=(props.value or "#FFFFFF"):gsub("#","")
         local channels={tonumber(hex:sub(1,2),16)or 255,tonumber(hex:sub(3,4),16)or 255,tonumber(hex:sub(5,6),16)or 255}
+        local labelWidth=props.labelWidth or 112
+        local swatchWidth=props.swatchWidth or 38
         local nodes={Row=e("Frame",{Size=UDim2.new(1,0,0,38),BackgroundTransparency=1},{
-            Label=e(ui.Text,{text=props.label,width=112,height=38,color=colors.ink}),
-            Swatch=e(ui.Button,{label="",disabled=props.disabled,background=Color3.fromRGB(channels[1],channels[2],channels[3]),width=38,height=32,position=UDim2.fromOffset(116,3),onPress=function()setOpen(not open)end}),
-            Hex=e(ui.Input,{value=draft,onChange=setDraft,onCommit=function(value)props.onChange(value);if props.onCommit then props.onCommit()end end,width=UDim.new(1,-164),height=34,position=UDim2.fromOffset(164,2),disabled=props.disabled}),
+            Label=e(ui.Text,{text=props.label,width=labelWidth,height=38,size=props.textSize or 14,color=editor.ink}),
+            Swatch=e(ui.Button,{label="",disabled=props.disabled,background=Color3.fromRGB(channels[1],channels[2],channels[3]),width=swatchWidth,height=32,position=UDim2.fromOffset(labelWidth+4,3),onPress=function()setOpen(not open)end}),
+            Hex=e(ui.Input,{value=draft,textSize=props.textSize,onChange=setDraft,onCommit=function(value)props.onChange(value);if props.onCommit then props.onCommit()end end,width=UDim.new(1,-labelWidth-swatchWidth-16),height=34,position=UDim2.fromOffset(labelWidth+swatchWidth+16,2),disabled=props.disabled}),
         })}
         if open then for index,label in ipairs({"Red","Green","Blue"})do local channel=index;nodes[label]=e(ui.NumberField,{label=label,value=channels[index],min=0,max=255,step=1,layoutOrder=index,onChange=function(value)
             local nextChannels=table.clone(channels);nextChannels[channel]=math.floor(value+0.5);return props.onChange(string.format("#%02X%02X%02X",nextChannels[1],nextChannels[2],nextChannels[3]))end,onCommit=props.onCommit,disabled=props.disabled})end end
@@ -197,6 +232,23 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
             First=e(ui.Button,{label="Animations",selected=props.value=="Animations",width=UDim.new(0.5,-3),height=34,disabled=props.disabled,onPress=function()props.onChange("Animations")end}),
             Second=e(ui.Button,{label="Emotes",selected=props.value=="Emotes",width=UDim.new(0.5,-3),height=34,position=UDim2.new(0.5,3,0,0),disabled=props.disabled,onPress=function()props.onChange("Emotes")end}),
         })
+    end
+
+    function ui.StatusNotice(props)
+        local expanded,setExpanded=React.useState(false)
+        local dismissed,setDismissed=React.useState(nil)
+        if dismissed==props.message then return nil end
+        local summary=props.message:find("Browser outfit failed",1,true)and "Some outfit items couldn’t load."or "An appearance change couldn’t finish."
+        return e(ui.Stack,{layoutOrder=props.layoutOrder,gap=6,children={
+            Summary=e("Frame",{Size=UDim2.new(1,-8,0,32),BackgroundColor3=Color3.fromRGB(255,246,235),BorderSizePixel=0},{
+                Corner=e("UICorner",{CornerRadius=UDim.new(0,4)}),
+                Icon=e(Prism.Icon,{name="alert-circle",size=17,color=Color3.fromRGB(148,91,36),position=UDim2.fromOffset(10,7)}),
+                Text=e(ui.Text,{text=summary,size=15,color=Color3.fromRGB(119,74,32),position=UDim2.fromOffset(36,0),height=32,width=UDim.new(1,-154)}),
+                Details=e(ui.Button,{label=expanded and "Hide details"or "Details",width=78,height=28,position=UDim2.new(1,-112,0,2),transparent=true,borderless=true,onPress=function()setExpanded(not expanded)end}),
+                Close=e(ui.Button,{name="DismissNotice",label="×",width=28,height=28,textSize=20,position=UDim2.new(1,-30,0,2),transparent=true,borderless=true,onPress=function()setDismissed(props.message)end}),
+            }),
+            Details=expanded and e(ui.Text,{text=props.message,layoutOrder=1,height=0,autoSize=true,color=Color3.fromRGB(140,70,40),size=14})or nil,
+        }})
     end
 
     function ui.PersistenceError(props)
