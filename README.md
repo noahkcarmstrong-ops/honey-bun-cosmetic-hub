@@ -2,7 +2,7 @@
   <img src="assets/larpblox-logo.png" alt="Larpblox" width="520">
 </p>
 
-<p align="center">best way to larp.</p>
+<p align="center">be who you never will.</p>
 
 ![Without Larpblox and with Larpblox comparison](assets/larpblox-before-after.png)
 
