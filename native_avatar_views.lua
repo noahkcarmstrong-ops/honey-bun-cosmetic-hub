@@ -243,7 +243,7 @@ function M.create(player, getPreviews, describeSnapshot)
                 local class=read(object,"ClassName")
                 local rosterText=plainText(read(object,"Text")):gsub("%s*%(You%)%s*$","")
                 if (class=="TextLabel" or class=="TextButton") and
-                    ((verificationText(object) and (hasOwnId(object,player) or uniquePeopleRow(object,player,{name=currentName)))
+                    ((verificationText(object) and (hasOwnId(object,player) or uniquePeopleRow(object,player,{name=currentName})))
                         or (verifiedRosterRow(object) and rosterText=="@"..currentName)) then
                     seen[object]=true
                     if not verificationBadges[object] then

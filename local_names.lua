@@ -14,6 +14,18 @@ local coreGui, players
 local chatService
 local chatBindings={}
 local chatStatus="Chat names are unavailable."
+local verifiedGlyph=utf8.char(0xE000)
+local function badgePrefix(prefix,controller)
+    if not controller or not controller.verified or not controller.settings.enabled or prefix:find(verifiedGlyph,1,true)then return prefix end
+    local inTag,lastColon=false,nil
+    for index=1,#prefix do
+        local char=prefix:sub(index,index)
+        if char=="<"then inTag=true elseif char==">"then inTag=false
+        elseif char==":" and not inTag then lastColon=index end
+    end
+    if not lastColon then return prefix end
+    return prefix:sub(1,lastColon-1).." "..verifiedGlyph..prefix:sub(lastColon)
+end
 pcall(function() coreGui=game:GetService("CoreGui") end)
 pcall(function() players=game:GetService("Players") end)
 
@@ -224,6 +236,7 @@ local function replacement(entry, controller)
             if configured and configured~="" then value=configured end
         end
         if entry.object.RichText then value=escape(value) end
+        if controller and controller.verified and controller.settings.enabled then value=value.." "..verifiedGlyph end
         return entry.source:sub(1,span.first-1)..value..entry.source:sub(span.last+1)
     end
     if not controller or not controller.settings.enabled then return entry.source end
@@ -321,7 +334,7 @@ local function bindChat()
                 local prefix=properties and properties.PrefixText
                 if not prefix or prefix=="" then prefix=message.PrefixText end
                 if type(prefix)~="string" or prefix=="" then return properties end
-                local value=replacement({source=prefix,object={RichText=true}},controller)
+                local value=badgePrefix(replacement({source=prefix,object={RichText=true}},controller),controller)
                 if value==prefix then return properties end
                 if not properties then
                     properties=member=="OnIncomingMessage" and Instance.new("TextChatMessageProperties") or config:DeriveNewMessageProperties()
@@ -424,7 +437,7 @@ return function(player, playerGui, gameObject)
     local id=player.UserId
     assert(not controllers[id],"Name presentation already exists for this player")
     local knownIdentity=identities[id]~=nil
-    local controller={id=id,settings={enabled=false,username="",displayName=""}}
+    local controller={id=id,verified=false,settings={enabled=false,username="",displayName=""}}
     controllers[id]=controller
     identities[id]=identities[id] or {username=player.Name,display=player.DisplayName or player.Name}
     local originalDisplay=identities[id].display
@@ -505,8 +518,9 @@ return function(player, playerGui, gameObject)
     local api={}
     function api.setVerified(value)
         verified=value==true
+        controller.verified=verified
         watchCharacter(player.Character)
-        applyHumanoid(player.Character)
+        refresh()
     end
     function api.set(username,displayName)
         username,displayName=trim(username),trim(displayName)
@@ -519,6 +533,7 @@ return function(player, playerGui, gameObject)
     function api.getSettings() local s=controller.settings;return {enabled=s.enabled,username=s.username,displayName=s.displayName} end
     function api.restore()
         verified=false
+        controller.verified=false
         for _,connection in ipairs(characterConnections) do pcall(function() connection:Disconnect() end) end
         characterConnections={}
         controller.settings={enabled=false,username="",displayName=""};refresh();return "Original names restored locally."

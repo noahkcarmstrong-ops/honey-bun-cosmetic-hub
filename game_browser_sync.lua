@@ -471,7 +471,19 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             if ok then return end
             closeSocket()
         end
-        return call("POST","/v1/"..(channel=="game" and "game" or channel).."/"..player.UserId,token,value)
+        local path="/v1/"..(channel=="game" and "game" or channel).."/"..player.UserId
+        local ok,result=pcall(call,"POST",path,token,value)
+        if not ok and tostring(result):find("HTTP 401",1,true)then
+            -- A desktop restart can invalidate the cached credential before
+            -- the socket closes. Recover once in response to that rejection.
+            local paired,pair=pcall(call,"GET","/v1/pair","")
+            if paired and pair and validToken(pair.code) and pair.code~=token then
+                local connectedAgain=pcall(api.connect,pair.code)
+                if connectedAgain then return call("POST",path,token,value)end
+            end
+        end
+        if not ok then connectionState(false);error(result,0)end
+        return result
     end
     local function publishSnapshot()
         snapshotScheduleId=snapshotScheduleId+1
@@ -486,7 +498,10 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             end
             lastSnapshot=value
             local encoded=HttpService:JSONEncode(value)
-            if encoded~=lastJson then send("game",value);lastJson=encoded end
+            if encoded~=lastJson then
+                local sent,reason=pcall(send,"game",value)
+                if sent then lastJson=encoded else status("Desktop update failed: "..tostring(reason))end
+            end
         end
         updateViews()
         if made then notifySnapshot()end
