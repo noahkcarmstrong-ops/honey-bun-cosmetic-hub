@@ -268,6 +268,21 @@ return function(player,onStatus,readAsset)
         else
             error("This body part cannot be changed safely on this avatar. Your gear was left alone.")
         end
+        -- ApplyMesh copies geometry/TextureID, but not modern heads' face surface.
+        -- Replace visual children too, including when restoring or changing heads.
+        if target.Name=="Head" then
+            for _,item in ipairs(target:GetChildren()) do
+                if item:IsA("SurfaceAppearance") or item:IsA("Decal") then item:Destroy() end
+            end
+            for _,item in ipairs(source:GetChildren()) do
+                if item:IsA("Decal") or (item:IsA("SurfaceAppearance") and target:IsA("MeshPart")) then
+                    item:Clone().Parent=target
+                elseif item:IsA("SurfaceAppearance") and target:IsA("Part") then
+                    local mesh=target:FindFirstChildOfClass("SpecialMesh")
+                    if mesh then mesh.TextureId=tostring(item.ColorMap) end
+                end
+            end
+        end
         if source.Transparency~=nil then target.Transparency=source.Transparency end
         for _,attachment in ipairs(source:GetChildren()) do
             if attachment:IsA("Attachment") and attachment.Name:match("RigAttachment$") then

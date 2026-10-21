@@ -383,3 +383,19 @@ for _,id in ipairs({169444515,123})do
 end
 smokestack.destroy();game.GetObjects=previousObjects
 print("Smokestack original smoke enables without holiday effects or asset scripts.")
+
+-- Modern dynamic heads carry their face in a child SurfaceAppearance, not TextureID.
+player.Character=body;players.template=template;marketplace.assetType=79
+local liveHead=body:FindFirstChild("Head")
+for _,v in ipairs(liveHead:GetChildren())do if v:IsA("SurfaceAppearance")or v:IsA("Decal")then v:Destroy()end end
+local originalFace=node("Decal","face");originalFace.Texture="original-face";originalFace.Parent=liveHead
+local templateHead=template:FindFirstChild("Head")
+local surface=node("SurfaceAppearance","SurfaceAppearance");surface.ColorMap="dynamic-face-map";surface.Parent=templateHead
+local dynamic=create(player);dynamic.applyBodyPart("Head",106418043406599)
+assert(liveHead:FindFirstChildOfClass("SurfaceAppearance").ColorMap=="dynamic-face-map","dynamic face surface is copied with the mesh")
+assert(not liveHead:FindFirstChildOfClass("Decal"),"old face does not cover the dynamic head")
+dynamic.restoreBodyPart("Head")
+assert(not liveHead:FindFirstChildOfClass("SurfaceAppearance"),"restoring removes the dynamic face surface")
+assert(liveHead:FindFirstChildOfClass("Decal").Texture=="original-face","restoring preserves the original face")
+dynamic.destroy();surface:Destroy()
+print("Dynamic head surface copy and original face restoration passed.")
