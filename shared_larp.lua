@@ -270,7 +270,9 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                     elseif CLOTHES_TYPES[assetType]=="ShirtGraphic" then wantedClothes.ShirtGraphic=true;if changed then pcall(entry.clothes.equipTShirt,item.id)end
                     elseif CLOTHES_TYPES[assetType]=="Shirt" then wantedClothes.Shirt=true;if changed then pcall(entry.clothes.equipShirt,item.id)end
                     elseif CLOTHES_TYPES[assetType]=="Pants" then wantedClothes.Pants=true;if changed then pcall(entry.clothes.equipPants,item.id)end
-                    elseif assetType==19 then if changed then pcall(entry.avatar.equipGear,item.id)end
+                    elseif assetType==19 then
+                        -- Gear equip/unequip state is not shared yet. Keep tools
+                        -- local instead of showing a permanently equipped copy.
                     elseif ANIMATION_TYPES[assetType] then animationAssets[#animationAssets+1]={id=item.id,assetType=assetType}
                     end
                 end

@@ -277,12 +277,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         if not readyForAppearance() then return end
         if revision<=lastRevision then return end
         if browserModeKnown and not larpEnabled then lastRevision=revision;return end
-        local avatar,clothes=getAvatar(),getClothes();local failed={};local loadErrors={};local desired={};local current={};local desiredGear
+        local avatar,clothes=getAvatar(),getClothes();local failed={};local loadErrors={};local desired={};local current={}
         for _,item in ipairs(value.items)do
             assetTypes[item.id]=item.assetType
             cache[item.id]=item.name
             if accessoryTypes[item.assetType] then desired[item.id]=true end
-            if item.assetType==19 then desiredGear=item end
         end
         local ok,msg=pcall(function()
             local before=snapshot()
@@ -352,14 +351,8 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                     end
                 end
             end
-            local currentGear=avatar.listGear and avatar.listGear()[1]
-            if (currentGear and not desiredGear) or (desiredGear and (not currentGear or currentGear.id~=desiredGear.id)) then
-                if desiredGear then
-                    local loaded,reason=pcall(avatar.equipGear,desiredGear.id)
-                    if not loaded then loadErrors[#loadErrors+1]=desiredGear.name..": "..tostring(reason) end
-                elseif currentGear then avatar.removeGear()
-                end
-            end
+            -- Gear remains in the saved browser outfit, but is not rendered
+            -- until equip/unequip state can be synchronized.
             local currentClothes=clothes.getSettings();local clothingTypes={[2]={"ShirtGraphic","equipTShirt","removeTShirt"},[11]={"Shirt","equipShirt","removeShirt"},[12]={"Pants","equipPants","removePants"}}
             local visibleClothes={};for _,item in ipairs(before.items)do if clothingTypes[item.assetType] then visibleClothes[item.assetType]=item.id end end
             local wantedClothes={};local wantedAnimations={}
