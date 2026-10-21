@@ -102,18 +102,18 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             else pcall(entry.names.restore)end
         end
         entry.name=name
-        if entry.names.setVerified then entry.names.setVerified(record.verified==true) end
+        if entry.names.setVerified and entry.verified~=(record.verified==true) then entry.names.setVerified(record.verified==true) end
         entry.verified=record.verified==true
         if presentation.createViews and peers[record.userId]==entry and sharing and isAlive() then
             if not entry.views then entry.views=presentation.createViews(entry.player)end
             local options={enabled=true,name=name and name.enabled and name.username or "",displayName=name and name.enabled and name.displayName or "",verified=record.verified==true,snapshot=record.snapshot,image=entry.image}
             entry.viewOptions=options
-            entry.views.update(options)
             local custom=getcustomasset or getsynasset
             if record.imageUrl~=entry.presentationImageUrl then
                 entry.imageGeneration=(entry.imageGeneration or 0)+1
-                entry.image=nil;options.image=nil;entry.views.update(options)
+                entry.image=nil;options.image=nil
             end
+            entry.views.update(options)
             if record.imageUrl and record.imageUrl~=entry.presentationImageUrl and type(custom)=="function" and type(writefile)=="function" then
                 local imageGeneration=entry.imageGeneration
                 task.spawn(function()

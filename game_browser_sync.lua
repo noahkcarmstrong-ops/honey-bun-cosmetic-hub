@@ -361,7 +361,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 end
             end
             local currentClothes=clothes.getSettings();local clothingTypes={[2]={"ShirtGraphic","equipTShirt","removeTShirt"},[11]={"Shirt","equipShirt","removeShirt"},[12]={"Pants","equipPants","removePants"}}
-            local visibleClothes={};for _,item in ipairs(snapshot().items)do if clothingTypes[item.assetType] then visibleClothes[item.assetType]=item.id end end
+            local visibleClothes={};for _,item in ipairs(before.items)do if clothingTypes[item.assetType] then visibleClothes[item.assetType]=item.id end end
             local wantedClothes={};local wantedAnimations={}
             for _,item in ipairs(value.items)do
                 local slot=clothingTypes[item.assetType]
@@ -374,7 +374,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             for assetType,slot in pairs(clothingTypes)do if not wantedClothes[assetType] and currentClothes[slot[1]]~=0 and clothes[slot[3]] then clothes[slot[3]]()end end
             if getAnimations then
                 local animationApi=getAnimations();local settings=animationApi.getSettings()
-                local currentAnimations={};for _,item in ipairs(snapshot().items)do if animationTypes[item.assetType] then currentAnimations[item.assetType]=item.id end end
+                local currentAnimations={};for _,item in ipairs(before.items)do if animationTypes[item.assetType] then currentAnimations[item.assetType]=item.id end end
                 local changedAnimations=false;local desiredAnimations={}
                 for _,item in ipairs(wantedAnimations)do desiredAnimations[item.assetType]=item.id;if currentAnimations[item.assetType]~=item.id then changedAnimations=true end end
                 for assetType in pairs(currentAnimations)do if not desiredAnimations[assetType] then changedAnimations=true end end
