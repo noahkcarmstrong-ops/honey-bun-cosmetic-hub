@@ -439,6 +439,7 @@ return function(player, playerGui, gameObject)
     end
     watchRoot(coreGui);watchRoot(playerGui);watchRoot(gameObject);watchRoot(game.Workspace)
     local humanoids={}
+    local characterConnections={}
     local verified=false
     local function applyHumanoid(character)
         local humanoid=character and character:FindFirstChildOfClass("Humanoid")
@@ -450,10 +451,39 @@ return function(player, playerGui, gameObject)
             -- Roblox's native verified glyph (DefaultChatMessage.lua); let the
             -- engine place it beside the overhead name, never over the viewer.
             if verified and players and player~=players.LocalPlayer then display=display..utf8.char(0xE000) end
-            humanoid.DisplayName=display
+            if humanoid.DisplayName~=display then humanoid.DisplayName=display end
         end)
     end
-    local characterConnection=player.CharacterAdded:Connect(applyHumanoid)
+    local function watchCharacter(character)
+        local previous=characterConnections
+        for _,connection in ipairs(previous) do pcall(function() connection:Disconnect() end) end
+        characterConnections={}
+        if not character or not (controller.settings.enabled or verified) then return end
+        local function apply()
+            if player.Character==character then applyHumanoid(character) end
+        end
+        -- CharacterAdded can fire before Roblox has inserted its Humanoid.
+        -- Retry when it appears, and reapply if the game overwrites the name.
+        pcall(function()
+            characterConnections[#characterConnections+1]=character.ChildAdded:Connect(function(child)
+                if child:IsA("Humanoid") then
+                    apply()
+                    pcall(function()
+                        characterConnections[#characterConnections+1]=child:GetPropertyChangedSignal("DisplayName"):Connect(apply)
+                    end)
+                end
+            end)
+        end)
+        local humanoid=character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            apply()
+            pcall(function()
+                characterConnections[#characterConnections+1]=humanoid:GetPropertyChangedSignal("DisplayName"):Connect(apply)
+            end)
+        end
+    end
+    local characterConnection=player.CharacterAdded:Connect(watchCharacter)
+    watchCharacter(player.Character)
     local function refresh()
         local settings=controller.settings
         -- Prefer the player's local presentation property for future UI reads.
@@ -465,21 +495,32 @@ return function(player, playerGui, gameObject)
         applyHumanoid(player.Character)
     end
     local api={}
-    function api.setVerified(value) verified=value==true;applyHumanoid(player.Character) end
+    function api.setVerified(value)
+        verified=value==true
+        watchCharacter(player.Character)
+        applyHumanoid(player.Character)
+    end
     function api.set(username,displayName)
         username,displayName=trim(username),trim(displayName)
         assert(username=="" or (#username>=3 and #username<=20 and username:match("^[A-Za-z0-9_]+$")),"Username must be 3-20 ASCII letters, numbers, or underscores.")
         assert(#displayName<=50 and not displayName:find("[%c]"),"Display name must be 1-50 characters without control characters.")
         rememberChatName(id,username,"username");rememberChatName(id,displayName,"displayName")
-        controller.settings={enabled=true,username=username,displayName=displayName};refresh();return api.report()
+        controller.settings={enabled=true,username=username,displayName=displayName};watchCharacter(player.Character);refresh();return api.report()
     end
-    function api.setEnabled(value) controller.settings.enabled=value==true;refresh();return api.report() end
+    function api.setEnabled(value) controller.settings.enabled=value==true;watchCharacter(player.Character);refresh();return api.report() end
     function api.getSettings() local s=controller.settings;return {enabled=s.enabled,username=s.username,displayName=s.displayName} end
-    function api.restore() verified=false;controller.settings={enabled=false,username="",displayName=""};refresh();return "Original names restored locally." end
+    function api.restore()
+        verified=false
+        for _,connection in ipairs(characterConnections) do pcall(function() connection:Disconnect() end) end
+        characterConnections={}
+        controller.settings={enabled=false,username="",displayName=""};refresh();return "Original names restored locally."
+    end
     function api.report() return "Names are local only. "..(controller.settings.enabled and "Override enabled locally. "..chatStatus or "Override disabled.") end
     function api.destroy()
         if controllers[id]~=controller then return end
         api.restore();characterConnection:Disconnect();controllers[id]=nil
+        for _,connection in ipairs(characterConnections) do pcall(function() connection:Disconnect() end) end
+        characterConnections={}
         for humanoid,original in pairs(humanoids) do pcall(function() humanoid.DisplayName=original end) end
         if next(controllers)==nil then
             unbindChat()
