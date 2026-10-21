@@ -743,12 +743,12 @@ return function(player,onStatus,readAsset,managedRespawn)
         local cacheKey=table.concat(key,":")
         local cached=fullBodyTemplates[cacheKey]
         local ok,template=pcall(function()
-            return cached and cached:Clone() or Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType)
+            return cached or Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType)
         end)
         description:Destroy()
-        if not valid(ctx) then if ok and template then template:Destroy()end;check(ctx)end
+        if not valid(ctx) then if ok and template and not cached then template:Destroy()end;check(ctx)end
         assert(ok and template,"Roblox blocked generating the shared body.")
-        strip(template)
+        if not cached then strip(template)end
         local applied,message=pcall(function()
             capture(ctx,true)
             if ctx.humanoid.RigType==Enum.HumanoidRigType.R6 then
@@ -766,9 +766,12 @@ return function(player,onStatus,readAsset,managedRespawn)
         end)
         if applied and not cached then
             for oldKey,old in pairs(fullBodyTemplates)do old:Destroy();fullBodyTemplates[oldKey]=nil end
-            fullBodyTemplates[cacheKey]=template:Clone()
+            -- Application reads the source and copies only visual children.
+            -- Retain the source directly instead of cloning an entire rig
+            -- for every respawn and immediately destroying the temporary copy.
+            fullBodyTemplates[cacheKey]=template
         end
-        template:Destroy()
+        if not cached and not applied then template:Destroy()end
         assert(applied,message)
         if not reapplying then settings.body=nil;settings.bodyParts=table.clone(parts);save()end
         return "Shared body applied (visible to you)."

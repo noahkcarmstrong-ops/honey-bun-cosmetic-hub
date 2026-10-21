@@ -309,11 +309,10 @@ function M.create(player, getPreviews, describeSnapshot)
         verificationCharacterConnections={}
         clearVerification()
         if not character then return end
-        local function changed()
-            if player.Character==character and enabled and verified then renderVerification() end
-        end
-        pcall(function() verificationCharacterConnections[#verificationCharacterConnections+1]=character.ChildAdded:Connect(changed) end)
-        if enabled and verified then renderVerification() end
+        -- Badges belong to UI labels, not the character's body/accessories.
+        -- UI text/addition events already refresh them; scanning for every
+        -- spawned limb or accessory multiplies full UI work during respawns.
+        if enabled and verified then queueVerification() end
     end
 
     local function restoreImage(image)
