@@ -563,9 +563,9 @@ local function sharedLarp()
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Shared Larp sync failed to load.")
     sharedLarpAPI=create(Players.LocalPlayer,function()return gameBrowserSync().snapshot()end,function()return localNames().getSettings()end,
-        function(player,onStatus)return avatarFactory(player,onStatus)end,
-        function(player,onStatus)return clothesFactory(player,onStatus)end,
-        function(player,onStatus)return animationFactory(player,onStatus)end,
+        function(player,onStatus)return avatarFactory(player,onStatus,nil,true)end,
+        function(player,onStatus)return clothesFactory(player,onStatus,true)end,
+        function(player,onStatus)return animationFactory(player,onStatus,true)end,
         function(player,gui)return nameFactory(player,gui)end,
         function()return alive end,function(message)
             if not alive then return end
