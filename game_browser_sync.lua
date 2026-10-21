@@ -409,7 +409,6 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             getAvatar().restore()
             getClothes().restore()
             if getAnimations then getAnimations().setAvatarAssets({}) end
-            applyBrowserScales({})
             browserBody,originalBody,browserFace={},{},false
             lastDefinition=nil;lastBrowserSnapshot=nil;imageValue=nil;imageAsset=nil;imageAssetDefinition=nil
             commandSnapshotPending=true
