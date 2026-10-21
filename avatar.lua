@@ -721,6 +721,57 @@ return function(player,onStatus,readAsset,managedRespawn)
         fullBodyTemplates[cacheKey]=template:Clone()
         return template
     end
+    -- Complete shared outfits already include validated region IDs. Generate
+    -- their body once instead of generating a full rig separately for each limb.
+    function api.applyBodyParts(parts,scales)
+        assert(type(parts)=="table","Body parts are required.")
+        assert(scales==nil or validScales(scales),"Invalid body scales.")
+        local ctx=context()
+        local description=Instance.new("HumanoidDescription")
+        local key={"shared",tostring(ctx.humanoid.RigType)}
+        for _,region in ipairs({"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"})do
+            local id=parts[region] or 0
+            assert(type(id)=="number" and id>=0 and id%1==0 and id<9007199254740992,"Invalid body part.")
+            description[region]=id;key[#key+1]=tostring(id)
+        end
+        for _,name in ipairs({"height","width","depth","head","bodyType","proportion"})do
+            local value=scales and scales[name]
+            if value~=nil then description[descriptionScales[name]]=value end
+            key[#key+1]=tostring(value or "")
+        end
+        local cacheKey=table.concat(key,":")
+        local cached=fullBodyTemplates[cacheKey]
+        local ok,template=pcall(function()
+            return cached and cached:Clone() or Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType)
+        end)
+        description:Destroy()
+        if not valid(ctx) then if ok and template then template:Destroy()end;check(ctx)end
+        assert(ok and template,"Roblox blocked generating the shared body.")
+        strip(template)
+        local applied,message=pcall(function()
+            capture(ctx,true)
+            if ctx.humanoid.RigType==Enum.HumanoidRigType.R6 then
+                for _,item in ipairs(ctx.character:GetChildren())do if item:IsA("CharacterMesh")then item:Destroy()end end
+                for _,item in ipairs(template:GetChildren())do if item:IsA("CharacterMesh")then item:Clone().Parent=ctx.character end end
+                applyPartAppearance(ctx.character:FindFirstChild("Head"),template:FindFirstChild("Head"))
+            else
+                local generated={}
+                for _,name in ipairs(r15)do generated[name]=template:FindFirstChild(name)end
+                replaceParts(ctx,generated)
+                local humanoid=template:FindFirstChildOfClass("Humanoid")
+                if humanoid then ctx.humanoid.HipHeight=humanoid.HipHeight end
+            end
+            snapshot.bodyChanged=true
+        end)
+        if applied and not cached then
+            for oldKey,old in pairs(fullBodyTemplates)do old:Destroy();fullBodyTemplates[oldKey]=nil end
+            fullBodyTemplates[cacheKey]=template:Clone()
+        end
+        template:Destroy()
+        assert(applied,message)
+        if not reapplying then settings.body=nil;settings.bodyParts=table.clone(parts);save()end
+        return "Shared body applied (visible to you)."
+    end
     function api.applyBody(value)
         local ctx=context()
         local isR6=ctx.humanoid.RigType==Enum.HumanoidRigType.R6
@@ -1001,7 +1052,7 @@ return function(player,onStatus,readAsset,managedRespawn)
     end
     function api.getSettings() return copySettings() end
     local operations={}
-    for _,name in ipairs({"equipAccessory","equipGear","removeGear","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","setScales","applyBody","applyBodyPart","restoreBodyPart","applyFace","restoreFace","restoreSkin","restoreBody","restore"}) do
+    for _,name in ipairs({"equipAccessory","equipGear","removeGear","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","setScales","applyBody","applyBodyParts","applyBodyPart","restoreBodyPart","applyFace","restoreFace","restoreSkin","restoreBody","restore"}) do
         local operation=api[name]
         operations[name]=operation
         api[name]=function(...)

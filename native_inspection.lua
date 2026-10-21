@@ -42,6 +42,7 @@ function M.create(player,getPreviews)
     local core,gui
     pcall(function() core=game:GetService("CoreGui");gui=game:GetService("GuiService")end)
     local active=false
+    local alive=true
     local modeEnabled,currentName=false,player.Name
     local masked,connections,knownLabels={},{},{}
     local panels,inspectRoots={},{}
@@ -55,6 +56,9 @@ function M.create(player,getPreviews)
     local quarantineUnknownPanels,maskPreview
     local overlayName="LarpbloxInspectPreview"
     local fallbackGui,fallbackEntry,previewLabel
+    local presentationAnchor,presentationRevision=nil,0
+    local presentationConnections={}
+    local schedulePreview
     local activeDescription
     local function releaseDescription()
         if activeDescription then activeDescription:Destroy();activeDescription=nil end
@@ -65,9 +69,45 @@ function M.create(player,getPreviews)
         while current do
             if current:IsA("GuiObject") and not current.Visible and not (panels[current] and not panels[current].ready) then return false end
             if current:IsA("ScreenGui") and not current.Enabled then return false end
+            if current==core then return true end
             current=current.Parent
         end
-        return true
+        return false
+    end
+    local function hidePresentation()
+        presentationRevision=presentationRevision+1
+        if fallbackGui then fallbackGui.Enabled=false end
+        if fallbackEntry and fallbackEntry.overlay then fallbackEntry.overlay.Visible=false end
+    end
+    local function releasePresentation()
+        hidePresentation()
+        for _,connection in ipairs(presentationConnections)do connection:Disconnect()end
+        presentationConnections={};presentationAnchor=nil
+    end
+    local function bindPresentation(anchor)
+        if presentationAnchor==anchor then return end
+        releasePresentation()
+        presentationAnchor=anchor
+        local function changed()
+            if not alive or mutatingPanel then return end
+            -- The preview has its own ScreenGui, so native ancestor visibility
+            -- and removal must dismiss it explicitly, including during loading.
+            if not visible(anchor) then hidePresentation()
+            else schedulePreview()end
+        end
+        local ancestor=anchor
+        while ancestor and ancestor~=core do
+            if ancestor:IsA("GuiObject") or ancestor:IsA("ScreenGui") then
+                local property=ancestor:IsA("ScreenGui") and "Enabled" or "Visible"
+                presentationConnections[#presentationConnections+1]=ancestor:GetPropertyChangedSignal(property):Connect(changed)
+            end
+            presentationConnections[#presentationConnections+1]=ancestor.AncestryChanged:Connect(function()
+                releasePresentation()
+                if alive and modeEnabled then schedulePreview()end
+            end)
+            presentationConnections[#presentationConnections+1]=ancestor.Destroying:Connect(releasePresentation)
+            ancestor=ancestor.Parent
+        end
     end
     local function ownTitle(alias,knownOnly)
         local objects={}
@@ -220,6 +260,7 @@ function M.create(player,getPreviews)
         end
     end
     local function restoreMasks()
+        releasePresentation()
         restorePanels()
         if fallbackEntry and fallbackEntry.overlay then fallbackEntry.overlay:Destroy()end
         if fallbackGui then fallbackGui:Destroy();fallbackGui=nil;fallbackEntry=nil end
@@ -230,7 +271,7 @@ function M.create(player,getPreviews)
         end
         masked={}
     end
-    local function renderPreview(entry,parent)
+    local function renderPreview(entry,parent,isCurrent)
         if (currentSnapshot or currentImage) then
                     local key=(currentSnapshot and game:GetService("HttpService"):JSONEncode(currentSnapshot) or "").."|"..tostring(currentImage or "")
                     local ok,err=pcall(function()
@@ -251,6 +292,7 @@ function M.create(player,getPreviews)
                             if not modeEnabled or not currentSnapshot or (game:GetService("HttpService"):JSONEncode(currentSnapshot).."|"..tostring(currentImage or ""))~=key then return end
                             previewData=data;previewKey=key
                         end
+                        if not isCurrent() then return end
                         local overlayClass=currentImage and "ImageLabel" or "ViewportFrame"
                         if entry.overlay and not entry.overlay.Parent then entry.overlay=nil;entry.key=nil end
                         if entry.overlay and entry.overlay.ClassName~=overlayClass then
@@ -278,7 +320,7 @@ function M.create(player,getPreviews)
                             end
                             entry.key=key
                         end
-                        if modeEnabled and (entry==fallbackEntry or masked[parent]==entry) then entry.overlay.Visible=true end
+                        if isCurrent() and (entry==fallbackEntry or masked[parent]==entry) then entry.overlay.Visible=true end
                     end)
                     if not ok then status="Local inspection preview is loading: "..tostring(err)end
                 end
@@ -290,6 +332,7 @@ function M.create(player,getPreviews)
         local label,title,root=ownTitle(currentName,preserveLive)
         previewLabel=label
         if not label or not root then
+            releasePresentation()
             if fallbackGui then fallbackGui.Enabled=false;if fallbackEntry and fallbackEntry.overlay then fallbackEntry.overlay.Visible=false end end
             -- Return shared native containers to normal when another player is inspected.
             for object,entry in pairs(panels)do
@@ -314,6 +357,12 @@ function M.create(player,getPreviews)
                 end
             end
             return
+        end
+        bindPresentation(label.Parent)
+        local revision=presentationRevision
+        local function isCurrent()
+            return alive and modeEnabled and presentationRevision==revision and presentationAnchor==label.Parent
+                and label.Parent~=nil and visible(label.Parent)
         end
         local larpTitle=title==currentName.."'s Avatar"
         local ready=active and larpTitle and fallbackGui and fallbackGui.Enabled and fallbackEntry and fallbackEntry.overlay and fallbackEntry.overlay.Visible
@@ -350,7 +399,13 @@ function M.create(player,getPreviews)
             end
             -- The native layout hides/repositions the 3D container while loading.
             -- Render outside its UIListLayout, aligned with the visible thumbnail slot.
-            renderPreview(fallbackEntry,fallbackGui)
+            renderPreview(fallbackEntry,fallbackGui,isCurrent)
+            if not isCurrent() then
+                -- A close/reopen can overtake model loading. Let that new
+                -- presentation use the completed cache without reviving this one.
+                if alive and modeEnabled and label.Parent and visible(label.Parent) then schedulePreview()end
+                return
+            end
             local overlay=fallbackEntry.overlay
             if overlay then
                 local bounds=nativeThumbnail or nativeViewport
@@ -374,12 +429,12 @@ function M.create(player,getPreviews)
             end
         end
     end
-    local function schedulePreview()
-        if refreshQueued or not modeEnabled or not currentSnapshot then return end
+    schedulePreview=function()
+        if refreshQueued or not alive or not modeEnabled or not currentSnapshot then return end
         refreshQueued=true
         local function refresh()
             refreshQueued=false
-            if modeEnabled and currentSnapshot then maskPreview(true)end
+            if alive and modeEnabled and currentSnapshot then maskPreview(true)end
         end
         if task and task.defer then task.defer(refresh)else refreshQueued=false end
     end
@@ -431,6 +486,7 @@ function M.create(player,getPreviews)
     end
     local api={}
     function api.update(options)
+        if not alive then return end
         local enabled=options.enabled==true
         modeEnabled=enabled
         currentSnapshot=options.snapshot
@@ -476,6 +532,7 @@ function M.create(player,getPreviews)
     function api.destroy(preserveNative)
         previewData=nil;previewKey=nil;currentImage=nil
         api.update({enabled=false,name="",preserveNative=preserveNative==true})
+        alive=false;previewBuild=nil
         for _,connection in ipairs(connections)do connection:Disconnect()end
         connections={}
     end

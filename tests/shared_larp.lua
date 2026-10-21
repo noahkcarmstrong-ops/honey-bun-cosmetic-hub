@@ -2,11 +2,17 @@
 local calls,jobs={},{}
 local self={UserId=1,Name='Self',DisplayName='Self'}
 local peer={UserId=2,Name='Other',DisplayName='Other',Character={}}
+local function signal()return {Connect=function()return {Disconnect=function()end}end}end
+local humanoid={Health=100,RigType='R15',FindFirstChild=function()end}
+function peer.Character:FindFirstChildOfClass()return humanoid end
+function peer.Character:FindFirstChild()return {}end
+peer.Character.ChildAdded=signal();peer.CharacterAdded=signal();peer.CharacterAppearanceLoaded=signal()
+Enum={HumanoidRigType={R15='R15',R6='R6'}}
 local players={GetPlayers=function()return {self,peer}end,GetPlayerByUserId=function(_,id)return id==2 and peer end}
 game={PlaceId=123,JobId='abc-123',GetService=function(_,name)return name=='Players' and players or {}end}
 Color3={fromRGB=function(r,g,b)return {r,g,b}end}
 request=function()error('Shared appearances must not call a public HTTP endpoint from the game')end
-task={spawn=function(fn)jobs[#jobs+1]=fn end}
+task={spawn=function(fn)jobs[#jobs+1]=fn end,defer=function(fn)jobs[#jobs+1]=fn end}
 local function drain()while #jobs>0 do table.remove(jobs,1)()end end
 local destroyed,equipped=0,{}
 local function avatar()
@@ -25,6 +31,7 @@ local transport={setSharing=function(value)published=value end,onShared=function
 local setting={enabled=false,username='',displayName=''}
 local function snapshot(user,id)return {version=1,userId=user,items={{id=id,name='Hat',assetType=8,itemType='Asset'}},definition={assets={{id=id}},bodyColors={},scales={}}}end
 local sync=dofile('shared_larp.lua')(self,function()return snapshot('1',10)end,function()return setting end,avatar,clothes,animations,names,function()return true end,function()end,{transport=transport})
+drain()
 sync.setEnabled(true)
 assert(published.enabled and published.placeId=='123' and published.jobId=='abc-123','sharing uses local desktop transport')
 assert(#jobs==0,'enabling creates no polling loop')

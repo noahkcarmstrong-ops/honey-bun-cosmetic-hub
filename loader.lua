@@ -229,6 +229,7 @@ layout.Padding = UDim.new(0, 6)
 local avatarAPI,motionAPI,animationAPI,clothesAPI,previewsAPI,gameBrowserSyncAPI,sharedLarpAPI
 local avatarFactory,animationFactory,clothesFactory,nameFactory
 local previewFactory,portraitFactory,inspectionRouter
+local fetchSharedProfiles
 local refreshing = false
 local function refreshMenu()
     if refreshing then return end
@@ -562,16 +563,23 @@ local function sharedLarp()
     local source=readSource("shared_larp.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Shared Larp sync failed to load.")
-    sharedLarpAPI=create(Players.LocalPlayer,function()return gameBrowserSync().snapshot()end,function()return localNames().getSettings()end,
-        function(player,onStatus)return avatarFactory(player,onStatus)end,
-        function(player,onStatus)return clothesFactory(player,onStatus)end,
-        function(player,onStatus)return animationFactory(player,onStatus)end,
+    sharedLarpAPI=create(Players.LocalPlayer,function()return gameBrowserSync().snapshotForSharing()end,function()return localNames().getSettings()end,
+        function(player,onStatus)return avatarFactory(player,onStatus,nil,true)end,
+        function(player,onStatus)return clothesFactory(player,onStatus,true)end,
+        function(player,onStatus)return animationFactory(player,onStatus,true)end,
         function(player,gui)return nameFactory(player,gui)end,
         function()return alive end,function(message)
             if not alive then return end
             statusText=message
             if view then view.setStatus(message) end
-        end,{getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews,transport=gameBrowserSync()})
+        end,{getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews,transport=gameBrowserSync(),
+            fetchProfiles=function(ids)
+                if not fetchSharedProfiles then
+                    local chunk,message=loadstring(readSource("shared_profiles.lua",moduleRevision));assert(chunk,message)
+                    fetchSharedProfiles=chunk()
+                end
+                return fetchSharedProfiles(ids)
+            end})
     return sharedLarpAPI
 end
 local function previews()
@@ -613,6 +621,7 @@ gameBrowserSync=function()
     gameBrowserSyncAPI=select(1,create(Players.LocalPlayer,function()return api()end,function()return clothes()end,function()return alive end,function(message)
         if alive then trace("Browser: "..message);statusText=message;if view then view.setStatus(message) end end
     end,function()return animations()end,function()return names end,function()return views end,{
+        isReady=function()return startupComplete end,
         getMotion=function()return motion()end,
         getBackgroundState=function()return backgroundId>=0 and backgroundId or nil,backgroundChoices end,
         setBackgroundState=function(id,choices)
@@ -1335,6 +1344,11 @@ panel.GroupTransparency=1
 panel.Position=UDim2.new(1,-12,0.5,0)
 showMenu(not hideOnStart)
 trace("Menu rendered; starting saved cosmetics")
+-- Connect before asset restoration so peer identity is available immediately.
+-- The bridge defers changes to our own body until restoration has completed.
+trace("Starting browser connection")
+local syncOk,syncError=pcall(gameBrowserSync)
+if not syncOk then trace("Browser startup error: "..tostring(syncError))end
 action(function()
     trace("Restoring atmosphere")
     if isMM2 and crosshairImage~="" then pcall(function()customCrosshair().set(crosshairImage)end) end
@@ -1345,9 +1359,6 @@ action(function()
     trace("Restoring saved cosmetics")
     local restored,message=pcall(reapplyAll,editor)
     if not restored then message="Could not prepare saved avatar: "..tostring(message)end
-    trace("Starting browser connection")
-    local syncOk,syncError=pcall(gameBrowserSync)
-    if not syncOk then trace("Browser startup error: "..tostring(syncError))end
     if isMM2 and mm2EmotesShown then
         local ok,err=pcall(enableMM2Emotes)
         if not ok then message=message.." Saved MM2 emotes could not load: "..tostring(err) end
@@ -1358,5 +1369,6 @@ action(function()
     if isMM2 and playerGui:GetAttribute("HoneyBunCosmeticEffects") then effectsMM2();nativeEffectsMM2().enable() end
     trace("Startup complete")
     startupComplete=true
+    if gameBrowserSyncAPI then gameBrowserSyncAPI.resumeAppearance()end
     return message
 end,true)

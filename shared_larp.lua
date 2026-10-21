@@ -35,7 +35,9 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     local lastSent
     local transport=presentation.transport
     local latestRecords,pending,connections={},{},{}
-    local processing=false
+    local liveRecords,profileRecords,profileRequests={},{},{}
+    local profileQueued=false
+    local processing={}
     local nextStatus=0
     local function status(message)
         if onStatus and os.clock()>=nextStatus then nextStatus=os.clock()+4;onStatus(message)end
@@ -92,15 +94,68 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         end
         return true
     end
+    local function presentRecord(entry,record)
+        if sameValue(entry.presented,record)then return end
+        local name=record.name
+        if not sameValue(entry.name,name)then
+            if type(name)=="table" and name.enabled then pcall(entry.names.set,name.username,name.displayName)
+            else pcall(entry.names.restore)end
+        end
+        entry.name=name
+        if entry.names.setVerified then entry.names.setVerified(record.verified==true) end
+        entry.verified=record.verified==true
+        if presentation.createViews and peers[record.userId]==entry and sharing and isAlive() then
+            if not entry.views then entry.views=presentation.createViews(entry.player)end
+            local options={enabled=true,name=name and name.enabled and name.username or "",displayName=name and name.enabled and name.displayName or "",verified=record.verified==true,snapshot=record.snapshot,image=entry.image}
+            entry.viewOptions=options
+            entry.views.update(options)
+            local custom=getcustomasset or getsynasset
+            if record.imageUrl~=entry.presentationImageUrl then
+                entry.imageGeneration=(entry.imageGeneration or 0)+1
+                entry.image=nil;options.image=nil;entry.views.update(options)
+            end
+            if record.imageUrl and record.imageUrl~=entry.presentationImageUrl and type(custom)=="function" and type(writefile)=="function" then
+                local imageGeneration=entry.imageGeneration
+                task.spawn(function()
+                    local loaded,reason=pcall(function()
+                        local bytes=game:HttpGet(record.imageUrl,false)
+                        assert(type(bytes)=="string" and #bytes<=4*1024*1024 and bytes:sub(1,8)=="\137PNG\r\n\26\n","Invalid shared avatar image.")
+                        if peers[record.userId]~=entry or entry.imageGeneration~=imageGeneration or not sharing or not isAlive() then return end
+                        imageSerial=imageSerial+1
+                        local path="larpblox-shared-avatar-"..record.userId.."-"..imageSerial..".png"
+                        local previousPath=entry.imagePath
+                        entry.imagePath=path
+                        writefile(path,bytes)
+                        local image=custom(path)
+                        if peers[record.userId]~=entry or entry.imageGeneration~=imageGeneration or not sharing or not isAlive() then return end
+                        entry.image=image;entry.viewOptions.image=image;entry.views.update(entry.viewOptions)
+                        if previousPath and type(delfile)=="function"then pcall(delfile,previousPath)end
+                    end)
+                    if not loaded and peers[record.userId]==entry then status("Shared avatar image: "..tostring(reason))end
+                end)
+            end
+        end
+        entry.presentationImageUrl=record.imageUrl
+        entry.presented=record
+    end
+    local function queueRecord(record)
+        latestRecords[record.userId]=record;pending[record.userId]=record
+        local target=Players:GetPlayerByUserId(tonumber(record.userId))
+        if not target or target==localPlayer then return end
+        local entry=peers[record.userId]
+        if entry and (entry.player~=target or entry.character~=target.Character)then
+            cleanupPeer(record.userId);entry=nil
+        end
+        if not entry then entry=peerApis(target);peers[record.userId]=entry end
+        local ok,reason=pcall(presentRecord,entry,record)
+        if not ok then status("Shared appearance: "..tostring(reason))end
+    end
     local function applyRecord(record)
         if not validRecord(record) or record.userId==tostring(localPlayer.UserId) then return end
         local target=Players:GetPlayerByUserId(tonumber(record.userId))
         if not target or target==localPlayer then return end
         local character=target.Character
         local readyHumanoid=character and character:FindFirstChildOfClass("Humanoid")
-        -- Keep latestRecords intact while Roblox finishes constructing the
-        -- character. The readiness events below replay this record.
-        if not readyHumanoid or readyHumanoid.Health<=0 or not character:FindFirstChild("Head") then return end
         local snapshot=record.snapshot
         local entry=peers[record.userId]
         if entry and entry.player==target and entry.character==target.Character
@@ -110,8 +165,17 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         if entry and (entry.player~=target or entry.character~=target.Character)then
             cleanupPeer(record.userId);entry=nil
         end
-        local fresh=not entry
-        if fresh then entry=peerApis(target);peers[record.userId]=entry end
+        local fresh=not entry or not entry.snapshot
+        if not entry then entry=peerApis(target);peers[record.userId]=entry end
+        local function current()
+            return sharing and isAlive() and peers[record.userId]==entry
+                and latestRecords[record.userId]==record and target.Character==character
+        end
+        -- Names and thumbnails need no generated body. Present them as soon as
+        -- the record arrives, even while Roblox is still spawning the character.
+        presentRecord(entry,record)
+        -- Readiness events replay the retained record once a body is available.
+        if not readyHumanoid or readyHumanoid.Health<=0 or not character:FindFirstChild("Head") then return end
         local ok,err=pcall(function()
             -- Keep the live overlay and its caches when only part of the outfit changes.
             local previous=entry.snapshot or {}
@@ -146,9 +210,12 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                 if region~="Head" and (body[region] or 0)~=0 then blocky=false end
                 if (body[region] or 0)~=(oldBody[region] or 0)then bodyChanged=true end
             end
-            local bulk=blocky and bodyChanged and type(entry.avatar.applyBody)=="function"
-            if bulk then entry.avatar.applyBody("Blocky")end
-            for _,region in ipairs(BODY_REGIONS)do
+            local batched=bodyChanged and type(entry.avatar.applyBodyParts)=="function"
+            local bulk=not batched and blocky and bodyChanged and type(entry.avatar.applyBody)=="function"
+            if batched then entry.avatar.applyBodyParts(body,snapshot.definition.scales)
+            elseif bulk then entry.avatar.applyBody("Blocky")end
+            if not current()then return end
+            for _,region in ipairs(batched and {} or BODY_REGIONS)do
                 local desired=body[region] or 0
                 local changed=fresh or desired~=(oldBody[region] or 0)
                 if bulk then
@@ -156,6 +223,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                 end
                 if changed then
                     entry.avatar.applyBodyPart(region,desired)
+                    if not current()then return end
                 end
             end
             if humanoid and humanoid.RigType==Enum.HumanoidRigType.R15 then
@@ -193,7 +261,10 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             local equipped={}
             for _,item in ipairs(entry.avatar.listAccessories())do equipped[item.id]=true end
             -- Load additions first so existing accessories remain visible while assets load.
-            for id in pairs(wanted)do if not equipped[id]then pcall(entry.avatar.equipAccessory,id)end end
+            for id in pairs(wanted)do
+                if not equipped[id]then pcall(entry.avatar.equipAccessory,id)end
+                if not current()then return end
+            end
             for _,item in ipairs(entry.avatar.listAccessories())do if not wanted[item.id]then pcall(entry.avatar.removeAccessory,item.key)end end
             if not wantedClothes.ShirtGraphic and (fresh or oldSlots[2])then pcall(entry.clothes.removeTShirt)end
             if not wantedClothes.Shirt and (fresh or oldSlots[11])then pcall(entry.clothes.removeShirt)end
@@ -213,46 +284,8 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                 elseif entry.animationAssets and #entry.animationAssets>0 then pcall(entry.animations.restore)end
                 entry.animationAssets=animationAssets
             end
-            local name=record.name
-            if not sameValue(entry.name,name)then
-                if type(name)=="table" and name.enabled then pcall(entry.names.set,name.username,name.displayName)
-                else pcall(entry.names.restore)end
-            end
-            if entry.names.setVerified then entry.names.setVerified(record.verified==true) end
-            entry.verified=record.verified==true
-            if presentation.createViews and peers[record.userId]==entry and sharing and isAlive() then
-                if not entry.views then entry.views=presentation.createViews(target)end
-                local options={enabled=true,name=name and name.enabled and name.username or "",displayName=name and name.enabled and name.displayName or "",verified=record.verified==true,snapshot=snapshot,image=entry.image}
-                entry.viewOptions=options
-                entry.views.update(options)
-                local custom=getcustomasset or getsynasset
-                if record.imageUrl~=entry.imageUrl then
-                    entry.imageGeneration=(entry.imageGeneration or 0)+1
-                    entry.image=nil;options.image=nil;entry.views.update(options)
-                end
-                if record.imageUrl and record.imageUrl~=entry.imageUrl and type(custom)=="function" and type(writefile)=="function" then
-                    local imageGeneration=entry.imageGeneration
-                    task.spawn(function()
-                        local loaded,reason=pcall(function()
-                            local bytes=game:HttpGet(record.imageUrl,false)
-                            assert(type(bytes)=="string" and #bytes<=4*1024*1024 and bytes:sub(1,8)=="\137PNG\r\n\26\n","Invalid shared avatar image.")
-                            if peers[record.userId]~=entry or entry.imageGeneration~=imageGeneration or not sharing or not isAlive() then return end
-                            imageSerial=imageSerial+1
-                            local path="larpblox-shared-avatar-"..record.userId.."-"..imageSerial..".png"
-                            local previousPath=entry.imagePath
-                            entry.imagePath=path
-                            writefile(path,bytes)
-                            local image=custom(path)
-                            if peers[record.userId]~=entry or entry.imageGeneration~=imageGeneration or not sharing or not isAlive() then return end
-                            entry.image=image;entry.viewOptions.image=image;entry.views.update(entry.viewOptions)
-                            if previousPath and type(delfile)=="function"then pcall(delfile,previousPath)end
-                        end)
-                        if not loaded and peers[record.userId]==entry then status("Shared avatar image: "..tostring(reason))end
-                    end)
-                end
-            end
         end)
-        if ok then entry.snapshot=snapshot;entry.name=record.name;entry.imageUrl=record.imageUrl else
+        if ok and current() then entry.snapshot=snapshot;entry.name=record.name;entry.imageUrl=record.imageUrl elseif not ok and current()then
             cleanupPeer(record.userId)
             status("Could not apply a shared appearance: "..tostring(err))
         end
@@ -279,22 +312,63 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         lastSent=record
     end
     local processPending
-    processPending=function()
-        if processing or not sharing or not isAlive()then return end
-        processing=true
-        local mine=generation
-        task.spawn(function()
-            while sharing and generation==mine and isAlive()and next(pending)do
-                local userId,record=next(pending);pending[userId]=nil
-                if record==false then cleanupPeer(userId)
-                else
-                    local ok,reason=pcall(applyRecord,record)
-                    if not ok then status("Shared appearance: "..tostring(reason))end
-                end
+    local function chooseRecord(userId)
+        local record=liveRecords[userId] or profileRecords[userId]
+        if record then queueRecord(record)
+        else latestRecords[userId]=nil;pending[userId]=false end
+    end
+    local function requestProfiles(userId)
+        if not sharing or not presentation.fetchProfiles then return end
+        if userId then profileRequests[userId]=true
+        else
+            for _,player in ipairs(Players:GetPlayers())do
+                if player~=localPlayer then profileRequests[tostring(player.UserId)]=true end
             end
-            processing=false
-            if sharing and next(pending)then processPending()end
+        end
+        if profileQueued then return end
+        profileQueued=true
+        local mine=generation
+        task.defer(function()
+            if not sharing or generation~=mine or not isAlive()then return end
+            profileQueued=false
+            local ids={};for id in pairs(profileRequests)do ids[#ids+1]=id end;profileRequests={}
+            for start=1,#ids,50 do
+                local batch={};for i=start,math.min(start+49,#ids)do batch[#batch+1]=ids[i]end
+                local ok,records=pcall(presentation.fetchProfiles,batch)
+                if not sharing or generation~=mine or not isAlive()then return end
+                if ok and type(records)=="table"then
+                    local found={}
+                    for _,record in ipairs(records)do
+                        if validRecord(record)then found[record.userId]=record end
+                    end
+                    for _,id in ipairs(batch)do
+                        profileRecords[id]=found[id]
+                        if Players:GetPlayerByUserId(tonumber(id)) and not liveRecords[id]then chooseRecord(id)end
+                    end
+                    processPending()
+                elseif not ok then status("Saved shared appearances: "..tostring(records))end
+            end
         end)
+    end
+    processPending=function()
+        if not sharing or not isAlive()then return end
+        for userId in pairs(pending)do
+            if not processing[userId]then
+                local ticket={generation=generation}
+                processing[userId]=ticket
+                task.spawn(function()
+                    while sharing and generation==ticket.generation and isAlive()and pending[userId]~=nil do
+                        local record=pending[userId];pending[userId]=nil
+                        if record==false then cleanupPeer(userId)
+                        else
+                            local ok,reason=pcall(applyRecord,record)
+                            if not ok then status("Shared appearance: "..tostring(reason))end
+                        end
+                    end
+                    if processing[userId]==ticket then processing[userId]=nil end
+                end)
+            end
+        end
     end
     local function receive(event)
         if not sharing or not isAlive()or type(event)~="table"then return end
@@ -303,15 +377,15 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             local seen={}
             for _,record in ipairs(event.players)do
                 if validRecord(record)and record.userId~=tostring(localPlayer.UserId)then
-                    seen[record.userId]=true;latestRecords[record.userId]=record;pending[record.userId]=record
+                    seen[record.userId]=true;liveRecords[record.userId]=record;queueRecord(record)
                 end
             end
-            for userId in pairs(latestRecords)do if not seen[userId]then latestRecords[userId]=nil;pending[userId]=false end end
+            for userId in pairs(liveRecords)do if not seen[userId]then liveRecords[userId]=nil;chooseRecord(userId);requestProfiles(userId)end end
         elseif event.type=="upsert"and validRecord(event.record)then
             local record=event.record
-            if record.userId~=tostring(localPlayer.UserId)then latestRecords[record.userId]=record;pending[record.userId]=record end
+            if record.userId~=tostring(localPlayer.UserId)then liveRecords[record.userId]=record;queueRecord(record)end
         elseif event.type=="remove"and type(event.userId)=="string"then
-            latestRecords[event.userId]=nil;pending[event.userId]=false
+            liveRecords[event.userId]=nil;chooseRecord(event.userId);requestProfiles(event.userId)
         end
         processPending()
     end
@@ -326,6 +400,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     end
     local function watchPlayer(player)
         if player==localPlayer then return end
+        requestProfiles(tostring(player.UserId))
         local characterConnection
         local function replay()
             local key=tostring(player.UserId)
@@ -362,7 +437,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     pcall(function()
         local added=Players.PlayerAdded:Connect(watchPlayer)
         local removed=Players.PlayerRemoving:Connect(function(player)
-            local key=tostring(player.UserId);pending[key]=false;processPending()
+            local key=tostring(player.UserId);liveRecords[key]=nil;profileRecords[key]=nil;latestRecords[key]=nil;pending[key]=false;processPending()
         end)
         connections[#connections+1]=function()added:Disconnect();removed:Disconnect()end
     end)
@@ -374,7 +449,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         if sharing then
             sharing=false
             if transport then pcall(transport.setSharing,{enabled=false})end
-            pending={};latestRecords={};cleanupAll();status("Shared Larp mode is off.")
+            pending={};latestRecords={};liveRecords={};profileRecords={};profileRequests={};profileQueued=false;processing={};cleanupAll();status("Shared Larp mode is off.")
         elseif value then
             sharing=true
             local ok,reason=pcall(publish)
@@ -382,6 +457,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             -- snapshot. Keep the preference and retry on the next snapshot.
             if not ok then status("Waiting to share your appearance: "..tostring(reason))
             else status("Sharing your Larp appearance through desktop.")end
+            requestProfiles()
         end
         return api.status()
     end
@@ -391,7 +467,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         if sharing and transport then pcall(transport.setSharing,{enabled=false})end
         sharing=false;generation=generation+1;cleanupAll()
         for _,disconnect in ipairs(connections)do pcall(disconnect)end
-        connections={};pending={};latestRecords={}
+        connections={};pending={};latestRecords={};liveRecords={};profileRecords={};profileRequests={};profileQueued=false;processing={}
     end
     return api
 end

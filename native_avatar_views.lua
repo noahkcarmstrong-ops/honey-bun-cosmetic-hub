@@ -362,12 +362,14 @@ function M.create(player, getPreviews, describeSnapshot)
         local bust=source:find("avatarbust",1,true) or source:find("bust-thumbnail",1,true)
             or tostring(read(image,"Name") or ""):lower()=="charactericon"
         local min,max
+        local points={}
         for _,part in ipairs(model:GetDescendants()) do
-            if part:IsA("BasePart") and bodyParts[part.Name]
-                and (full or part.Name=="Head" or (bust and (part.Name=="Torso" or part.Name=="UpperTorso"))) then
-                -- Fit the body, excluding particle/accessory bounds that can dwarf it.
+            if part:IsA("BasePart") and part.Transparency<1
+                and ((bodyParts[part.Name] and (full or part.Name=="Head" or (bust and (part.Name=="Torso" or part.Name=="UpperTorso"))))
+                    or part:GetAttribute("LarpbloxPreviewHeadAccessory")==true) then
                 for x=-1,1,2 do for y=-1,1,2 do for z=-1,1,2 do
                     local point=part.CFrame:PointToWorldSpace(Vector3.new(part.Size.X*x/2,part.Size.Y*y/2,part.Size.Z*z/2))
+                    points[#points+1]=point
                     min=min and Vector3.new(math.min(min.X,point.X),math.min(min.Y,point.Y),math.min(min.Z,point.Z)) or point
                     max=max and Vector3.new(math.max(max.X,point.X),math.max(max.Y,point.Y),math.max(max.Z,point.Z)) or point
                 end end end
@@ -375,12 +377,20 @@ function M.create(player, getPreviews, describeSnapshot)
         end
         if not min then return end
         local center=(min+max)/2
-        local size=max-min
         local absolute=read(image,"AbsoluteSize")
         local aspect=absolute and absolute.Y>0 and math.max(absolute.X/absolute.Y,0.1) or 1
         camera.FieldOfView=35
-        local distance=math.max(size.Y/2,size.X/(2*aspect),0.5)/math.tan(math.rad(camera.FieldOfView/2))*1.15+size.Z/2
         local direction=full and Vector3.new(math.sin(math.rad(18)),0.06,-math.cos(math.rad(18))).Unit or Vector3.new(0,0,-1)
+        local basis=CFrame.lookAt(center,center-direction)
+        local tangent=math.tan(math.rad(camera.FieldOfView/2))
+        local distance=0.5
+        for _,point in ipairs(points)do
+            local relative=basis:PointToObjectSpace(point)
+            -- Fit headwear inside the circular portrait, including perspective
+            -- depth, rather than fitting just the head to a square viewport.
+            local radius=math.sqrt((relative.X/aspect)^2+relative.Y^2)
+            distance=math.max(distance,relative.Z+radius/tangent*1.06)
+        end
         camera.CFrame=CFrame.lookAt(center+direction*distance,center)
     end
     local function matchPortraitMask(image,overlay)
@@ -396,9 +406,17 @@ function M.create(player, getPreviews, describeSnapshot)
             ancestor=ancestor.Parent
         end
         local corner=overlay:FindFirstChildOfClass("UICorner")
-        if native then
+        local peopleHeadshot=false
+        if not native and not fullPortrait(image) then
+            local parent=image.Parent
+            while parent do
+                if tostring(parent.Name):lower()=="peoplelist" then peopleHeadshot=true;break end
+                parent=parent.Parent
+            end
+        end
+        if native or peopleHeadshot then
             if not corner then corner=Instance.new("UICorner");corner.Parent=overlay end
-            corner.CornerRadius=native.CornerRadius
+            corner.CornerRadius=native and native.CornerRadius or UDim.new(0.5,0)
         elseif corner then corner:Destroy() end
     end
     local function updateGeometry(image)
