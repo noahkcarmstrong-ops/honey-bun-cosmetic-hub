@@ -249,14 +249,21 @@ return function(player,onStatus,managedRespawn)
         local ticket=bindTicket
         if not (walkingEnabled or jumpingEnabled)then unbindWalking();return end
         task.spawn(function()
-            -- Bound only to character/control initialization, never per frame.
-            for attempt=1,60 do
-                if not alive or ticket~=bindTicket then return end
+            -- OnInvoke is a callback, not a property: Roblox exposes no change
+            -- signal for it. Animate can replace it after spawning or loading a
+            -- description, so cheaply check ownership while this feature is on.
+            local failures=0
+            while alive and ticket==bindTicket do
                 local ok,ready=pcall(bindWalking)
-                if ok and ready then return end
-                task.wait(0.1)
+                if ok and ready then
+                    failures=0
+                    task.wait(0.5)
+                else
+                    failures=failures+1
+                    if failures==60 and onStatus then onStatus("Waiting for this character's emote controls.")end
+                    task.wait(failures<60 and 0.1 or 0.5)
+                end
             end
-            if alive and ticket==bindTicket and onStatus then onStatus("Waiting for this character's emote controls.")end
         end)
     end
     local function saveEmoteOptions()
