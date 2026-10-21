@@ -64,6 +64,7 @@ return function(player,onStatus,readAsset,managedRespawn)
     local snapshot,added,skin,hidden=nil,{},{},{}
     local gear=nil
     local accountAccessoryNames
+    local retiredAccessories={}
     local nextKey=0
     local playerGui=player:FindFirstChildOfClass("PlayerGui")
     local attribute="HoneyBunCosmeticSettings"
@@ -144,8 +145,17 @@ return function(player,onStatus,readAsset,managedRespawn)
         end
         hidden={}
     end
-    local function forget()
-        showOriginalAccessories()
+    local function forget(preserveCharacter)
+        if preserveCharacter and snapshot and snapshot.character~=player.Character and #hidden>0 then
+            local character=snapshot.character
+            local record={hidden=hidden,added=added}
+            retiredAccessories[character]=record
+            record.connection=character.Destroying:Connect(function()
+                retiredAccessories[character]=nil
+                record.connection:Disconnect()
+            end)
+            hidden={}
+        else showOriginalAccessories()end
         if snapshot then
             dispose(snapshot.meshes)
             if snapshot.r6Head then snapshot.r6Head:Destroy() end
@@ -1153,13 +1163,23 @@ return function(player,onStatus,readAsset,managedRespawn)
         end)
     end
     local changed=player.CharacterAdded:Connect(function(c)
-        generation=generation+1;forget();if not managedRespawn then schedule(c)end
+        generation=generation+1;forget(true);if not managedRespawn then schedule(c)end
     end)
     function api.destroy()
         cancelReady()
         if not alive then return end
         generation=generation+1
         changed:Disconnect()
+        for character,record in pairs(retiredAccessories)do
+            record.connection:Disconnect()
+            for _,entry in ipairs(record.hidden)do
+                for part,properties in pairs(entry.parts)do
+                    for property,value in pairs(properties)do pcall(function()part[property]=value end)end
+                end
+            end
+            for _,entry in ipairs(record.added)do pcall(function()entry.object:Destroy()end)end
+            retiredAccessories[character]=nil
+        end
         if snapshot and snapshot.character==player.Character then pcall(restoreAppearance) end
         for _,template in pairs(fullBodyTemplates)do template:Destroy()end
         fullBodyTemplates={}

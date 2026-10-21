@@ -31,6 +31,7 @@ return function(player,onStatus,managedRespawn)
     local alive,generation=true,0
     local state={Shirt=nil,Pants=nil,ShirtGraphic=nil}
     local templates,requests={},{}
+    local retiredClothes={}
     local function nextRequest(kind)
         requests[kind]=(requests[kind] or 0)+1
         return requests[kind]
@@ -189,7 +190,25 @@ return function(player,onStatus,managedRespawn)
         changed()
     end
     local changed=player.CharacterAdded:Connect(function(character)
-        generation=generation+1;for _,kind in ipairs({"Shirt","Pants","ShirtGraphic"}) do local s=state[kind];if s then clearApplied(s);for _,item in ipairs(s.originals) do item:Destroy() end;state[kind]=nil end end
+        generation=generation+1
+        for _,kind in ipairs({"Shirt","Pants","ShirtGraphic"})do
+            local s=state[kind]
+            if s then
+                -- The previous character may still be the game's ragdoll.
+                -- Keep its visible clothing until the game removes the body.
+                local retired=retiredClothes[s.character]
+                if not retired then
+                    retired={states={}};retiredClothes[s.character]=retired
+                    local oldCharacter=s.character
+                    retired.connection=oldCharacter.Destroying:Connect(function()
+                        for _,old in ipairs(retired.states)do dispose(old.originals)end
+                        retiredClothes[oldCharacter]=nil;retired.connection:Disconnect()
+                    end)
+                end
+                retired.states[#retired.states+1]=s
+                state[kind]=nil
+            end
+        end
         if managedRespawn then return end
         whenReady(character,function()
             local h=character:FindFirstChildOfClass("Humanoid")
@@ -203,6 +222,14 @@ return function(player,onStatus,managedRespawn)
         cancelReady()
         if not alive then return end
         alive=false;generation=generation+1;changed:Disconnect()
+        for character,retired in pairs(retiredClothes)do
+            retired.connection:Disconnect()
+            for _,s in ipairs(retired.states)do
+                clearApplied(s)
+                for _,item in ipairs(s.originals)do item.Parent=character end
+            end
+            retiredClothes[character]=nil
+        end
         for _,kind in ipairs({"Shirt","Pants","ShirtGraphic"}) do
             local s=state[kind]
             if s then
