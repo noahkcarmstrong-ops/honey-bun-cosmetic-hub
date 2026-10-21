@@ -743,6 +743,7 @@ function M.create(player, getPreviews, describeSnapshot)
     function api.update(options)
         if not alive then return api.report() end
         options = options or {}; local wasEnabled=enabled; local previousName=currentName
+        local previousDisplayName,previousVerified=currentDisplayName,verified
         enabled = options.enabled == true; currentName = tostring(options.name or "")
         currentDisplayName=tostring(options.displayName or "")
         verified=options.verified==true
@@ -750,7 +751,10 @@ function M.create(player, getPreviews, describeSnapshot)
         local effectiveSnapshot = options.snapshot
         outfitSnapshot=effectiveSnapshot
         local nextKey = signature(effectiveSnapshot) .. "|" .. tostring(currentImage or "")
-        if enabled and wasEnabled and previousName==currentName and nextKey==effectiveKey and (currentImage or previewSnapshot) then renderVerification();return api.report() end
+        if enabled and wasEnabled and previousName==currentName and nextKey==effectiveKey and (currentImage or previewSnapshot) then
+            if previousDisplayName~=currentDisplayName or previousVerified~=verified then renderVerification()end
+            return api.report()
+        end
         if enabled and not indexed then
             local preflight = {}
             for _, root in ipairs(roots) do pcall(function()

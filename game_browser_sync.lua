@@ -490,6 +490,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         snapshotPending=false
         if not readyForAppearance() then return end
         local made,value=pcall(snapshot)
+        local changed=false
         if made then
             if commandSnapshotPending then
                 commandSnapshotPending=false
@@ -499,12 +500,12 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             lastSnapshot=value
             local encoded=HttpService:JSONEncode(value)
             if encoded~=lastJson then
+                changed=true
                 local sent,reason=pcall(send,"game",value)
                 if sent then lastJson=encoded else status("Desktop update failed: "..tostring(reason))end
             end
         end
-        updateViews()
-        if made then notifySnapshot()end
+        if changed then updateViews();notifySnapshot()end
     end
     local function disconnectAll(connections)
         for _,connection in ipairs(connections)do pcall(function()connection:Disconnect()end)end
@@ -537,8 +538,21 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         end)
     end
     local function watchAppearanceInstance(instance)
-        if instanceConnections[instance]then return end
+        if instanceConnections[instance]then return false end
+        -- Effects, animation tracks and equipped tools are not outfit data.
+        -- In particular, Chroma weapon colors change continuously.
+        local character=player.Character
+        if instance:FindFirstAncestorOfClass("Tool")then return false end
+        local relevant=instance:IsA("Accessory") or instance:IsA("Humanoid") or instance:IsA("BodyColors")
+            or instance:IsA("Clothing") or instance:IsA("ShirtGraphic") or instance:IsA("CharacterMesh")
+            or (instance:IsA("BasePart") and instance.Parent==character)
+        local scale=false
+        if instance:IsA("NumberValue") and instance.Parent and instance.Parent:IsA("Humanoid")then
+            for _,name in pairs(SCALE_PROPERTIES)do if instance.Name==name then scale=true;break end end
+        end
+        if not relevant and not scale then return false end
         instanceConnections[instance]={}
+        if scale then watchProperty(instance,"Value");return true end
         local okHumanoid,isHumanoid=pcall(function()return instance:IsA("Humanoid")end)
         if okHumanoid and isHumanoid then
             local ok,signal=pcall(function()return instance.ApplyDescriptionFinished end)
@@ -549,10 +563,10 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             for _,property in ipairs({"HeadColor3","TorsoColor3","LeftArmColor3","RightArmColor3","LeftLegColor3","RightLegColor3"})do
                 watchProperty(instance,property)
             end
-            return
+            return true
         end
         local okPart,isPart=pcall(function()return instance:IsA("BasePart")end)
-        if okPart and isPart then watchProperty(instance,"Color")end
+        if okPart and isPart and instance.Parent==character then watchProperty(instance,"Color")end
         local propertyByClass={
             Shirt={"ShirtTemplate"},Pants={"PantsTemplate"},ShirtGraphic={"Graphic"},
             MeshPart={"MeshId","TextureID"},SpecialMesh={"MeshId","TextureId","VertexColor"},
@@ -565,6 +579,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 for _,property in ipairs(properties)do watchProperty(instance,property)end
             end
         end
+        return true
     end
     local function forgetAppearanceSubtree(root)
         for instance,connections in pairs(instanceConnections)do
@@ -579,12 +594,12 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         disconnectCharacterWatchers()
         if not character then return end
         connectSignal(character.DescendantAdded,characterConnections,function(instance)
-            watchAppearanceInstance(instance)
-            scheduleSnapshot()
+            if watchAppearanceInstance(instance)then scheduleSnapshot()end
         end)
         connectSignal(character.DescendantRemoving,characterConnections,function(instance)
+            local relevant=instanceConnections[instance]~=nil
             forgetAppearanceSubtree(instance)
-            scheduleSnapshot()
+            if relevant then scheduleSnapshot()end
         end)
         for _,instance in ipairs(character:GetDescendants())do watchAppearanceInstance(instance)end
         scheduleSnapshot()
