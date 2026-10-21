@@ -153,9 +153,18 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         if not character or target.Character~=character then return false end
         local humanoid=character:FindFirstChildOfClass("Humanoid")
         if not humanoid or humanoid.Health<=0 or not character:FindFirstChild("Head")then return false end
-        -- Native avatars are still being replaced until this event completes.
-        -- Games that disable native appearance loading use their own ready rig.
-        return not target.CanLoadCharacterAppearance or target:HasAppearanceLoaded()
+        -- CharacterAppearanceLoaded is server-only. On the receiving client,
+        -- use replicated rig parts instead of waiting on that server signal.
+        local required=humanoid.RigType==Enum.HumanoidRigType.R6
+            and {"Torso","Left Arm","Right Arm","Left Leg","Right Leg"}
+            or {"UpperTorso","LowerTorso","LeftUpperArm","LeftLowerArm","LeftHand",
+                "RightUpperArm","RightLowerArm","RightHand","LeftUpperLeg","LeftLowerLeg",
+                "LeftFoot","RightUpperLeg","RightLowerLeg","RightFoot"}
+        for _,name in ipairs(required)do
+            local part=character:FindFirstChild(name)
+            if not part or not part:IsA("BasePart")then return false end
+        end
+        return true
     end
     local function queueRecord(record)
         latestRecords[record.userId]=record;pending[record.userId]=record
