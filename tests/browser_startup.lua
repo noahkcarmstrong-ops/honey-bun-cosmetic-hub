@@ -30,8 +30,13 @@ local clothes={getSettings=function()return {}end}
 local names={set=function()end,restore=function()end,setEnabled=function()end}
 local shared,sync
 local enabled=0
+local backgroundId,backgrounds=0,{}
+local backgroundChanges=0
 sync=dofile('game_browser_sync.lua')(player,function()return avatar end,function()return clothes end,function()return true end,
- nil,nil,function()return names end,nil,{isReady=function()return ready end,setEnabled=function(value)
+ nil,nil,function()return names end,nil,{isReady=function()return ready end,
+ getBackgroundState=function()return backgroundId,backgrounds end,
+ setBackgroundState=function(id,choices)backgroundId=id; backgroundChanges=backgroundChanges+1;if choices then backgrounds=choices end end,
+ setEnabled=function(value)
  if value then enabled=enabled+1;shared=sync.snapshotForSharing()end
 end})
 drain()
@@ -44,5 +49,14 @@ assert(sync.isConnected() and enabled==1 and shared.definition==command.definiti
 assert(reads==0,'startup must not inspect or mutate a half-restored local avatar')
 ready=true;sync.resumeAppearance();drain()
 assert(reads>0,'finishing restoration resumes the queued browser outfit and snapshot')
+command.revision=2;command.backgroundId=42;command.backgrounds={{id=42,name='Backdrop'}}
+socket.OnMessage:Fire({type='state',channel='browser',value=command});drain()
+assert(backgroundId==42 and backgrounds[1].id==42,'a background-only command applies immediately through the socket')
+assert(sync.publish().backgroundId==42,'the game confirms the applied background')
+socket.OnMessage:Fire({type='state',channel='browser',value=command});drain()
+assert(backgroundChanges==2,'a duplicate revision does not reapply the background')
+command.revision=3;command.backgroundId=0
+socket.OnMessage:Fire({type='state',channel='browser',value=command});drain()
+assert(backgroundId==0 and sync.publish().backgroundId==0,'explicit removal clears and confirms the background')
 sync.destroy()
 print('PASS: early connection and sharing, no partial-avatar publication, deferred appearance replay')
