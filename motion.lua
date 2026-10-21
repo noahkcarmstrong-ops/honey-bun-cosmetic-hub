@@ -25,6 +25,7 @@ return function(player,onStatus,managedRespawn)
     local gui=player:FindFirstChildOfClass("PlayerGui")
     local attribute="HoneyBunCosmeticEmotes"
     local slots,original={},nil
+    local wheelNames={}
     local replaceOriginals=false
     local alive,generation=true,0
     local baseline,accountChecked=nil,false
@@ -94,17 +95,26 @@ return function(player,onStatus,managedRespawn)
     local function applyWheel()
         local desc=ensureBaseline()
         local emotes,equipped=copy(original.emotes),{}
+        local names={}
         for _,entry in ipairs(original.equipped) do
             if not replaceOriginals and not slots[entry.Slot] then equipped[#equipped+1]=copy(entry) end
         end
         for slot,item in pairs(slots) do
-            local name="Larpblox Slot "..slot
+            local label=tostring(item.name or "Emote"):gsub("[%c]",""):match("^%s*(.-)%s*$")
+            if label=="" then label="Emote" end
+            local name=label
+            local suffix=2
+            while emotes[name] and (#emotes[name]~=1 or emotes[name][1]~=item.id)do
+                name=label.." ("..suffix..")";suffix=suffix+1
+            end
             emotes[name]={item.id}
+            names[slot]=name
             equipped[#equipped+1]={Slot=slot,Name=name}
         end
         table.sort(equipped,function(a,b) return a.Slot<b.Slot end)
         local ok,message=pcall(function() desc:SetEmotes(emotes);desc:SetEquippedEmotes(equipped) end)
         if not ok then pcall(restoreWheel);error("Roblox could not update this emote wheel: "..tostring(message)) end
+        wheelNames=names
     end
     local function slotNumber(value)
         assert(type(value)=="number" and value>=1 and value<=8 and value%1==0,"Choose a slot from 1 to 8.")
@@ -151,7 +161,8 @@ return function(player,onStatus,managedRespawn)
     local jumpingEnabled=gui and gui:GetAttribute("HoneyBunCosmeticUI_emoteWhileJumping")==true
     local isolated=gui and gui:GetAttribute("HoneyBunCosmeticUI_isolateEmote")==true
     local walkingHook,walkingTrack,walkingState,runningConnection,trackStopped,animationPlayed
-    local pausedAnimate,animateWasDisabled
+    local isolationStep
+    local suppressed={}
     local bindTicket=0
     local scheduleBinding
     local function stopWalkingEmote()
@@ -159,13 +170,13 @@ return function(player,onStatus,managedRespawn)
         if trackStopped then trackStopped:Disconnect();trackStopped=nil end
         if animationPlayed then animationPlayed:Disconnect();animationPlayed=nil end
         if track then pcall(function()track:Stop(0.15);track:Destroy()end)end
-        if pausedAnimate then
-            local animate=pausedAnimate;pausedAnimate=nil
-            pcall(function()animate.Disabled=animateWasDisabled end)
-            if alive and not animateWasDisabled then
-                task.delay(0.1,function()if alive and scheduleBinding then scheduleBinding()end end)
-            end
+        if isolationStep then isolationStep:Disconnect();isolationStep=nil end
+        for other,state in pairs(suppressed)do
+            pcall(function()
+                if other.IsPlaying then other:AdjustSpeed(state.speed);other:AdjustWeight(state.weight,0.15)end
+            end)
         end
+        suppressed={}
     end
     local function unbindWalking()
         stopWalkingEmote()
@@ -199,11 +210,23 @@ return function(player,onStatus,managedRespawn)
             walkingTrack=newTrack
             newTrack.Priority=Enum.AnimationPriority.Action
             if isolated then
-                pausedAnimate=animate;animateWasDisabled=animate.Disabled;animate.Disabled=true
+                local function suppress(track)
+                    if track==newTrack then return end
+                    if not suppressed[track]then suppressed[track]={speed=track.Speed,weight=track.WeightTarget}end
+                    track:AdjustWeight(0,0)
+                end
                 animationPlayed=animator.AnimationPlayed:Connect(function(track)
-                    if walkingTrack==newTrack and track~=newTrack then track:Stop(0)end
+                    if walkingTrack==newTrack then suppress(track)end
                 end)
-                for _,track in ipairs(animator:GetPlayingAnimationTracks())do if track~=newTrack then track:Stop(0)end end
+                for _,track in ipairs(animator:GetPlayingAnimationTracks())do suppress(track)end
+                -- Animate must remain alive to accept the next emote. Its
+                -- blends can restore locomotion weights without playing a
+                -- new track, so only guard the small active track set here.
+                isolationStep=game:GetService("RunService").PreAnimation:Connect(function()
+                    for track in pairs(suppressed)do
+                        if track.IsPlaying and track.WeightTarget~=0 then track:AdjustWeight(0,0)end
+                    end
+                end)
             end
             trackStopped=newTrack.Stopped:Connect(function()if walkingTrack==newTrack then stopWalkingEmote()end end)
             newTrack:Play(0.15)
@@ -330,7 +353,7 @@ return function(player,onStatus,managedRespawn)
         slot=slotNumber(slot);assert(slots[slot],"Assign an emote to that slot first.")
         applyWheel()
         local character,humanoid,ticket=context()
-        local ok,played=pcall(function() return humanoid:PlayEmoteAsync("Larpblox Slot "..slot) end)
+        local ok,played=pcall(function() return humanoid:PlayEmoteAsync(wheelNames[slot]) end)
         check(character,ticket)
         assert(ok and played,"Roblox could not play this emote. Check its permissions and your avatar rig.")
         return "Playing emote from slot "..slot.."."
@@ -344,11 +367,66 @@ return function(player,onStatus,managedRespawn)
         restoreWheel();slots={};replaceOriginals=false;save();original=nil
         return "Original emote wheel restored."
     end
+    local wheelConnections={}
+    local wheelReconcilePending=false
+    local function reconcileWheel()
+        if wheelReconcilePending or not alive then return end
+        wheelReconcilePending=true
+        task.defer(function()
+            wheelReconcilePending=false
+            if not alive or (not next(slots) and not replaceOriginals)then return end
+            local character=player.Character
+            local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+            local desc=humanoid and humanoid:FindFirstChildOfClass("HumanoidDescription")
+            if not desc or humanoid.Health<=0 then return end
+            local ok,reason=pcall(function()
+                local emotes,equipped=desc:GetEmotes(),{}
+                for _,entry in ipairs(desc:GetEquippedEmotes())do equipped[entry.Slot]=entry.Name end
+                local changed=false
+                for slot,item in pairs(slots)do
+                    local name=equipped[slot]
+                    local ids=name and emotes[name]
+                    if not ids or #ids~=1 or ids[1]~=item.id or name~=wheelNames[slot]then changed=true;break end
+                end
+                if not changed and replaceOriginals then
+                    for slot in pairs(equipped)do if not slots[slot]then changed=true;break end end
+                end
+                if changed then applyWheel()end
+            end)
+            if not ok and onStatus then onStatus("Could not restore emote wheel: "..tostring(reason))end
+        end)
+    end
+    local function watchWheel(character)
+        for _,connection in ipairs(wheelConnections)do connection:Disconnect()end
+        wheelConnections={}
+        if not character then return end
+        local watched={}
+        local function watch(instance)
+            if watched[instance]then return end
+            if instance:IsA("HumanoidDescription")then
+                watched[instance]=true
+                wheelConnections[#wheelConnections+1]=instance.EmotesChanged:Connect(reconcileWheel)
+                wheelConnections[#wheelConnections+1]=instance.EquippedEmotesChanged:Connect(reconcileWheel)
+            elseif instance:IsA("Humanoid")then
+                watched[instance]=true
+                wheelConnections[#wheelConnections+1]=instance.ApplyDescriptionFinished:Connect(reconcileWheel)
+            end
+        end
+        wheelConnections[#wheelConnections+1]=character.DescendantAdded:Connect(function(instance)
+            if instance:IsA("Humanoid") or instance:IsA("HumanoidDescription")then watch(instance);reconcileWheel()end
+        end)
+        wheelConnections[#wheelConnections+1]=character.DescendantRemoving:Connect(function(instance)
+            if instance:IsA("Humanoid") or instance:IsA("HumanoidDescription")then reconcileWheel()end
+        end)
+        for _,instance in ipairs(character:GetDescendants())do watch(instance)end
+        reconcileWheel()
+    end
     local changed=player.CharacterAdded:Connect(function(character)
         generation=generation+1;local ticket=generation
         original=nil
         unbindWalking()
         scheduleBinding()
+        watchWheel(character)
         if managedRespawn then return end
         task.spawn(function()
             for attempt=1,100 do
@@ -368,7 +446,10 @@ return function(player,onStatus,managedRespawn)
     function api.destroy()
         if not alive then return end
         alive=false;generation=generation+1;bindTicket=bindTicket+1;changed:Disconnect();unbindWalking();pcall(restoreWheel);original=nil
+        for _,connection in ipairs(wheelConnections)do connection:Disconnect()end
+        wheelConnections={}
     end
+    watchWheel(player.Character)
     scheduleBinding()
     return api
 end

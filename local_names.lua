@@ -118,6 +118,17 @@ end
 local notificationEntries=setmetatable({}, {__mode="k"})
 local notificationHook
 local notificationSources=setmetatable({}, {__mode="k"})
+local function isSystemChat(object)
+    local ancestor=object
+    local system=false
+    while ancestor do
+        if ancestor==coreGui then return system end
+        -- Native TextChat records identify system messages with sender ID 0.
+        if ancestor.Name:match("^0%-%{%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x%}$")then system=true end
+        ancestor=ancestor.Parent
+    end
+    return false
+end
 local function isNotification(object)
     local ancestor=object.Parent
     for _=1,12 do
@@ -202,7 +213,7 @@ local function bindNotifications()
     notificationHook={state=state,transform=transform}
 end
 local function replacement(entry, controller)
-    if isNotification(entry.object) then return notificationText(entry.source,entry.object.RichText) end
+    if isNotification(entry.object) or isSystemChat(entry.object) then return notificationText(entry.source,entry.object.RichText) end
     if entry.chatSpan then
         local span=entry.chatSpan
         local identity=identities[entry.id]
@@ -292,6 +303,18 @@ local function bindChat()
         if readable and (previous==nil or type(previous)=="function") and (member~="OnChatWindowAdded" or config) then
             local transform=function(properties,message)
                 local source=message.TextSource
+                if not source then
+                    local text=properties and properties.Text
+                    if not text or text=="" then text=message.Text end
+                    if type(text)~="string" then return properties end
+                    local value=notificationText(text,true)
+                    if value==text then return properties end
+                    if not properties then
+                        properties=member=="OnIncomingMessage" and Instance.new("TextChatMessageProperties") or config:DeriveNewMessageProperties()
+                    end
+                    properties.Text=value
+                    return properties
+                end
                 local controller=source and controllers[source.UserId]
                 if not controller or not controller.settings.enabled then return properties end
                 local prefix=properties and properties.PrefixText
@@ -345,7 +368,7 @@ local function render(entry)
     pcall(function() entry.object.Text=value end)
 end
 local function bind(entry)
-    notificationEntries[entry]=isNotification(entry.object) or nil
+    notificationEntries[entry]=(isNotification(entry.object) or isSystemChat(entry.object)) or nil
     if entry.id and buckets[entry.id] then buckets[entry.id][entry]=nil end
     entry.id=resolve(entry)
     if entry.id then
