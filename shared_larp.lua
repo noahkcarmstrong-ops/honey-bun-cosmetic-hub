@@ -138,14 +138,32 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         entry.presentationImageUrl=record.imageUrl
         entry.presented=record
     end
+    local function refreshCharacter(entry,target)
+        if entry.character==target.Character then return end
+        -- Controllers already reset character-owned state on CharacterAdded.
+        -- Preserve their asset caches, names and thumbnail renderers.
+        entry.character=target.Character
+        entry.snapshot=nil
+        entry.appearanceStarted=nil
+        entry.accessoriesComplete=nil
+        entry.animationAssets=nil
+        entry.originalScales=nil
+    end
+    local function appearanceReady(target,character)
+        if not character or target.Character~=character then return false end
+        local humanoid=character:FindFirstChildOfClass("Humanoid")
+        if not humanoid or humanoid.Health<=0 or not character:FindFirstChild("Head")then return false end
+        -- Native avatars are still being replaced until this event completes.
+        -- Games that disable native appearance loading use their own ready rig.
+        return not target.CanLoadCharacterAppearance or target:HasAppearanceLoaded()
+    end
     local function queueRecord(record)
         latestRecords[record.userId]=record;pending[record.userId]=record
         local target=Players:GetPlayerByUserId(tonumber(record.userId))
         if not target or target==localPlayer then return end
         local entry=peers[record.userId]
-        if entry and (entry.player~=target or entry.character~=target.Character)then
-            cleanupPeer(record.userId);entry=nil
-        end
+        if entry and entry.player~=target then cleanupPeer(record.userId);entry=nil end
+        if entry then refreshCharacter(entry,target)end
         if not entry then entry=peerApis(target);peers[record.userId]=entry end
         local ok,reason=pcall(presentRecord,entry,record)
         if not ok then status("Shared appearance: "..tostring(reason))end
@@ -155,7 +173,6 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local target=Players:GetPlayerByUserId(tonumber(record.userId))
         if not target or target==localPlayer then return end
         local character=target.Character
-        local readyHumanoid=character and character:FindFirstChildOfClass("Humanoid")
         local snapshot=record.snapshot
         local entry=peers[record.userId]
         if entry and entry.player==target and entry.character==target.Character
@@ -163,9 +180,8 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             and sameValue(entry.snapshot,snapshot) and sameValue(entry.name,record.name)
             and entry.verified==(record.verified==true)
             and entry.imageUrl==record.imageUrl then return end
-        if entry and (entry.player~=target or entry.character~=target.Character)then
-            cleanupPeer(record.userId);entry=nil
-        end
+        if entry and entry.player~=target then cleanupPeer(record.userId);entry=nil end
+        if entry then refreshCharacter(entry,target)end
         local fresh=not entry or not entry.appearanceStarted
         if not entry then entry=peerApis(target);peers[record.userId]=entry end
         local function current()
@@ -176,7 +192,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         -- the record arrives, even while Roblox is still spawning the character.
         presentRecord(entry,record)
         -- Readiness events replay the retained record once a body is available.
-        if not readyHumanoid or readyHumanoid.Health<=0 or not character:FindFirstChild("Head") then return end
+        if not appearanceReady(target,character)then return end
         local accessoryFailures={}
         local ok,err=pcall(function()
             -- Keep the live overlay and its caches when only part of the outfit changes.
@@ -424,8 +440,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local function watchCharacter(character)
             if characterConnection then characterConnection:Disconnect();characterConnection=nil end
             local function ready()
-                local humanoid=character:FindFirstChildOfClass("Humanoid")
-                if player.Character~=character or not humanoid or humanoid.Health<=0 or not character:FindFirstChild("Head") then return end
+                if not appearanceReady(player,character)then return end
                 if characterConnection then characterConnection:Disconnect();characterConnection=nil end
                 task.defer(replay)
             end
@@ -435,10 +450,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local added=player.CharacterAdded:Connect(watchCharacter)
         local loaded=player.CharacterAppearanceLoaded:Connect(function(character)
             if player.Character==character then
-                -- Roblox's appearance load can replace a body we applied as
-                -- soon as Head/Humanoid appeared. Reapply the retained record.
-                local entry=peers[tostring(player.UserId)]
-                if entry then entry.character=nil end
+                if characterConnection then characterConnection:Disconnect();characterConnection=nil end
                 task.defer(replay)
             end
         end)
