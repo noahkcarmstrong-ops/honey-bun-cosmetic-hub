@@ -198,7 +198,10 @@ local function newestField(placeholder)
     for index=#objects,1,-1 do local o=objects[index];if not o.destroyed and o.ClassName=='TextBox' and o.PlaceholderText==placeholder then return o end end
     error('Missing field '..placeholder)
 end
+local staleA=Instance.new('ScreenGui',guiRoot);staleA.Name='HoneyBunCosmeticHub'
+local staleB=Instance.new('ScreenGui',guiRoot);staleB.Name='HoneyBunCosmeticHub'
 dofile('loader.lua')
+assert(staleA.destroyed and staleB.destroyed,'Refresh removes every older menu instance')
 assert(not guiRoot:FindFirstChild('HoneyBunHub'),'Cosmetic menu never creates the original hub')
 local function findName(root,name)
     if root.Name==name then return root end

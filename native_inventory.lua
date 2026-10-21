@@ -625,44 +625,46 @@ return function(playerGui,catalog,onStatus,mode)
             if is(o,"GuiButton") then o.BackgroundColor3=Color3.fromRGB(48,48,48) end
         end
         for _,o in ipairs(texts(savedTab)) do if is(o,"LuaSourceContainer") then destroy(o) end end
-        -- Fit four native-styled tabs into the space previously used by three.
+        -- Leave the original MM2 tabs at their native sizes; append Saved after Search.
         local nativeTabs={}
-        for _,o in ipairs(children(tabs)) do if is(o,"GuiObject") and category(o.Name) then nativeTabs[#nativeTabs+1]=o end end
-        table.sort(nativeTabs,function(a,b)return (category(a.Name)=="season1" and 1 or category(a.Name)=="classic" and 2 or 3)<(category(b.Name)=="season1" and 1 or category(b.Name)=="classic" and 2 or 3)end)
-        pcall(function()
-            local first,last=nativeTabs[1],nativeTabs[#nativeTabs]
-            local origin=first.Position.X
-            local widthScale=(last.Position.X.Scale+last.Size.X.Scale-origin.Scale)/4
-            local widthOffset=(last.Position.X.Offset+last.Size.X.Offset-origin.Offset)/4
-            local all={};for _,o in ipairs(nativeTabs) do all[#all+1]=o end;all[#all+1]=savedTab
-            for index,o in ipairs(all) do
-                if o~=savedTab then savedHeader[o]={Size=o.Size,Position=o.Position} end
-                o.Size=UDim2.new(widthScale,widthOffset,o.Size.Y.Scale,o.Size.Y.Offset)
-                o.Position=UDim2.new(origin.Scale+(index-1)*widthScale,origin.Offset+(index-1)*widthOffset,o.Position.Y.Scale,o.Position.Y.Offset)
-                for _,label in ipairs(texts(o)) do
-                    if is(label,"TextLabel") or is(label,"TextButton") then
-                        if o~=savedTab then savedHeader[label]=savedHeader[label] or {};savedHeader[label].TextScaled=label.TextScaled end
-                        label.TextScaled=true
-                    end
-                end
+        local nextOrder=0
+        for _,o in ipairs(children(tabs)) do
+            if is(o,"GuiObject") and not localObject(o) then
+                savedHeader[o]=savedHeader[o] or {}
+                savedHeader[o].LayoutOrder=read(o,"LayoutOrder") or 0
+                nativeTabs[#nativeTabs+1]=o
             end
-        end)
-        -- Layout-driven headers ignore Position: put Saved before Search there too.
-        for index,o in ipairs(nativeTabs) do
-            savedHeader[o]=savedHeader[o] or {}
-            savedHeader[o].LayoutOrder=read(o,"LayoutOrder") or 0
-            o.LayoutOrder=index
         end
-        local nextOrder=#nativeTabs+2
+        table.sort(nativeTabs,function(a,b)
+            local orderA,orderB=read(a,"LayoutOrder") or 0,read(b,"LayoutOrder") or 0
+            if orderA~=orderB then return orderA<orderB end
+            return tostring(a.Name)<tostring(b.Name)
+        end)
+        for index,o in ipairs(nativeTabs) do o.LayoutOrder=index;nextOrder=index end
         for _,o in ipairs(children(tabs)) do
             if is(o,"UIListLayout") then
                 savedHeader[o]={SortOrder=o.SortOrder};o.SortOrder=Enum.SortOrder.LayoutOrder
-            elseif is(o,"GuiObject") and not category(o.Name) then
-                savedHeader[o]=savedHeader[o] or {};savedHeader[o].LayoutOrder=read(o,"LayoutOrder") or 0
-                o.LayoutOrder=nextOrder;nextOrder=nextOrder+1
             end
         end
-        savedTab.LayoutOrder=#nativeTabs+1;savedTab.Parent=tabs;savedTabParent=tabs
+        savedTab.LayoutOrder=nextOrder+1
+        -- Reserve space beside Search rather than squeezing the three game tabs.
+        pcall(function()
+            savedTab.Size=UDim2.new(0.15,0,tab.Size.Y.Scale,tab.Size.Y.Offset)
+            for _,o in ipairs(nativeTabs) do
+                if normalize(o.Name)=="search" then
+                    savedHeader[o].Size=o.Size
+                    o.Size=UDim2.new(math.max(0.1,o.Size.X.Scale-0.15),o.Size.X.Offset,o.Size.Y.Scale,o.Size.Y.Offset)
+                end
+            end
+        end)
+        for _,o in ipairs(texts(savedTab)) do
+            if is(o,"TextLabel") or is(o,"TextButton") then o.TextScaled=true end
+        end
+        pcall(function()
+            savedTab.AnchorPoint=Vector2.new(1,0)
+            savedTab.Position=UDim2.new(1,0,tab.Position.Y.Scale,tab.Position.Y.Offset)
+        end)
+        savedTab.Parent=tabs;savedTabParent=tabs
         savedPane.Parent=nativeHost;savedPane.Visible=false
         for _,pane in ipairs(children(nativeHost)) do
             if pane~=savedPane and is(pane,"GuiObject") and category(pane.Name) then

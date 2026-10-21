@@ -74,6 +74,8 @@ local accessorySoundsAPI
 local mm2Enabled=false
 local mm2EmotesShown=false
 local playerGui = localPlayer:WaitForChild("PlayerGui")
+local loadGeneration=(playerGui:GetAttribute("LarpbloxLoadGeneration") or 0)+1
+playerGui:SetAttribute("LarpbloxLoadGeneration",loadGeneration)
 trace("Loading Prism controls")
 local moduleRevision = resolveRevision()
 local prismChunk, prismError = loadstring(readSource("prism.lua", moduleRevision))
@@ -82,9 +84,8 @@ local prismRuntime = prismChunk()(function(file) return readSource(file, moduleR
 local uiChunk,uiError=loadstring(readSource("ui.lua",moduleRevision))
 assert(uiChunk,uiError)
 local previousMenus={}
-for _, name in ipairs({"HoneyBunCosmeticHub"}) do
-    local old = playerGui:FindFirstChild(name)
-    if old then
+for _,old in ipairs(playerGui:GetChildren()) do
+    if old.Name=="HoneyBunCosmeticHub" then
         for _,key in ipairs({"HoneyBunCosmeticGuns","HoneyBunCosmeticEffects"}) do
             local value=old:GetAttribute(key)
             if value and not playerGui:GetAttribute(key) then playerGui:SetAttribute(key,value) end
@@ -105,6 +106,10 @@ pcall(function()
     end)
 end)
 
+if playerGui:GetAttribute("LarpbloxLoadGeneration")~=loadGeneration then
+    if persistence then persistence.destroy() end
+    return
+end
 local gui = Instance.new("ScreenGui")
 trace("Building menu")
 gui.Name = "HoneyBunCosmeticHubPending"
@@ -428,14 +433,32 @@ local function api()
     local source=readSource("avatar.lua", sha)
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Avatar editor failed to load.")
-    avatarFactory=create
     assert(alive,"Menu was closed.")
+    local function readAsset(path)
+        assert(path=="assets/dominus-azurelight.rbxm","Unsupported local avatar asset.")
+        assert(type(writefile)=="function" and type(customAsset)=="function",
+            "This executor cannot load Dominus Azurelight's visual effects locally.")
+        local file="larpblox-dominus-azurelight.rbxm"
+        local bytes=readSource(path,sha)
+        assert(bytes:sub(1,8)=="<roblox!","Invalid Dominus Azurelight visual asset.")
+        local wrote,writeError=pcall(writefile,file,bytes)
+        assert(wrote,writeError)
+        local assetOk,assetUri=pcall(customAsset,file)
+        assert(assetOk and assetUri,"This executor could not prepare Dominus Azurelight's visual asset.")
+        local loaded,objects=pcall(function()return game:GetObjects(assetUri)end)
+        assert(loaded and type(objects)=="table" and #objects>0,"This executor could not load Dominus Azurelight's visual asset.")
+        return objects
+    end
+    local function createAvatar(player,onStatus)
+        return create(player,onStatus,readAsset)
+    end
+    avatarFactory=createAvatar
     avatarAPI=create(Players.LocalPlayer,function(message,working)
         if not alive then return end
         trace("Avatar: "..message)
         busy=working or actionRunning;statusText=message
         if render then render() end
-    end,true)
+    end,readAsset,true)
     return avatarAPI
 end
 local function atmosphere()
@@ -688,6 +711,7 @@ local function mm2()
     mm2GunLibraryAPI=libraryChunk()(game,playerGui)
     local source=readSource("mm2.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
+    assert(alive,"Larpblox was refreshed; the older weapon controller was cancelled.")
     mm2API=chunk()(game,nil,mm2GunLibraryAPI)
     mm2API.setKnifeSide(knifeSide)
     return mm2API
@@ -697,6 +721,7 @@ local function nativeMM2()
     local catalog=mm2()
     local source=readSource("native_inventory.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
+    assert(alive,"Larpblox was refreshed; the older weapon controller was cancelled.")
     mm2NativeAPI=chunk()(playerGui,catalog,function(message)
         if not alive then return end
         statusText=message
@@ -709,6 +734,7 @@ local function savedNativeMM2()
     local backend=mm2()
     local source=readSource("native_inventory.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
+    assert(alive,"Larpblox was refreshed; the older weapon controller was cancelled.")
     local function openWeaponEditor(entry,mode)
         if not mm2WeaponEditorAPI then
             local editorSource=readSource("weapon_editor.lua", moduleRevision)

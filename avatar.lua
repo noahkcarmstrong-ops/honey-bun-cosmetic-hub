@@ -21,6 +21,7 @@ local function validScales(values)
     return true
 end
 local outfits={Girl=131929545,["Robloxian 2.0"]=131929576}
+local azurelightAccessoryId=14565851673
 local bodyRegions={Head=true,Torso=true,LeftArm=true,RightArm=true,LeftLeg=true,RightLeg=true}
 local r6BodyPartNames={Head="Head",Torso="Torso",LeftArm="LeftArm",RightArm="RightArm",LeftLeg="LeftLeg",RightLeg="RightLeg"}
 local function regionNames(region)
@@ -58,7 +59,7 @@ local function bodyClone(part)
     for _,item in ipairs(clone:GetDescendants()) do if item:IsA("JointInstance") then item:Destroy() end end
     return clone
 end
-return function(player,onStatus,managedRespawn)
+return function(player,onStatus,readAsset,managedRespawn)
     local alive,generation=true,0
     local snapshot,added,skin,hidden=nil,{},{},{}
     local gear=nil
@@ -89,7 +90,7 @@ return function(player,onStatus,managedRespawn)
             if type(saved.body)=="string" then settings.body=saved.body end
             if type(saved.bodyParts)=="table" then
                 for region,value in pairs(saved.bodyParts) do
-                    if bodyRegions[region] and ((type(value)=="number" and value>0 and value%1==0 and value<9007199254740992)
+                    if bodyRegions[region] and ((type(value)=="number" and value>=0 and value%1==0 and value<9007199254740992)
                         or (type(value)=="string" and #value<=8192)) then settings.bodyParts[region]=value end
                 end
             end
@@ -381,7 +382,13 @@ return function(player,onStatus,managedRespawn)
         local key=kind..":"..string.format("%.0f",id)
         local cached=wearableTemplates[key]
         if cached then return cached:Clone() end
-        local ok,objects=pcall(function()return game:GetObjects("rbxassetid://"..string.format("%.0f",id))end)
+        local ok,objects=pcall(function()
+            if kind=="Accessory" and id==azurelightAccessoryId then
+                assert(type(readAsset)=="function","Dominus Azurelight's visual effects need local asset loading support in this executor.")
+                return readAsset("assets/dominus-azurelight.rbxm")
+            end
+            return game:GetObjects("rbxassetid://"..string.format("%.0f",id))
+        end)
         assert(ok and type(objects)=="table" and #objects>0,"Roblox could not load that "..kind:lower()..". It may be private or unavailable.")
         if not valid(ctx)then dispose(objects);check(ctx)end
         local function matches(item)return item:IsA(kind) or (kind=="Accessory" and item:IsA("Hat"))end
@@ -417,6 +424,12 @@ return function(player,onStatus,managedRespawn)
             for _,effect in ipairs(candidate:GetDescendants()) do
                 if effect:IsA("Fire") or effect:IsA("Smoke") then effect.Enabled=true end
             end
+        elseif id==169444515 then
+            -- Use the original everyday smoke, not the scripted holiday emitters.
+            local handle=candidate:FindFirstChild("Handle")
+            local attachment=handle and handle:FindFirstChild("HatAttachment")
+            local smoke=attachment and attachment:FindFirstChild("ParticleEmitter")
+            if smoke and smoke:IsA("ParticleEmitter") then smoke.Enabled=true end
         end
         for _,item in ipairs(candidate:GetDescendants()) do
             if item:IsA("BasePart") then item.Anchored=false;item.CanCollide=false;item.CanTouch=false;item.Massless=true end
@@ -727,7 +740,8 @@ return function(player,onStatus,managedRespawn)
         local cacheKey=tostring(ctx.humanoid.RigType)..":"..region..":"..text..":"..table.concat(scaleKey,",")
         local cached=bodyPartTemplates[cacheKey]
         local id=cached and cached.id
-        if not isBundle and not cached then id=idFrom(value,"catalog") end
+        local isDefault=text=="0"
+        if not isBundle and not cached then id=isDefault and 0 or idFrom(value,"catalog") end
         if cached then
             -- Reuse only a successfully applied and validated source model.
         elseif isBundle then
@@ -750,7 +764,7 @@ return function(player,onStatus,managedRespawn)
             source:Destroy()
             assert(type(selected)=="number" and selected>0,"That bundle has no selected "..region..".")
             id=selected
-        elseif settings.bodyParts[region]~=value then
+        elseif not isDefault and settings.bodyParts[region]~=value then
             local service=game:GetService("MarketplaceService")
             local ok,info=pcall(function() return service:GetProductInfoAsync(id,Enum.InfoType.Asset) end)
             check(ctx)
@@ -786,12 +800,15 @@ return function(player,onStatus,managedRespawn)
         local ctx=context()
         local isR6=ctx.humanoid.RigType==Enum.HumanoidRigType.R6
         local names=regionNames(region)
+        local isDefault=tostring(value):match("^%s*(.-)%s*$")=="0"
         local template,remember=bodyPartSource(ctx,region,value)
         remember()
         if isR6 then
             local applied,message=pcall(function()
                 capture(ctx)
-                if region=="Head" then
+                if isDefault then
+                    removeR6RegionMeshes(ctx,region)
+                elseif region=="Head" then
                     local source=template:FindFirstChild("Head")
                     local target=ctx.character:FindFirstChild("Head")
                     assert(source and source:IsA("BasePart") and target and target:IsA("BasePart"),"That package has no compatible R6 head.")

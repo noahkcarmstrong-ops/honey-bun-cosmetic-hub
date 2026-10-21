@@ -260,27 +260,21 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             for _,item in ipairs(before.items)do local region=bodyTypeRegions[item.assetType];if region then currentBody[region]=item.id end end
             for _,item in ipairs(value.items)do local region=bodyTypeRegions[item.assetType];if region then desiredBody[region]=item.id end end
             local bodySettings=avatar.getSettings()
+            local resetBody=false
             if bodySettings.body and avatar.restoreBody then
                 local loaded,reason=pcall(avatar.restoreBody)
-                if loaded then currentBody={};browserBody={};originalBody={}
+                if loaded then currentBody={};browserBody={};originalBody={};resetBody=true
                 else loadErrors[#loadErrors+1]="Body: "..tostring(reason)end
             end
             for _,entry in ipairs(bodyRegions)do
                 local region=entry[1];local wanted=desiredBody[region];local owned=browserBody[region] or (bodySettings.bodyParts or {})[region]
-                if owned and not wanted then
-                    local original=originalBody[region]
-                    if avatar.restoreBodyPart then
-                        local loaded,reason=pcall(avatar.restoreBodyPart,region)
-                        if not loaded then loadErrors[#loadErrors+1]=region..": "..tostring(reason);error(table.concat(loadErrors,"; "))end
-                    elseif original then
-                        local loaded,reason=pcall(avatar.applyBodyPart,region,original)
-                        if not loaded then loadErrors[#loadErrors+1]=region..": "..tostring(reason)end
-                    end
-                    browserBody[region]=nil;originalBody[region]=nil
-                elseif wanted and currentBody[region]~=wanted then
+                if wanted and currentBody[region]~=wanted then
                     if not originalBody[region] then originalBody[region]=currentBody[region] end
                     local loaded,reason=pcall(avatar.applyBodyPart,region,wanted)
                     if loaded then browserBody[region]=wanted else loadErrors[#loadErrors+1]=region..": "..tostring(reason)end
+                elseif not wanted and browserBody[region]~=0 and (resetBody or owned or currentBody[region]~=nil) then
+                    local loaded,reason=pcall(avatar.applyBodyPart,region,0)
+                    if loaded then browserBody[region]=0;originalBody[region]=nil else loadErrors[#loadErrors+1]=region..": "..tostring(reason)end
                 end
             end
             for _,entry in ipairs({{"Head","headColor"},{"Torso","torsoColor"},{"LeftArm","leftArmColor"},{"RightArm","rightArmColor"},{"LeftLeg","leftLegColor"},{"RightLeg","rightLegColor"}})do

@@ -2,7 +2,7 @@
 return function(playerGui)
     local Http=game:GetService("HttpService")
     local names={HoneyBunCosmeticSettings=true,HoneyBunCosmeticEmotes=true,HoneyBunCosmeticClothes=true,HoneyBunCosmeticAnimationBundle=true}
-    local maxProfiles,maxPreview,maxDocument,maxSafe=12,90000,1400000,9007199254740992
+    local maxProfiles,maxPreview,maxDocument,maxSafe=50,90000,1400000,9007199254740992
     local function copy(value,seen)
         if type(value)~="table" then return value end
         seen=seen or {};assert(not seen[value],"Cyclic character data")
