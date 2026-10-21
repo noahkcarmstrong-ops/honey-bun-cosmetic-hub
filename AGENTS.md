@@ -1,5 +1,11 @@
 # Larpblox project instructions
 
+## Reuse native Roblox behavior
+
+- Inspect Roblox's existing code and behavior before implementing a replacement. Prefer reusing its native rendering, formatting, controls, and lifecycle handling.
+- Supply Larpblox's local presentation data through the narrowest supported API or targeted hook so Roblox retains ownership of layout, spacing, icons, and interactions.
+- Add custom rendering only when the native path cannot support the requirement. Keep that fallback small and avoid duplicating platform behavior or hardcoding individual games.
+
 ## Preserve Roblox's native icons
 
 - Do not modify Roblox installation files, bundled sprite sheets, or native menu/voice-chat icons. The user explicitly requested these remain untouched after a cross-version image-sheet replacement broke the UI.

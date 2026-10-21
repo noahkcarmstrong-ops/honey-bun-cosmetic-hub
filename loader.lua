@@ -118,27 +118,6 @@ gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = playerGui
 gui:SetAttribute("LarpbloxRevision",moduleRevision)
-local versionLabel=Instance.new("TextLabel")
-versionLabel.Name="ScriptVersion"
-versionLabel.AnchorPoint=Vector2.new(1,1)
-versionLabel.Position=UDim2.new(1,-12,1,-10)
-versionLabel.Size=UDim2.fromOffset(260,20)
-versionLabel.BackgroundTransparency=1
-versionLabel.Font=Enum.Font.SourceSans
-versionLabel.TextSize=14
-versionLabel.TextColor3=Color3.fromRGB(220,220,220)
-versionLabel.TextStrokeTransparency=0.5
-versionLabel.TextXAlignment=Enum.TextXAlignment.Right
-versionLabel.Text="Larpblox Â· "..(moduleRevision=="local" and "local" or moduleRevision:sub(1,7))
-versionLabel.Parent=gui
-local connectionFailure=versionLabel:Clone()
-connectionFailure.Name="DesktopConnectionFailure"
-connectionFailure.Position=UDim2.new(1,-12,1,-30)
-connectionFailure.Size=UDim2.fromOffset(360,20)
-connectionFailure.TextColor3=Color3.fromRGB(255,120,120)
-connectionFailure.Text="Could not connect to Larpblox Desktop"
-connectionFailure.Visible=false
-connectionFailure.Parent=gui
 
 local panel = Instance.new("CanvasGroup")
 panel.Visible=false
@@ -236,7 +215,7 @@ tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
 local content = Instance.new("ScrollingFrame")
 content.Name = "CosmeticsPage"
 content.Position = UDim2.fromOffset(18, 112)
-content.Size = UDim2.new(1, -36, 1, -126)
+content.Size = UDim2.new(1, -36, 1, -154)
 content.BackgroundTransparency = 1
 content.BorderSizePixel = 0
 content.ScrollBarThickness = 2
@@ -245,6 +224,10 @@ content.CanvasSize = UDim2.fromOffset(0, 0)
 content.AutomaticCanvasSize = Enum.AutomaticSize.Y
 content.ScrollingDirection = Enum.ScrollingDirection.Y
 content.Parent = panel
+local connectionStatus=text(panel,"Desktop · Connecting…",UDim2.new(0,18,1,-32),UDim2.new(1,-36,0,20),14)
+connectionStatus.Name="DesktopConnectionStatus"
+connectionStatus.TextColor3=theme.muted
+connectionStatus.TextXAlignment=Enum.TextXAlignment.Right
 local layout = Instance.new("UIListLayout", content)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
@@ -642,7 +625,9 @@ gameBrowserSync=function()
     end,function()return animations()end,function()return names end,nativeViews,{
         isReady=function()return startupComplete end,
         onConnectionState=function(connected)
-            if alive then connectionFailure.Visible=not connected end
+            if not alive then return end
+            connectionStatus.Text=connected and "Desktop · Connected" or "Desktop · Disconnected"
+            connectionStatus.TextColor3=connected and theme.muted or Color3.fromRGB(180,55,55)
         end,
         getMotion=function()return motion()end,
         getBackgroundState=function()return backgroundId>=0 and backgroundId or nil,backgroundChoices end,

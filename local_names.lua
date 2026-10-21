@@ -24,7 +24,7 @@ local function badgePrefix(prefix,controller)
         elseif char==":" and not inTag then lastColon=index end
     end
     if not lastColon then return prefix end
-    return prefix:sub(1,lastColon-1).." "..verifiedGlyph..prefix:sub(lastColon)
+    return prefix:sub(1,lastColon-1)..verifiedGlyph..prefix:sub(lastColon)
 end
 pcall(function() coreGui=game:GetService("CoreGui") end)
 pcall(function() players=game:GetService("Players") end)
@@ -236,7 +236,7 @@ local function replacement(entry, controller)
             if configured and configured~="" then value=configured end
         end
         if entry.object.RichText then value=escape(value) end
-        if controller and controller.verified and controller.settings.enabled then value=value.." "..verifiedGlyph end
+        if controller and controller.verified and controller.settings.enabled then value=value..verifiedGlyph end
         return entry.source:sub(1,span.first-1)..value..entry.source:sub(span.last+1)
     end
     if not controller or not controller.settings.enabled then return entry.source end
