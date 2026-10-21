@@ -3,7 +3,10 @@ local launchOptions = ...
 if type(launchOptions) ~= "table" then launchOptions = {} end
 local sourceBranch = launchOptions.branch or "main"
 local startupComplete=false
+local diagnostics
 local function trace(stage)
+    if diagnostics and not stage:match("^Loading module:") and not stage:match("^Loaded module:")
+        and not stage:match("^Avatar: Restoring ") then diagnostics.log("status",{detail=stage})end
     if not startupComplete and type(launchOptions.trace)=="function" then launchOptions.trace(stage)end
 end
 local function resolveRevision()
@@ -77,6 +80,14 @@ local loadGeneration=(playerGui:GetAttribute("LarpbloxLoadGeneration") or 0)+1
 playerGui:SetAttribute("LarpbloxLoadGeneration",loadGeneration)
 trace("Loading Prism controls")
 local moduleRevision = resolveRevision()
+local diagnosticOk,diagnosticResult=pcall(function()
+    local factory,err=loadstring(readSource("diagnostics.lua",moduleRevision));assert(factory,err)
+    return factory()({revision=moduleRevision,playerId=localPlayer.UserId,placeId=game.PlaceId})
+end)
+if diagnosticOk then diagnostics=diagnosticResult end
+local function logDiagnostic(event,fields)
+    if diagnostics then diagnostics.log(event,fields)end
+end
 local prismChunk, prismError = loadstring(readSource("prism.lua", moduleRevision))
 assert(prismChunk, prismError)
 local prismRuntime = prismChunk()(function(file) return readSource(file, moduleRevision) end)
@@ -613,7 +624,7 @@ local function sharedLarp()
             if not alive then return end
             statusText=message
             if view then view.setStatus(message) end
-        end,{getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews,transport=gameBrowserSync(),
+        end,{log=logDiagnostic,getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews,transport=gameBrowserSync(),
             fetchProfiles=function(ids)
                 if not fetchSharedProfiles then
                     local chunk,message=loadstring(readSource("shared_profiles.lua",moduleRevision));assert(chunk,message)
@@ -664,6 +675,7 @@ gameBrowserSync=function()
         onConnectionState=function(connected)
             if not alive then return end
             setConnectionStatus(connected)
+            logDiagnostic("desktop_connection",{connected=connected})
         end,
         getMotion=function()return motion()end,
         getBackgroundState=function()return backgroundId>=0 and backgroundId or nil,backgroundChoices end,
@@ -1306,6 +1318,7 @@ local function clearReadiness()
     readyConnections={}
 end
 local respawn=Players.LocalPlayer.CharacterAdded:Connect(function(character)
+    logDiagnostic("local_respawn")
     respawnGeneration=respawnGeneration+1
     local ticket=respawnGeneration
     clearReadiness()
@@ -1343,6 +1356,7 @@ end)
 
 gui.Destroying:Connect(function()
     alive=false
+    if diagnostics then diagnostics.close()end
     pcall(view.destroy)
     connection:Disconnect()
     for object,tween in pairs(tweens) do tween:Cancel();tweens[object]=nil end

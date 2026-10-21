@@ -38,7 +38,22 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     local liveRecords,profileRecords,profileRequests={},{},{}
     local profileQueued=false
     local processing={}
+    local processPending
     local nextStatus=0
+    local lastDiagnostic={}
+    local diagnosticGui=localPlayer:FindFirstChildOfClass("PlayerGui")
+    local function diagnose(userId,phase,detail,ms)
+        local key=tostring(userId)
+        local signature=phase..":"..tostring(detail or "")
+        if ms==nil and lastDiagnostic[key]==signature then return end
+        lastDiagnostic[key]=signature
+        if presentation.log then presentation.log("shared_"..phase,{peerId=key,detail=detail or "",ms=ms})end
+        if not diagnosticGui then return end
+        -- Event-written, bounded metadata for support; never include tokens.
+        diagnosticGui:SetAttribute("LarpbloxShared_"..tostring(userId),HttpService:JSONEncode({
+            phase=phase,detail=detail or "",time=os.clock(),
+        }))
+    end
     local function status(message)
         if onStatus and os.clock()>=nextStatus then nextStatus=os.clock()+4;onStatus(message)end
     end
@@ -54,6 +69,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local entry=peers[userId]
         if not entry then return end
         peers[userId]=nil
+        if entry.stopObserving then entry.stopObserving();entry.stopObserving=nil end
         for value,original in pairs(entry.originalScales or {})do
             pcall(function()if value.Parent then value.Value=original end end)
         end
@@ -138,8 +154,92 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         entry.presentationImageUrl=record.imageUrl
         entry.presented=record
     end
+    local function observeAppearance(entry,userId)
+        if entry.stopObserving then entry.stopObserving()end
+        local character=entry.character
+        if not character then return end
+        local connections,expected={},{}
+        local active,queued=true,false
+        local function properties(object)
+            local parent=object.Parent
+            if parent==character then
+                if object:IsA("BasePart") and object.Name~="HumanoidRootPart" then
+                    if object:IsA("MeshPart")then return {"Color","Size","Transparency","MeshId","TextureID"}end
+                    return {"Color","Size","Transparency"}
+                elseif object:IsA("Shirt")then return {"ShirtTemplate"}
+                elseif object:IsA("Pants")then return {"PantsTemplate"}
+                elseif object:IsA("ShirtGraphic")then return {"Graphic"}
+                elseif object:IsA("CharacterMesh")then return {"MeshId","BaseTextureId","OverlayTextureId"}
+                elseif object:IsA("BodyColors")then return {"HeadColor3","TorsoColor3","LeftArmColor3","RightArmColor3","LeftLegColor3","RightLegColor3"}
+                elseif object:IsA("Accessory") or object:IsA("Hat")then return {}end
+            elseif parent and parent.Parent==character and parent.Name=="Head"then
+                if object:IsA("Decal")then return {"Texture","Transparency"}
+                elseif object:IsA("SpecialMesh")then return {"MeshId","TextureId","Scale","Offset"}
+                elseif object:IsA("SurfaceAppearance")then return {"ColorMap"}end
+            end
+        end
+        local function changed()
+            if not active or queued then return end
+            queued=true
+            task.defer(function()
+                queued=false
+                if not active or not sharing or not isAlive() or peers[userId]~=entry
+                    or entry.player.Character~=character then return end
+                local dirty=false
+                local reason
+                for object,values in pairs(expected)do
+                    if not object:IsDescendantOf(character)then dirty=true;reason=object.ClassName.." removed";break end
+                    for property,value in pairs(values)do
+                        if object[property]~=value then dirty=true;reason=object.Name.."."..property;break end
+                    end
+                    if dirty then break end
+                end
+                if not dirty then
+                    for _,object in ipairs(character:GetChildren())do
+                        if properties(object) and not expected[object]then dirty=true;reason=object.ClassName.." added";break end
+                    end
+                    local head=character:FindFirstChild("Head")
+                    if not dirty and head then
+                        for _,object in ipairs(head:GetChildren())do
+                            if properties(object) and not expected[object]then dirty=true;reason=object.ClassName.." added";break end
+                        end
+                    end
+                end
+                if dirty then
+                    entry.snapshot=nil;entry.appearanceStarted=nil;entry.accessoriesComplete=nil
+                    local record=latestRecords[userId]
+                    if record then
+                        diagnose(userId,"appearance_changed",reason)
+                        pending[userId]=record;processPending()
+                    end
+                end
+            end)
+        end
+        local function watch(object)
+            local fields=properties(object)
+            if not fields then return end
+            local values={};expected[object]=values
+            for _,property in ipairs(fields)do
+                local ok,value=pcall(function()return object[property]end)
+                if ok then
+                    values[property]=value
+                    connections[#connections+1]=object:GetPropertyChangedSignal(property):Connect(changed)
+                end
+            end
+        end
+        connections[#connections+1]=character.DescendantAdded:Connect(function(object)if properties(object)then changed()end end)
+        connections[#connections+1]=character.DescendantRemoving:Connect(function(object)if expected[object]then changed()end end)
+        for _,object in ipairs(character:GetChildren())do watch(object)end
+        local head=character:FindFirstChild("Head")
+        if head then for _,object in ipairs(head:GetChildren())do watch(object)end end
+        entry.stopObserving=function()
+            active=false
+            for _,connection in ipairs(connections)do connection:Disconnect()end
+        end
+    end
     local function refreshCharacter(entry,target)
         if entry.character==target.Character then return end
+        if entry.stopObserving then entry.stopObserving();entry.stopObserving=nil end
         -- Controllers already reset character-owned state on CharacterAdded.
         -- Preserve their asset caches, names and thumbnail renderers.
         entry.character=target.Character
@@ -167,7 +267,9 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         return true
     end
     local function queueRecord(record)
+        local changed=not sameValue(latestRecords[record.userId],record)
         latestRecords[record.userId]=record;pending[record.userId]=record
+        if changed then diagnose(record.userId,"received","revision "..tostring(record.snapshot.revision or "unknown")..", "..tostring(#record.snapshot.items).." items")end
         local target=Players:GetPlayerByUserId(tonumber(record.userId))
         if not target or target==localPlayer then return end
         local entry=peers[record.userId]
@@ -201,7 +303,10 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         -- the record arrives, even while Roblox is still spawning the character.
         presentRecord(entry,record)
         -- Readiness events replay the retained record once a body is available.
-        if not appearanceReady(target,character)then return end
+        if not appearanceReady(target,character)then diagnose(record.userId,"waiting_for_character");return end
+        diagnose(record.userId,"applying")
+        local applyStarted=os.clock()
+        if entry.stopObserving then entry.stopObserving();entry.stopObserving=nil end
         local accessoryFailures={}
         local ok,err=pcall(function()
             -- Keep the live overlay and its caches when only part of the outfit changes.
@@ -323,11 +428,14 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             -- missing accessories using listAccessories above.
             entry.snapshot=snapshot
             entry.accessoriesComplete=#accessoryFailures==0
+            diagnose(record.userId,#accessoryFailures==0 and "applied" or "partial",table.concat(accessoryFailures,"; "),math.floor((os.clock()-applyStarted)*1000))
             entry.name=record.name;entry.imageUrl=record.imageUrl
+            observeAppearance(entry,record.userId)
             if #accessoryFailures>0 then
                 status("Could not load shared accessories for "..target.Name..": "..table.concat(accessoryFailures,"; "))
             end
         elseif not ok and current()then
+            diagnose(record.userId,"failed",tostring(err))
             cleanupPeer(record.userId)
             status("Could not apply a shared appearance: "..tostring(err))
         end
@@ -353,7 +461,6 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         transport.setSharing({enabled=true,placeId=placeId,jobId=jobId,record=record})
         lastSent=record
     end
-    local processPending
     local function chooseRecord(userId)
         local record=liveRecords[userId] or profileRecords[userId]
         if record then queueRecord(record)
@@ -443,40 +550,43 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     local function watchPlayer(player)
         if player==localPlayer then return end
         requestProfiles(tostring(player.UserId))
-        local characterConnection
+        local readinessConnections={}
+        local function clearReadiness()
+            for _,connection in ipairs(readinessConnections)do connection:Disconnect()end
+            readinessConnections={}
+        end
         local function replay()
             local key=tostring(player.UserId)
+            if not latestRecords[key]then diagnose(key,"no_shared_record")end
             if latestRecords[key]then pending[key]=latestRecords[key];processPending()end
         end
         local function watchCharacter(character)
-            if characterConnection then characterConnection:Disconnect();characterConnection=nil end
+            diagnose(player.UserId,"respawn")
+            clearReadiness()
+            local queued=false
             local function ready()
-                if not appearanceReady(player,character)then return end
-                if characterConnection then characterConnection:Disconnect();characterConnection=nil end
+                if queued or not appearanceReady(player,character)then return end
+                queued=true
+                clearReadiness()
                 task.defer(replay)
             end
-            characterConnection=character.ChildAdded:Connect(ready)
-            ready()
+            local watchedHumanoid
+            local function watch(object)
+                if object:IsA("Humanoid") and object~=watchedHumanoid then
+                    watchedHumanoid=object
+                    readinessConnections[#readinessConnections+1]=object.HealthChanged:Connect(ready)
+                    readinessConnections[#readinessConnections+1]=object:GetPropertyChangedSignal("RigType"):Connect(ready)
+                end
+                ready()
+            end
+            readinessConnections[#readinessConnections+1]=character.ChildAdded:Connect(watch)
+            local humanoid=character:FindFirstChildOfClass("Humanoid")
+            if humanoid then watch(humanoid)else ready()end
         end
         local added=player.CharacterAdded:Connect(watchCharacter)
-        local loaded=player.CharacterAppearanceLoaded:Connect(function(character)
-            if player.Character==character then
-                if characterConnection then characterConnection:Disconnect();characterConnection=nil end
-                local entry=peers[tostring(player.UserId)]
-                if entry and entry.character==character and entry.appearanceStarted then
-                    -- A game can reload appearance on the same character.
-                    -- Invalidate the applied state, not its controllers/caches.
-                    entry.snapshot=nil
-                    entry.appearanceStarted=nil
-                    entry.accessoriesComplete=nil
-                    entry.animationAssets=nil
-                end
-                task.defer(replay)
-            end
-        end)
+        local removing=player.CharacterRemoving:Connect(clearReadiness)
         connections[#connections+1]=function()
-            added:Disconnect();loaded:Disconnect()
-            if characterConnection then characterConnection:Disconnect();characterConnection=nil end
+            added:Disconnect();removing:Disconnect();clearReadiness()
         end
         if player.Character then watchCharacter(player.Character)end
     end
