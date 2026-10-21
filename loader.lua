@@ -236,11 +236,12 @@ local function refreshMenu()
     view.setRefreshLabel("Refreshing...")
     local ok, message = pcall(function()
         launchOptions.revision = nil
+        launchOptions.readSource = nil
         local sha = resolveRevision()
         local source = readSource("loader.lua", sha)
         local chunk, compileError = loadstring(source)
         assert(chunk, compileError)
-        chunk({branch=sourceBranch, revision=sha, readSource=launchOptions.readSource})
+        chunk({branch=sourceBranch, revision=sha})
     end)
     if not ok then
         warn("Larpblox: refresh failed", message)
