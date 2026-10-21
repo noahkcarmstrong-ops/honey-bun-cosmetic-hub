@@ -1,4 +1,4 @@
--- Local-only game <-> browser pairing. The relay never receives game code or commands.
+-- Local-only appearance data and typed avatar lookups. No executable code crosses the relay.
 local HttpService=game:GetService("HttpService")
 local MarketplaceService=game:GetService("MarketplaceService")
 local PORT=38261
@@ -702,13 +702,25 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if value.instanceId~=api.instanceId then lastRevision=0;lastNameState=nil;api.instanceId=value.instanceId end
                 scheduleSnapshot()
                 status("Browser connected via WebSocket.")
+            elseif value.type=="avatar-lookup" and sharing and sharing.lookupAvatar then
+                local id,target=value.id,tonumber(value.targetUserId)
+                if type(id)~="string" or #id~=36 or not id:match("^[%x%-]+$") or not safeId(target)then return end
+                task.spawn(function()
+                    if socket~=candidate or generation~=mine or not isAlive()then return end
+                    local loaded,result=pcall(sharing.lookupAvatar,target)
+                    if socket~=candidate or generation~=mine or not isAlive()then return end
+                    local response={type="avatar-lookup-result",id=id,ok=loaded}
+                    if loaded then response.snapshot=result
+                    else response.error=tostring(result):gsub("%c"," "):sub(1,256)end
+                    pcall(function()candidate:Send(HttpService:JSONEncode(response))end)
+                end)
             elseif value.type=="state" and value.channel=="shared" then
                 notifySharing(value.value)
             elseif value.type=="state" and (value.channel=="browser" or value.channel=="names" or value.channel=="image") then
                 incoming[value.channel]={value=value.value};task.spawn(pump)
             elseif value.type=="error" then connectionState(false);closeSocket()end
         end)
-        local sent=pcall(function()candidate:Send(HttpService:JSONEncode({version=1,type="auth",token=token,userId=tostring(player.UserId),role="game"}))end)
+        local sent=pcall(function()candidate:Send(HttpService:JSONEncode({version=1,type="auth",token=token,userId=tostring(player.UserId),role="game",avatarLookup=sharing and type(sharing.lookupAvatar)=="function" or false}))end)
         if not sent then connectionState(false);closeSocket();return false end
         task.delay(5,function()
             if socket==candidate and generation==mine and not socketReady then

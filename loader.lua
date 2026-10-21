@@ -691,6 +691,13 @@ gameBrowserSync=function()
         if alive then trace("Browser: "..message);statusText=message;if view then view.setStatus(message) end end
     end,function()return animations()end,function()return names end,nativeViews,{
         isReady=function()return startupComplete end,
+        lookupAvatar=function(target)
+            if not gameBrowserSyncAPI.lookupAvatar then
+                local factory,reason=loadstring(readSource("avatar_lookup.lua",moduleRevision));assert(factory,reason)
+                gameBrowserSyncAPI.lookupAvatar=factory()(Players)
+            end
+            return gameBrowserSyncAPI.lookupAvatar(target,Players.LocalPlayer.UserId)
+        end,
         onConnectionState=function(connected)
             if not alive then return end
             setConnectionStatus(connected)
