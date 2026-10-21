@@ -269,7 +269,6 @@ local function uiSetting(key,default)
     return type(value)==type(default) and value or default
 end
 local hideOnStart=uiSetting("hideOnStart",false)
-local sharingEnabled=uiSetting("sharingEnabled",false)
 local openingKey=Enum.KeyCode.RightShift
 local savedOpeningKey=uiSetting("openingKey","RightShift")
 for _,key in ipairs(Enum.KeyCode:GetEnumItems())do
@@ -351,7 +350,6 @@ local paletteOpen=uiSetting("palette",false)
 local function saveUI()
     local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animationBundle=animationInput,emoteSlot=emoteSlot,shirt=shirtInput,pants=pantsInput}
     values.hideOnStart=hideOnStart
-    values.sharingEnabled=sharingEnabled
     values.openingKey=openingKey.Name
     values.animationSection=animationSection
     values.backgroundId=backgroundId
@@ -616,11 +614,9 @@ gameBrowserSync=function()
             previewRevision=previewRevision+1
             if alive and not busy then render() end
         end,
-        getPreference=function()return sharingEnabled end,
-        setEnabled=function(enabled,temporary)
+        setEnabled=function(enabled)
             if enabled then sharedLarp().setEnabled(true)
             elseif sharedLarpAPI then sharedLarpAPI.setEnabled(false)end
-            if not temporary then sharingEnabled=enabled;saveUI()end
         end,
     }))
     return gameBrowserSyncAPI
@@ -938,15 +934,6 @@ render=function()
         button("Hide on start: "..(hideOnStart and "On" or "Off"),function()hideOnStart=not hideOnStart;saveUI();render()end,"HideOnStart")
         button("Reload interface",refreshMenu)
         button("Reapply cosmetics",function()action(reapplyAll)end)
-        caption("Sharing",28,{size=18,color=theme.ink})
-        button("Share appearance: "..(sharingEnabled and "On" or "Off"),function()
-            action(function()
-                local enabled=not sharingEnabled
-                sharedLarp().setEnabled(enabled)
-                sharingEnabled=enabled;saveUI()
-                return enabled and "Sharing your appearance with Larpblox players in this server." or "Appearance sharing is off."
-            end,true)
-        end,"ShareAppearance")
         caption("Emotes",28,{size=18,color=theme.ink})
         append(view.Button,{name="EmoteWhileWalking",label="Emote while walking: "..((motionAPI and motionAPI.getEmoteWhileWalking()) and "On" or "Off"),height=32,disabled=busy,onPress=function()
             action(function()

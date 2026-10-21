@@ -389,11 +389,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         larpEnabled=state~="disabled";larpName=name
         if sharing then
             assert(not value or value.sharing==nil or type(value.sharing)=="boolean","Browser sharing preference is invalid.")
-            local preference=value and value.sharing
-            if preference==nil and sharing.getPreference then preference=sharing.getPreference()end
-            local enabled=state~="disabled" and preference==true
+            -- The extension owns the persisted preference. Never fall back to
+            -- an old in-game toggle when an older extension omits this field.
+            local enabled=state~="disabled" and value~=nil and value.sharing==true
             if enabled~=lastSharingPreference then
-                sharing.setEnabled(enabled,state=="disabled")
+                sharing.setEnabled(enabled)
                 lastSharingPreference=enabled
                 if scheduleSnapshot then scheduleSnapshot()end
             end
