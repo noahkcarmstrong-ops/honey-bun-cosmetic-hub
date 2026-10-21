@@ -201,35 +201,44 @@ return function(player,onStatus,managedRespawn)
     end
     function api.getEmoteWhileWalking() return walkingEnabled end
     local catalogCache={}
-    function api.searchEmotes(query,more)
+    function api.searchEmotes(query,page,sort)
         query=tostring(query or ""):match("^%s*(.-)%s*$"):sub(1,100)
-        local key=query:lower()
-        local cached=catalogCache[key]
-        if cached and os.clock()-cached.time<300 and not more then
-            return copy(cached.items),not cached.pages.IsFinished
-        end
-        if not cached or os.clock()-cached.time>=300 then
-            local params=CatalogSearchParams.new()
-            params.AssetTypes={Enum.AvatarAssetType.EmoteAnimation}
-            params.SearchKeyword=query
-            params.Limit=30
-            local pages=game:GetService("AvatarEditorService"):SearchCatalogAsync(params)
-            cached={pages=pages,items={},time=os.clock()}
-            catalogCache[key]=cached
-        elseif more and not cached.pages.IsFinished then
-            cached.pages:AdvanceToNextPageAsync()
-        else
-            return copy(cached.items),not cached.pages.IsFinished
-        end
-        local seen={}
-        for _,item in ipairs(cached.items) do seen[item.id]=true end
-        for _,item in ipairs(cached.pages:GetCurrentPage()) do
-            local id=tonumber(item.Id)
-            if id and not seen[id] then
-                seen[id]=true;cached.items[#cached.items+1]={id=id,name=tostring(item.Name or "Emote")}
+        page=tonumber(page) or 1
+        assert(page>=1 and page%1==0,"Choose a valid catalog page.")
+        sort=sort or "Relevance"
+        local sorts={Relevance=true,MostFavorited=true,Bestselling=true,RecentlyCreated=true,PriceLowToHigh=true,PriceHighToLow=true}
+        assert(sorts[sort],"Choose a valid catalog sort order.")
+        local key=query:lower()..":"..sort
+        local saved=catalogCache[key]
+        if saved and page==1 and not saved.loading and os.clock()-saved.time>300 then saved=nil end
+        if not saved then saved={results={},time=os.clock(),loading=false,finished=false};catalogCache[key]=saved end
+        while saved.loading do task.wait()end
+        if saved.results[page]then return saved.results[page],page<#saved.results or not saved.finished end
+        assert(page==#saved.results+1,"Return to the previous catalog page first.")
+        if saved.finished then return {},false end
+        saved.loading=true
+        local ok,result=pcall(function()
+            if not saved.cursor then
+                local params=CatalogSearchParams.new()
+                params.SearchKeyword=query;params.Limit=30;params.IncludeOffSale=true
+                params.SortType=Enum.CatalogSortType[sort]
+                params.AssetTypes={Enum.AvatarAssetType.EmoteAnimation}
+                saved.cursor=game:GetService("AvatarEditorService"):SearchCatalogAsync(params)
+            else saved.cursor:AdvanceToNextPageAsync()end
+            local items,seen={},{}
+            for _,item in ipairs(saved.cursor:GetCurrentPage())do
+                local id=tonumber(item.Id)
+                if id and not seen[id]then
+                    seen[id]=true;items[#items+1]={id=id,name=tostring(item.Name or "Roblox item")}
+                end
             end
-        end
-        return copy(cached.items),not cached.pages.IsFinished
+            saved.finished=saved.cursor.IsFinished
+            saved.results[page]=items
+            return items
+        end)
+        saved.loading=false
+        if not ok then error(result,0)end
+        return result,not saved.finished
     end
     function api.setEmote(slot,value)
         slot=slotNumber(slot)

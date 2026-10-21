@@ -876,7 +876,7 @@ renderAnimationPage=function()
                 customAnimationType=nil;previewType=kind=="bundle" and "walk" or kind;previewRevision=previewRevision+1;render()
             end
             append(view.EmotePicker,{title=title,noun=title:lower(),confirmLabel="Apply",linkPlaceholder=kind=="bundle" and "Roblox bundle link or ID" or "Roblox animation link or ID",
-                loadEmotes=function(query,more)return animations().searchChoices(kind,query,more)end,
+                loadEmotes=function(query,page,sort)return animations().searchChoices(kind,query,page,sort)end,
                 onAssign=function(_,value)
                     if kind=="bundle" then animations().equipBundle(value)else animations().equipType(kind,value)end
                     changed()
@@ -887,7 +887,7 @@ renderAnimationPage=function()
         end
     else
         local slots=motionAPI and motionAPI.getSlots() or {}
-        append(view.EmoteWheel,{slots=slots,selected=emoteSlot,disabled=busy,loadEmotes=function(query,more)return motion().searchEmotes(query,more)end,onHover=function(index)
+        append(view.EmoteWheel,{slots=slots,selected=emoteSlot,disabled=busy,loadEmotes=function(query,page,sort)return motion().searchEmotes(query,page,sort)end,onHover=function(index)
             previewHovered=index;if previewRefresh then previewRefresh() end
         end,onAssign=function(index,value)
             local message=motion().setEmote(index,value)

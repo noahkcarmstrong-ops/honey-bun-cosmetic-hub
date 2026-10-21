@@ -67,7 +67,7 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
             slotProps = {root = {
                 Name = props.name or "TextLabel", Font = props.font or Enum.Font.SourceSans,
                 Text = props.binding, TextWrapped = props.wrap ~= false,
-                TextXAlignment = Enum.TextXAlignment.Left,
+                TextXAlignment = props.align or Enum.TextXAlignment.Left,
                 TextYAlignment = props.top and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
                 TextTruncate = props.truncate and Enum.TextTruncate.AtEnd or Enum.TextTruncate.None,
                 AutomaticSize = props.autoSize and Enum.AutomaticSize.Y or Enum.AutomaticSize.None,
@@ -212,6 +212,10 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
         local selected,setSelected=React.useState(nil)
         local items,setItems=React.useState({})
         local more,setMore=React.useState(false)
+        local page,setPage=React.useState(1)
+        local sort,setSort=React.useState("Relevance")
+        local requestedPage=React.useRef(1)
+        local resultsRef=React.useRef(nil)
         local loading,setLoading=React.useState(true)
         local saving,setSaving=React.useState(false)
         local catalogError,setCatalogError=React.useState("")
@@ -224,12 +228,15 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
         local function load(nextPage)
             request.current=request.current+1
             local ticket=request.current
+            requestedPage.current=nextPage
             setLoading(true);setCatalogError("")
             task.spawn(function()
-                local ok,result,hasMore=pcall(props.loadEmotes,query,nextPage)
+                local ok,result,hasMore=pcall(props.loadEmotes,query,nextPage,sort)
                 if not mounted.current or request.current~=ticket then return end
                 setLoading(false)
-                if ok then setItems(result);setMore(hasMore)
+                if ok then
+                    setItems(result);setMore(hasMore);setPage(nextPage);setSelected(nil)
+                    if resultsRef.current then resultsRef.current.CanvasPosition=Vector2.zero end
                 else setCatalogError("Could not load "..noun..". Try again.") end
             end)
         end
@@ -241,11 +248,11 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
             if mode~="Browse" then return end
             request.current=request.current+1
             local ticket=request.current
-            setLoading(true);setItems({});setMore(false);setCatalogError("")
+            setLoading(true);setItems({});setMore(false);setPage(1);setSelected(nil);setCatalogError("")
             task.delay(query=="" and 0 or 0.35,function()
-                if mounted.current and ticket==request.current then load(false) end
+                if mounted.current and ticket==request.current then load(1) end
             end)
-        end,{query,mode})
+        end,{query,mode,sort})
         React.useEffect(function()
             local connection=game:GetService("UserInputService").InputBegan:Connect(function(input)
                 if input.KeyCode==Enum.KeyCode.Escape then close() end
@@ -269,7 +276,7 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
             cards["Emote"..item.id]=e("TextButton",{
                 Name="ChooseEmote_"..item.id,Text="",LayoutOrder=index,AutoButtonColor=true,
                 BackgroundColor3=chosen and colors.hover or Color3.new(1,1,1),BorderSizePixel=0,
-                Active=not saving,[React.Event.Activated]=function()if not saving then setSelected(item);setError("") end end,
+                Active=not saving and not loading,[React.Event.Activated]=function()if not saving and not loading then setSelected(item);setError("") end end,
             },{
                 Corner=e("UICorner",{CornerRadius=UDim.new(0,3)}),
                 Stroke=e("UIStroke",{Color=chosen and colors.blue or colors.edge,Thickness=chosen and 2 or 1}),
@@ -287,7 +294,7 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
             Error=errorMessage~="" and e(ui.Text,{text=errorMessage,color=Color3.fromRGB(170,45,45),position=UDim2.new(0,20,1,-112),width=UDim.new(1,-40),height=40}) or nil,
             Selected=not props.onRestore and mode=="Browse" and selected and e(ui.Text,{text=selected.name,color=colors.ink,position=UDim2.new(0,20,1,-54),width=UDim.new(1,-270),height=36,truncate=true}) or nil,
             Cancel=e(ui.Button,{label="Cancel",width=96,height=36,position=UDim2.new(1,-232,1,-54),disabled=saving,onPress=close}),
-            Add=e(ui.Button,{label=saving and "Applying..." or props.confirmLabel or (props.current and "Replace" or "Add"),name="ConfirmEmote",width=104,height=36,position=UDim2.new(1,-124,1,-54),selected=true,disabled=saving or value:match("^%s*$")~=nil,onPress=submit}),
+            Add=e(ui.Button,{label=saving and "Applying..." or props.confirmLabel or (props.current and "Replace" or "Add"),name="ConfirmEmote",width=104,height=36,position=UDim2.new(1,-124,1,-54),selected=true,disabled=saving or (mode=="Browse" and loading) or value:match("^%s*$")~=nil,onPress=submit}),
         }
         if props.onRestore then
             children.Restore=e(ui.Button,{label="Current avatar",width=136,height=36,position=UDim2.new(0,20,1,-54),disabled=saving,onPress=function()
@@ -302,16 +309,24 @@ return function(runtime, colors, gui, content, tabs, hideHost, callbacks)
         end
         if mode=="Browse" then
             children.Search=e(ui.Input,{name="SearchEmotes",placeholder="Search "..noun,value=query,onChange=setQuery,disabled=saving,position=UDim2.fromOffset(20,96),width=UDim.new(1,-40),height=38})
-            children.Grid=e("ScrollingFrame",{Name="EmoteResults",BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.fromOffset(20,148),Size=UDim2.new(1,-40,1,-274),AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(),ScrollBarThickness=4,ScrollBarImageColor3=colors.edge},cards)
+            children.Sort=e(ui.SelectRow,{name="CatalogSort",label="Sort by",value=sort,disabled=saving,position=UDim2.fromOffset(20,144),width=UDim.new(1,-40),options={
+                {value="Relevance",label="Relevance"},{value="MostFavorited",label="Most favorited"},
+                {value="Bestselling",label="Best selling"},{value="RecentlyCreated",label="Newest"},
+                {value="PriceLowToHigh",label="Price: low to high"},{value="PriceHighToLow",label="Price: high to low"},
+            },onChange=function(value)setSort(value);setError("")end})
+            children.Grid=e("ScrollingFrame",{Name="EmoteResults",ref=resultsRef,Visible=catalogError=="",BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.fromOffset(20,196),Size=UDim2.new(1,-40,1,-326),AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(),ScrollBarThickness=4,ScrollBarImageColor3=colors.edge},cards)
             if catalogError~="" then
-                children.CatalogError=e(ui.Text,{text=catalogError,position=UDim2.fromOffset(20,156),width=UDim.new(1,-40),height=40})
-                children.Retry=e(ui.Button,{label="Retry",width=90,height=32,position=UDim2.fromOffset(20,202),onPress=function()load(false)end})
+                children.CatalogError=e(ui.Text,{text=catalogError,position=UDim2.fromOffset(20,204),width=UDim.new(1,-40),height=40})
+                children.Retry=e(ui.Button,{label="Retry",width=90,height=32,position=UDim2.fromOffset(20,250),onPress=function()load(requestedPage.current)end})
             elseif loading and #items==0 then
-                children.Loading=e(ui.Text,{text="Loading "..noun.."...",position=UDim2.fromOffset(20,156),width=UDim.new(1,-40),height=32})
+                children.Loading=e(ui.Text,{text="Loading "..noun.."...",position=UDim2.fromOffset(20,204),width=UDim.new(1,-40),height=32})
             elseif #items==0 then
-                children.Empty=e(ui.Text,{text="No results. Try another search.",position=UDim2.fromOffset(20,156),width=UDim.new(1,-40),height=32})
-            elseif more and errorMessage=="" then
-                children.More=e(ui.Button,{label=loading and "Loading..." or "Load more",width=120,height=30,position=UDim2.new(0.5,-60,1,-112),disabled=loading or saving,onPress=function()load(true)end})
+                children.Empty=e(ui.Text,{text="No results. Try another search.",position=UDim2.fromOffset(20,204),width=UDim.new(1,-40),height=32})
+            end
+            if errorMessage=="" then
+                children.Previous=e(ui.Button,{name="PreviousCatalogPage",label="Previous",width=96,height=30,position=UDim2.new(0,20,1,-110),disabled=loading or saving or page<=1,onPress=function()load(page-1)end})
+                children.Page=e(ui.Text,{name="CatalogPage",align=Enum.TextXAlignment.Center,text=loading and "Loading..." or "Page "..page,width=UDim.new(1,-252),height=30,position=UDim2.new(0,126,1,-110)})
+                children.Next=e(ui.Button,{name="NextCatalogPage",label="Next",width=96,height=30,position=UDim2.new(1,-116,1,-110),disabled=loading or saving or not more,onPress=function()load(page+1)end})
             end
         else
             children.Input=e(ui.Input,{name="EmoteLink",placeholder=props.linkPlaceholder or "Roblox emote link or ID",value=draft,onChange=setDraft,disabled=saving,position=UDim2.fromOffset(20,104),width=UDim.new(1,-40),height=40})

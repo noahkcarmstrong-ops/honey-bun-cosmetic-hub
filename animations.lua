@@ -182,23 +182,45 @@ return function(player,onStatus,managedRespawn)
     local api={}
     local searches={}
     local catalogTypes={idle="IdleAnimation",walk="WalkAnimation",run="RunAnimation",jump="JumpAnimation",fall="FallAnimation",climb="ClimbAnimation",swim="SwimAnimation"}
-    function api.searchChoices(kind,query,more)
+    function api.searchChoices(kind,query,page,sort)
         query=tostring(query or ""):match("^%s*(.-)%s*$"):sub(1,100)
-        local key=kind..":"..query:lower()
+        page=tonumber(page) or 1
+        assert(page>=1 and page%1==0,"Choose a valid catalog page.")
+        sort=sort or "Relevance"
+        local sorts={Relevance=true,MostFavorited=true,Bestselling=true,RecentlyCreated=true,PriceLowToHigh=true,PriceHighToLow=true}
+        assert(sorts[sort],"Choose a valid catalog sort order.")
+        local key=kind..":"..query:lower()..":"..sort
         local saved=searches[key]
-        if saved and not more then return saved.items,not saved.pages.IsFinished end
-        if not saved then
-            local params=CatalogSearchParams.new();params.SearchKeyword=query;params.Limit=30
-            if kind=="bundle" then params.BundleTypes={Enum.BundleType.Animations}
-            else assert(catalogTypes[kind],"Choose an animation type.");params.AssetTypes={Enum.AvatarAssetType[catalogTypes[kind]]} end
-            saved={pages=game:GetService("AvatarEditorService"):SearchCatalogAsync(params),items={}};searches[key]=saved
-        elseif not saved.pages.IsFinished then saved.pages:AdvanceToNextPageAsync()
-        else return saved.items,false end
-        local seen={};for _,item in ipairs(saved.items)do seen[item.id]=true end
-        for _,item in ipairs(saved.pages:GetCurrentPage())do if not seen[item.Id]then
-            saved.items[#saved.items+1]={id=item.Id,name=item.Name,itemType=kind=="bundle" and "Bundle" or "Asset"};seen[item.Id]=true
-        end end
-        return saved.items,not saved.pages.IsFinished
+        if saved and page==1 and not saved.loading and os.clock()-saved.time>300 then saved=nil end
+        if not saved then saved={results={},time=os.clock(),loading=false,finished=false};searches[key]=saved end
+        while saved.loading do task.wait()end
+        if saved.results[page]then return saved.results[page],page<#saved.results or not saved.finished end
+        assert(page==#saved.results+1,"Return to the previous catalog page first.")
+        if saved.finished then return {},false end
+        saved.loading=true
+        local ok,result=pcall(function()
+            if not saved.cursor then
+                local params=CatalogSearchParams.new()
+                params.SearchKeyword=query;params.Limit=30;params.IncludeOffSale=true
+                params.SortType=Enum.CatalogSortType[sort]
+                if kind=="bundle" then params.BundleTypes={Enum.BundleType.Animations}
+                else assert(catalogTypes[kind],"Choose an animation type.");params.AssetTypes={Enum.AvatarAssetType[catalogTypes[kind]]}end
+                saved.cursor=game:GetService("AvatarEditorService"):SearchCatalogAsync(params)
+            else saved.cursor:AdvanceToNextPageAsync()end
+            local items,seen={},{}
+            for _,item in ipairs(saved.cursor:GetCurrentPage())do
+                local id=tonumber(item.Id)
+                if id and not seen[id]then
+                    seen[id]=true;items[#items+1]={id=id,name=tostring(item.Name or "Roblox item"),itemType=kind=="bundle" and "Bundle" or "Asset"}
+                end
+            end
+            saved.finished=saved.cursor.IsFinished
+            saved.results[page]=items
+            return items
+        end)
+        saved.loading=false
+        if not ok then error(result,0)end
+        return result,not saved.finished
     end
     function api.setAvatarAssets(items)
         local normalized=normalizeAssets(items)

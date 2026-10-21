@@ -81,6 +81,8 @@ Package changes preserve the source body's hidden parts, including Korblox Death
 3. Click a **+** to add an emote, or click an occupied slot to replace it.
 4. Browse or search the emote thumbnails, select one, then choose **Add** or **Replace**. Use **Link or ID** if you already have a catalog link. Cancel leaves the slot unchanged.
 
+Emote and animation browsers have **Previous** and **Next** pages and a **Sort by** menu. Changing the search or sort returns to page 1. Animation searches include off-sale components, which can still be selected locally.
+
 The top-level tabs separate **Animations** and **Emotes**. The **Background** control in Settings lists backgrounds collected through the browser extension. Selecting one updates both previews and syncs back to the extension; choosing **None** clears it. Background purchases remain in the extension.
 
 Open **Settings** and turn on **Emote while walking** to keep catalog emotes playing as you move. Turn it off or jump to stop the emote. This option requires standard Roblox emote controls and executor callback access.
