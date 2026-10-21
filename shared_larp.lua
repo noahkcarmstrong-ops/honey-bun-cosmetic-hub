@@ -431,6 +431,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             diagnose(record.userId,#accessoryFailures==0 and "applied" or "partial",table.concat(accessoryFailures,"; "),math.floor((os.clock()-applyStarted)*1000))
             entry.name=record.name;entry.imageUrl=record.imageUrl
             observeAppearance(entry,record.userId)
+            if presentation.onAppearanceApplied then presentation.onAppearanceApplied(record.userId)end
             if #accessoryFailures>0 then
                 status("Could not load shared accessories for "..target.Name..": "..table.concat(accessoryFailures,"; "))
             end
@@ -616,7 +617,15 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             else status("Sharing your Larp appearance through desktop.")end
             requestProfiles()
         end
+        if presentation.onAppearanceApplied then presentation.onAppearanceApplied()end
         return api.status()
+    end
+    function api.corpseSource(userId)
+        local entry=sharing and peers[tostring(userId)]
+        if not entry or not entry.snapshot then return nil end
+        local source=entry.avatar.corpseSource()
+        if source then source.originalClothes=entry.clothes.corpseOriginalClothes()end
+        return source
     end
     function api.isEnabled()return sharing end
     function api.status()return sharing and "Shared Larp mode: ON" or "Shared Larp mode: OFF"end

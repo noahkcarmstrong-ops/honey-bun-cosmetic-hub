@@ -218,6 +218,18 @@ return function(player,onStatus,managedRespawn)
             if not ok and onStatus then onStatus("Could not restore saved clothes: "..tostring(message))end
         end)
     end)
+    function api.corpseOriginalClothes()
+        local result={}
+        for _,kind in ipairs({"Shirt","Pants","ShirtGraphic"})do
+            local s=state[kind]
+            if s then result[kind]=#s.originals
+            else
+                local character=player.Character
+                result[kind]=character and character:FindFirstChildOfClass(kind) and 1 or 0
+            end
+        end
+        return result
+    end
     function api.destroy()
         cancelReady()
         if not alive then return end

@@ -1066,6 +1066,10 @@ return function(player,onStatus,readAsset,managedRespawn)
         return message
     end
     function api.getSettings() return copySettings() end
+    function api.corpseSource()
+        if not alive or not snapshot or snapshot.character~=player.Character then return nil end
+        return {character=snapshot.character,parts=snapshot.parts,head=snapshot.r6Head,colors=snapshot.colors,hidden=hidden}
+    end
     local operations={}
     for _,name in ipairs({"equipAccessory","equipGear","removeGear","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","setScales","applyBody","applyBodyParts","applyBodyPart","restoreBodyPart","applyFace","restoreFace","restoreSkin","restoreBody","restore"}) do
         local operation=api[name]

@@ -282,6 +282,7 @@ layout.Padding = UDim.new(0, 6)
 local avatarAPI,motionAPI,animationAPI,clothesAPI,previewsAPI,gameBrowserSyncAPI,sharedLarpAPI
 local avatarFactory,animationFactory,clothesFactory,nameFactory
 local previewFactory,portraitFactory,inspectionRouter
+local corpseAPI
 local fetchSharedProfiles
 local refreshing = false
 local function refreshMenu()
@@ -609,6 +610,20 @@ local function peerViews(player)
         destroy=function()inspection.destroy();portraits.destroy();preview.destroy()end,
     }
 end
+local function corpseController()
+    if corpseAPI then return corpseAPI end
+    local factory=module("corpse_appearance.lua")
+    corpseAPI=factory(function(userId)
+        if userId==Players.LocalPlayer.UserId then
+            if not gameBrowserSyncAPI or not gameBrowserSyncAPI.isLarpEnabled() or not avatarAPI then return nil end
+            local source=avatarAPI.corpseSource()
+            if source then source.originalClothes=clothes().corpseOriginalClothes()end
+            return source
+        end
+        return sharedLarpAPI and sharedLarpAPI.corpseSource(userId) or nil
+    end,logDiagnostic)
+    return corpseAPI
+end
 local function sharedLarp()
     if sharedLarpAPI then return sharedLarpAPI end
     api();clothes();animations();localNames()
@@ -624,7 +639,7 @@ local function sharedLarp()
             if not alive then return end
             statusText=message
             if view then view.setStatus(message) end
-        end,{log=logDiagnostic,getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews,transport=gameBrowserSync(),
+        end,{onAppearanceApplied=function(userId)corpseController().refresh(tonumber(userId))end,log=logDiagnostic,getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews,transport=gameBrowserSync(),
             fetchProfiles=function(ids)
                 if not fetchSharedProfiles then
                     local chunk,message=loadstring(readSource("shared_profiles.lua",moduleRevision));assert(chunk,message)
@@ -693,6 +708,8 @@ gameBrowserSync=function()
             elseif sharedLarpAPI then sharedLarpAPI.setEnabled(false)end
         end,
     }))
+    gameBrowserSyncAPI.onSnapshot(function()corpseController().refresh()end)
+    corpseController().refresh()
     return gameBrowserSyncAPI
 end
 local function reapplyAll(editor,expectedCharacter)
@@ -1373,6 +1390,7 @@ gui.Destroying:Connect(function()
     if mm2API then pcall(mm2API.destroy) end
     if crosshairAPI then pcall(crosshairAPI.destroy) end
     if accessorySoundsAPI then pcall(accessorySoundsAPI.destroy) end
+    if corpseAPI then pcall(corpseAPI.destroy) end
     if sharedLarpAPI then pcall(sharedLarpAPI.destroy) end
     if gameBrowserSyncAPI then pcall(gameBrowserSyncAPI.destroy) end
     if nativeViewsAPI then pcall(nativeViewsAPI.destroy) end
