@@ -42,7 +42,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local snapshotScheduleId=0
     local nextSocketPing,nextCommandCheck=0,0
     local loadingImageUrl
-    local lastDefinition,imageAssetDefinition
+    local lastDefinition,imageAssetDefinition,lastBrowserSnapshot
     local commandSnapshotPending=false
     local snapshotListeners,sharingListeners={},{}
     local desiredSharing,socketSupportsSharing=nil,false
@@ -112,10 +112,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         return table.concat(values,"|")
     end
     local function currentImage()
-        return imageAsset and imageAssetDefinition and definitionKey(imageAssetDefinition)==definitionKey(lastDefinition) and imageAsset or nil
+        local expected=lastBrowserSnapshot and lastBrowserSnapshot.definition
+        return imageAsset and imageAssetDefinition and (not expected or definitionKey(imageAssetDefinition)==definitionKey(expected)) and imageAsset or nil
     end
     local function updateViews()
-        if getViews then getViews().update({enabled=larpEnabled,name=larpName,snapshot=lastSnapshot,image=currentImage()})end
+        if getViews then getViews().update({enabled=larpEnabled,name=larpName,snapshot=lastBrowserSnapshot or lastSnapshot,image=currentImage()})end
     end
     local function applyImage(value)
         if type(value)~="table" or value.version~=1 or tostring(value.userId)~=tostring(player.UserId) then return end
@@ -368,7 +369,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 local id=value.backgroundId or value.definition.backgroundId or (value.definition.backgroundRequestModel and value.definition.backgroundRequestModel.id)
                 sharing.setBackgroundState(id,value.backgrounds)
             end
-            lastRevision=revision;lastDefinition=value.definition;commandSnapshotPending=true
+            lastRevision=revision;lastDefinition=value.definition;lastBrowserSnapshot=value;commandSnapshotPending=true
             if sharing and sharing.onChanged then sharing.onChanged() end
         end
         if not ok then status("Browser outfit failed: "..tostring(msg)) elseif #failed>0 then status("Browser outfit applied; unsupported items: "..table.concat(failed,", ")) else status("Browser outfit applied locally.") end
@@ -409,7 +410,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             if getAnimations then getAnimations().setAvatarAssets({}) end
             applyBrowserScales({})
             browserBody,originalBody,browserFace={},{},false
-            lastDefinition=nil;imageValue=nil;imageAsset=nil;imageAssetDefinition=nil
+            lastDefinition=nil;lastBrowserSnapshot=nil;imageValue=nil;imageAsset=nil;imageAssetDefinition=nil
             commandSnapshotPending=true
         end
         if getNames then
@@ -709,8 +710,8 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         end
     end
     function api.sharedImageUrl()
-        if not connected or not larpEnabled or not imageValue or not lastDefinition then return nil end
-        if definitionKey(imageValue.definition)~=definitionKey(lastDefinition) then return nil end
+        if not connected or not larpEnabled or not imageValue then return nil end
+        if lastBrowserSnapshot and definitionKey(imageValue.definition)~=definitionKey(lastBrowserSnapshot.definition) then return nil end
         return imageValue.imageUrl
     end
     function api.destroy()api.disconnect()end

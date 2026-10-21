@@ -534,12 +534,13 @@ local function sharedInspection()
     source=readSource("native_inspection_router.lua", moduleRevision)
     chunk,message=loadstring(source);assert(chunk,message)
     inspectionRouter=chunk()(Players.LocalPlayer,inspection.create)
+    inspectionRouter.description=inspection.description
     return inspectionRouter
 end
 local function peerViews(player)
     presentationFactories()
     local preview=previewFactory(player)
-    local portraits=portraitFactory.create(player,function()return preview end)
+    local portraits=portraitFactory.create(player,function()return preview end,sharedInspection().description)
     local inspection=sharedInspection().forPlayer(player,function()return preview end)
     return {
         update=function(options)portraits.update(options);inspection.update(options)end,
@@ -578,7 +579,7 @@ local function nativeViews()
     presentationFactories()
     local portraits=portraitFactory.create(Players.LocalPlayer,function()
         return previews()
-    end)
+    end,sharedInspection().description)
     local inspection=sharedInspection().forPlayer(Players.LocalPlayer,function()
         return previews()
     end)
