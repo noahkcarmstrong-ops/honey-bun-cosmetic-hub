@@ -30,6 +30,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local sharingConnected=false
     local scheduleSnapshot
     local larpEnabled,larpName,lastSnapshot=false,"",nil
+    local browserModeKnown=false
     local socket,socketReady,socketMine,nextSocketTry=nil,false,0,0
     local incoming,pumping={},false
     local retryCommand,retryAt=nil,0
@@ -169,6 +170,13 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         local source=desc
         if settings.body and settings.body~="Blocky" then source=bodyDescription(settings.body) end
         if source~=desc then definition.scales.bodyType=source.BodyTypeScale;definition.scales.proportion=source.ProportionScale end
+        -- Direct local scale changes do not update GetAppliedDescription().
+        for key,name in pairs(scaleValues)do
+            local value=humanoid:FindFirstChild(name)
+            if value and value:IsA("NumberValue") and value.Value==value.Value and value.Value>=0 and value.Value<=5 then
+                definition.scales[key]=value.Value
+            end
+        end
         for key,value in pairs(settings.scales or {})do definition.scales[key]=value end
         for region,typeId in pairs(bodyTypes)do
             local id=source[region]
@@ -242,6 +250,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     end
     local function applyCommand(value)
         validSnapshot(value);local revision=tonumber(value.revision);assert(revision and revision%1==0 and revision>0 and revision<9007199254740992,"Browser revision is invalid.");if revision<=lastRevision then return end
+        if browserModeKnown and not larpEnabled then lastRevision=revision;return end
         local avatar,clothes=getAvatar(),getClothes();local failed={};local loadErrors={};local desired={};local current={};local desiredGear
         for _,item in ipairs(value.items)do
             assetTypes[item.id]=item.assetType
@@ -376,6 +385,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 state="enabled:"..value.name;name=value.name
             end
         end
+        local firstModeState=value~=nil and not browserModeKnown
         larpEnabled=state~="disabled";larpName=name
         if sharing then
             assert(not value or value.sharing==nil or type(value.sharing)=="boolean","Browser sharing preference is invalid.")
@@ -388,7 +398,20 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if scheduleSnapshot then scheduleSnapshot()end
             end
         end
-        if state==lastNameState then return end
+        if value then browserModeKnown=true end
+        if state==lastNameState and not firstModeState then return end
+        if value and state=="disabled" then
+            -- Restore captured originals, without loading assets or replacing the character.
+            -- The browser retains the saved Larp outfit for the next enable.
+            retryCommand=nil;incoming.browser=nil
+            getAvatar().restore()
+            getClothes().restore()
+            if getAnimations then getAnimations().setAvatarAssets({}) end
+            applyBrowserScales({})
+            browserBody,originalBody,browserFace={},{},false
+            lastDefinition=nil;imageValue=nil;imageAsset=nil;imageAssetDefinition=nil
+            commandSnapshotPending=true
+        end
         if getNames then
             local names=getNames()
             if state=="disabled" then names.setEnabled(false)

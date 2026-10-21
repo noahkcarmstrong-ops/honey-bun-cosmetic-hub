@@ -3,6 +3,8 @@ local Players=game:GetService("Players")
 local HttpService=game:GetService("HttpService")
 local ACCESSORY_TYPES={[8]=true,[41]=true,[42]=true,[43]=true,[44]=true,[45]=true,[46]=true,[47]=true,[64]=true,[65]=true,[66]=true,[67]=true,[68]=true,[69]=true,[70]=true,[71]=true,[72]=true,[76]=true,[77]=true}
 local BODY_TYPES={[17]="Head",[27]="Torso",[28]="RightArm",[29]="LeftArm",[30]="LeftLeg",[31]="RightLeg",[79]="Head"}
+local BODY_REGIONS={"Head","Torso","RightArm","LeftArm","LeftLeg","RightLeg"}
+local SCALE_VALUES={height="BodyHeightScale",width="BodyWidthScale",depth="BodyDepthScale",head="HeadScale",bodyType="BodyTypeScale",proportion="BodyProportionScale"}
 local CLOTHES_TYPES={[2]="ShirtGraphic",[11]="Shirt",[12]="Pants"}
 local ANIMATION_TYPES={[48]=true,[50]=true,[51]=true,[52]=true,[53]=true,[54]=true,[55]=true,[56]=true}
 local COLOR_REGIONS={{"Head","headColor"},{"Torso","torsoColor"},{"LeftArm","leftArmColor"},{"RightArm","rightArmColor"},{"LeftLeg","leftLegColor"},{"RightLeg","rightLegColor"}}
@@ -50,6 +52,9 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local entry=peers[userId]
         if not entry then return end
         peers[userId]=nil
+        for value,original in pairs(entry.originalScales or {})do
+            pcall(function()if value.Parent then value.Value=original end end)
+        end
         for _,api in ipairs({entry.names,entry.animations,entry.clothes,entry.avatar,entry.views})do
             if api and api.destroy then pcall(api.destroy)end
         end
@@ -108,20 +113,65 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             for _,item in ipairs(previous.items or {})do
                 local kind=tonumber(item.assetType)
                 if not slots[kind]then
-                    if BODY_TYPES[kind]then pcall(entry.avatar.restoreBodyPart,BODY_TYPES[kind])
-                    elseif kind==18 then pcall(entry.avatar.restoreFace)
+                    if kind==18 then pcall(entry.avatar.restoreFace)
                     elseif kind==19 then pcall(entry.avatar.removeGear)end
                 end
             end
             local wanted={}
             local wantedClothes={}
             local animationAssets={}
+            local body,oldBody={},{}
+            for _,item in ipairs(previous.items or {})do
+                local region=BODY_TYPES[tonumber(item.assetType)]
+                if region then oldBody[region]=item.id end
+            end
+            for _,item in ipairs(snapshot.items)do
+                local region=BODY_TYPES[tonumber(item.assetType)]
+                if region then body[region]=item.id end
+            end
+            -- These are complete outfits. Zero/default body parts are deliberately
+            -- omitted from the asset list; absence means blocky, not the peer's
+            -- original Roblox package. Apply on first render and after respawn too.
+            local humanoid=target.Character and target.Character:FindFirstChildOfClass("Humanoid")
+            local blocky,bodyChanged=true,fresh
+            for _,region in ipairs(BODY_REGIONS)do
+                if region~="Head" and (body[region] or 0)~=0 then blocky=false end
+                if (body[region] or 0)~=(oldBody[region] or 0)then bodyChanged=true end
+            end
+            local bulk=blocky and bodyChanged and type(entry.avatar.applyBody)=="function"
+            if bulk then entry.avatar.applyBody("Blocky")end
+            for _,region in ipairs(BODY_REGIONS)do
+                local desired=body[region] or 0
+                local changed=fresh or desired~=(oldBody[region] or 0)
+                if bulk then
+                    changed=region=="Head" and (desired~=0 or (humanoid and humanoid.RigType==Enum.HumanoidRigType.R6 and changed))
+                end
+                if changed then
+                    entry.avatar.applyBodyPart(region,desired)
+                end
+            end
+            if humanoid and humanoid.RigType==Enum.HumanoidRigType.R15 then
+                entry.originalScales=entry.originalScales or {}
+                for key,property in pairs(SCALE_VALUES)do
+                    local scale=humanoid:FindFirstChild(property)
+                    local desired=(snapshot.definition.scales or {})[key]
+                    if scale and scale:IsA("NumberValue")then
+                        if desired~=nil then
+                            assert(type(desired)=="number" and desired==desired and desired>=0 and desired<=5,"Invalid shared body scale")
+                            if entry.originalScales[scale]==nil then entry.originalScales[scale]=scale.Value end
+                            if scale.Value~=desired then scale.Value=desired end
+                        elseif entry.originalScales[scale]~=nil then
+                            scale.Value=entry.originalScales[scale];entry.originalScales[scale]=nil
+                        end
+                    end
+                end
+            end
             for _,item in ipairs(snapshot.items)do
                 if type(item)=="table" and safeId(item.id) and tonumber(item.assetType) then
                     local assetType=tonumber(item.assetType)
                     local changed=not oldItems[tostring(item.assetType)..":"..tostring(item.id)]
                     if ACCESSORY_TYPES[assetType] then wanted[item.id]=item
-                    elseif BODY_TYPES[assetType] then if changed then pcall(entry.avatar.applyBodyPart,BODY_TYPES[assetType],item.id)end
+                    elseif BODY_TYPES[assetType] then -- Applied by region above, including absent/default parts.
                     elseif assetType==18 then if changed then pcall(entry.avatar.applyFace,item.id)end
                     elseif CLOTHES_TYPES[assetType]=="ShirtGraphic" then wantedClothes.ShirtGraphic=true;if changed then pcall(entry.clothes.equipTShirt,item.id)end
                     elseif CLOTHES_TYPES[assetType]=="Shirt" then wantedClothes.Shirt=true;if changed then pcall(entry.clothes.equipShirt,item.id)end
