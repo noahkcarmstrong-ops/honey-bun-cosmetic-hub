@@ -621,7 +621,10 @@ local function corpseController()
             return source
         end
         return sharedLarpAPI and sharedLarpAPI.corpseSource(userId) or nil
-    end,logDiagnostic)
+    end,logDiagnostic,function(userId)
+        if userId==Players.LocalPlayer.UserId then return gameBrowserSyncAPI and gameBrowserSyncAPI.isLarpEnabled() end
+        return sharedLarpAPI and sharedLarpAPI.hasSharedAppearance(userId)
+    end)
     return corpseAPI
 end
 local function sharedLarp()

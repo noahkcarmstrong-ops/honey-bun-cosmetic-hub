@@ -70,6 +70,7 @@ return function(player,onStatus,readAsset,managedRespawn)
     local attribute="HoneyBunCosmeticSettings"
     local settings={accessories={},colors={},bodyParts={},hideOriginals=false,gear=nil}
     local reapplying,replayGeneration,replayToken=false,nil,0
+    local appearanceVersion=0
     local function copySettings()
         local copy={accessories={},colors={},bodyParts={},hideOriginals=settings.hideOriginals,body=settings.body,gear=settings.gear,face=settings.face}
         if settings.scales then copy.scales=table.clone(settings.scales) end
@@ -1068,7 +1069,7 @@ return function(player,onStatus,readAsset,managedRespawn)
     function api.getSettings() return copySettings() end
     function api.corpseSource()
         if not alive or not snapshot or snapshot.character~=player.Character then return nil end
-        return {character=snapshot.character,parts=snapshot.parts,head=snapshot.r6Head,colors=snapshot.colors,hidden=hidden}
+        return {character=snapshot.character,parts=snapshot.parts,head=snapshot.r6Head,colors=snapshot.colors,hidden=hidden,version=appearanceVersion}
     end
     local operations={}
     for _,name in ipairs({"equipAccessory","equipGear","removeGear","removeAccessory","clearAccessories","removeCurrentAccessories","setSkin","setScales","applyBody","applyBodyParts","applyBodyPart","restoreBodyPart","applyFace","restoreFace","restoreSkin","restoreBody","restore"}) do
@@ -1076,7 +1077,9 @@ return function(player,onStatus,readAsset,managedRespawn)
         operations[name]=operation
         api[name]=function(...)
             assert(not reapplying,"Wait for saved cosmetics to finish restoring.")
-            return operation(...)
+            local result=table.pack(operation(...))
+            appearanceVersion=appearanceVersion+1
+            return table.unpack(result,1,result.n)
         end
     end
     function api.prepareSaved()
@@ -1124,6 +1127,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         if token==replayToken then reapplying=false end
         check(ctx)
         assert(ok,message)
+        appearanceVersion=appearanceVersion+1
         local result=#failures==0 and "Saved cosmetics restored." or ("Saved selections kept; some could not load: "..failures[1])
         if token==replayToken then notify(result,false) end
         return result

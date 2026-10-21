@@ -620,6 +620,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         if presentation.onAppearanceApplied then presentation.onAppearanceApplied()end
         return api.status()
     end
+    function api.hasSharedAppearance(userId)return sharing and latestRecords[tostring(userId)]~=nil end
     function api.corpseSource(userId)
         local entry=sharing and peers[tostring(userId)]
         if not entry or not entry.snapshot then return nil end

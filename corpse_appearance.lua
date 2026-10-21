@@ -1,8 +1,9 @@
 -- Visual-only corpse adaptation. Ownership must be explicit; never match by proximity.
-return function(getSource,log)
+return function(getSource,log,isEnabled)
     local Players=game:GetService("Players")
     local alive=true
     local bodies={}
+    local sources={}
     local playerConnections={}
     local provenance=setmetatable({}, {__mode="k"})
     local function track(player)
@@ -56,6 +57,79 @@ return function(getSource,log)
         for _,child in ipairs(copy:GetChildren())do if not visual[child.ClassName]then child:Destroy()end end
         return copy
     end
+    local function discardSource(id)
+        local previous=sources[id]
+        if not previous then return end
+        for _,object in ipairs(previous.resources)do object:Destroy()end
+        sources[id]=nil
+    end
+    local function sourceFor(id,refresh)
+        if isEnabled and not isEnabled(id)then discardSource(id);return nil end
+        local previous=sources[id]
+        if previous and not refresh then return previous end
+        local source=getSource(id)
+        if not source then return previous end
+        if previous and previous.origin==source.character and previous.version==source.version then return previous end
+        local model=Instance.new("Model")
+        local frozen={character=model,origin=source.character,version=source.version,
+            colors=table.clone(source.colors or {}),originalClothes=table.clone(source.originalClothes or {}),
+            parts={},hidden={},resources={model}}
+        local ok,err=pcall(function()
+            for _,object in ipairs(source.character:GetChildren())do
+                local copy
+                if object:IsA("BasePart") and bodyNames[object.Name]then copy=cloneVisual(object)
+                elseif object:IsA("Accessory") or object:IsA("Hat") or object:IsA("Clothing")
+                    or object:IsA("ShirtGraphic") or object:IsA("CharacterMesh")then copy=object:Clone()end
+                if copy then
+                    for _,child in ipairs(copy:GetDescendants())do
+                        if child:IsA("LuaSourceContainer")then child:Destroy()end
+                    end
+                    copy.Parent=model
+                end
+            end
+            -- A cloned accessory's outside joint references would disappear
+            -- with the old character. Rebind only the cached attachment metadata.
+            for _,object in ipairs(model:GetChildren())do
+                if object:IsA("Accessory") or object:IsA("Hat")then
+                    local original=source.character:FindFirstChild(object.Name)
+                    local handle=object:FindFirstChild("Handle")
+                    local originalHandle=original and original:FindFirstChild("Handle")
+                    if handle and originalHandle then
+                        for _,joint in ipairs(handle:GetChildren())do if joint:IsA("JointInstance")then joint:Destroy()end end
+                        for _,joint in ipairs(originalHandle:GetChildren())do
+                            if joint:IsA("JointInstance") and joint.Part0==originalHandle and joint.Part1 then
+                                local anchor=model:FindFirstChild(joint.Part1.Name)
+                                if anchor then
+                                    local weld=Instance.new("Weld");weld.Part0=handle;weld.Part1=anchor
+                                    weld.C0=joint.C0;weld.C1=joint.C1;weld.Parent=handle
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            for name,part in pairs(source.parts or {})do
+                local copy=cloneVisual(part)
+                if copy then frozen.parts[name]=copy;frozen.resources[#frozen.resources+1]=copy end
+            end
+            if source.head then
+                frozen.head=cloneVisual(source.head)
+                if frozen.head then frozen.resources[#frozen.resources+1]=frozen.head end
+            end
+            for _,entry in ipairs(source.hidden or {})do
+                local original=entry.object:Clone()
+                if original then frozen.hidden[#frozen.hidden+1]={object=original};frozen.resources[#frozen.resources+1]=original end
+            end
+        end)
+        if not ok then
+            for _,object in ipairs(frozen.resources)do object:Destroy()end
+            emit("corpse_source_failed",{peerId=id,detail=tostring(err)})
+            return previous
+        end
+        discardSource(id);sources[id]=frozen
+        return frozen
+    end
     local function copyVisual(target,source,size,transparency)
         -- Keep the corpse's existing parts, constraints, transforms and velocities.
         local frame=target.CFrame
@@ -86,7 +160,7 @@ return function(getSource,log)
         local player=owner(model)
         if not player then return end
         record.userId=player.UserId
-        local source=getSource(player.UserId)
+        local source=sourceFor(player.UserId)
         if not source or source.character==model then return end
         local head=model:FindFirstChild("Head")
         if not head or not head:IsA("BasePart")then return end
@@ -182,11 +256,11 @@ return function(getSource,log)
             end
         end)
         if not ok then restore(record)end
-        emit(ok and "corpse_applied" or "corpse_failed",{peerId=player.UserId,detail=ok and model.Name or tostring(err)})
+        emit(ok and "corpse_applied" or "corpse_failed",{peerId=player.UserId,detail=ok and model.Name or tostring(err),waitMs=math.floor((os.clock()-record.createdAt)*1000)})
     end
     local function consider(model)
         if not model or not model:IsA("Model") or bodies[model] or Players:GetPlayerFromCharacter(model) or not owner(model)then return end
-        local record={model=model,originals={},added={},detached={},hidden={}};bodies[model]=record
+        local record={model=model,originals={},added={},detached={},hidden={},createdAt=os.clock()};bodies[model]=record
         record.removed=model.Destroying:Connect(function()
             for _,original in pairs(record.originals)do original:Destroy()end
             for _,original in ipairs(record.detached)do original:Destroy()end
@@ -205,9 +279,11 @@ return function(getSource,log)
         if object:IsA("StringValue") and object.Name=="PlayerName" or object:IsA("ObjectValue") and object.Name=="Player"then consider(object.Parent)end
     end
     return {refresh=function(userId)
+        if userId then sourceFor(userId,true)
+        else for _,player in ipairs(Players:GetPlayers())do sourceFor(player.UserId,true)end end
         for model,record in pairs(bodies)do
             if not userId or record.userId==userId then
-                if record.applied and not getSource(record.userId)then restore(record)end
+                if record.applied and not sourceFor(record.userId)then restore(record)end
                 apply(model,record)
             end
         end
@@ -220,5 +296,6 @@ return function(getSource,log)
             record.removed:Disconnect()
         end
         bodies={}
+        for id in pairs(sources)do discardSource(id)end
     end}
 end
