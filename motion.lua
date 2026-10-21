@@ -354,11 +354,66 @@ return function(player,onStatus,managedRespawn)
         restoreWheel();slots={};replaceOriginals=false;save();original=nil
         return "Original emote wheel restored."
     end
+    local wheelConnections={}
+    local wheelReconcilePending=false
+    local function reconcileWheel()
+        if wheelReconcilePending or not alive then return end
+        wheelReconcilePending=true
+        task.defer(function()
+            wheelReconcilePending=false
+            if not alive or (not next(slots) and not replaceOriginals)then return end
+            local character=player.Character
+            local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+            local desc=humanoid and humanoid:FindFirstChildOfClass("HumanoidDescription")
+            if not desc or humanoid.Health<=0 then return end
+            local ok,reason=pcall(function()
+                local emotes,equipped=desc:GetEmotes(),{}
+                for _,entry in ipairs(desc:GetEquippedEmotes())do equipped[entry.Slot]=entry.Name end
+                local changed=false
+                for slot,item in pairs(slots)do
+                    local name=equipped[slot]
+                    local ids=name and emotes[name]
+                    if not ids or #ids~=1 or ids[1]~=item.id or name~=wheelNames[slot]then changed=true;break end
+                end
+                if not changed and replaceOriginals then
+                    for slot in pairs(equipped)do if not slots[slot]then changed=true;break end end
+                end
+                if changed then applyWheel()end
+            end)
+            if not ok and onStatus then onStatus("Could not restore emote wheel: "..tostring(reason))end
+        end)
+    end
+    local function watchWheel(character)
+        for _,connection in ipairs(wheelConnections)do connection:Disconnect()end
+        wheelConnections={}
+        if not character then return end
+        local watched={}
+        local function watch(instance)
+            if watched[instance]then return end
+            if instance:IsA("HumanoidDescription")then
+                watched[instance]=true
+                wheelConnections[#wheelConnections+1]=instance.EmotesChanged:Connect(reconcileWheel)
+                wheelConnections[#wheelConnections+1]=instance.EquippedEmotesChanged:Connect(reconcileWheel)
+            elseif instance:IsA("Humanoid")then
+                watched[instance]=true
+                wheelConnections[#wheelConnections+1]=instance.ApplyDescriptionFinished:Connect(reconcileWheel)
+            end
+        end
+        wheelConnections[#wheelConnections+1]=character.DescendantAdded:Connect(function(instance)
+            if instance:IsA("Humanoid") or instance:IsA("HumanoidDescription")then watch(instance);reconcileWheel()end
+        end)
+        wheelConnections[#wheelConnections+1]=character.DescendantRemoving:Connect(function(instance)
+            if instance:IsA("Humanoid") or instance:IsA("HumanoidDescription")then reconcileWheel()end
+        end)
+        for _,instance in ipairs(character:GetDescendants())do watch(instance)end
+        reconcileWheel()
+    end
     local changed=player.CharacterAdded:Connect(function(character)
         generation=generation+1;local ticket=generation
         original=nil
         unbindWalking()
         scheduleBinding()
+        watchWheel(character)
         if managedRespawn then return end
         task.spawn(function()
             for attempt=1,100 do
@@ -378,7 +433,10 @@ return function(player,onStatus,managedRespawn)
     function api.destroy()
         if not alive then return end
         alive=false;generation=generation+1;bindTicket=bindTicket+1;changed:Disconnect();unbindWalking();pcall(restoreWheel);original=nil
+        for _,connection in ipairs(wheelConnections)do connection:Disconnect()end
+        wheelConnections={}
     end
+    watchWheel(player.Character)
     scheduleBinding()
     return api
 end
