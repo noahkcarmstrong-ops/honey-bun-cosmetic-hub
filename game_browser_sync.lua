@@ -6,6 +6,7 @@ local HTTP_POLL_SECONDS=0.25
 local WEBSOCKET_CHECK_SECONDS=5
 local accessoryTypes={[8]=true,[41]=true,[42]=true,[43]=true,[44]=true,[45]=true,[46]=true,[47]=true,[64]=true,[65]=true,[66]=true,[67]=true,[68]=true,[69]=true,[70]=true,[71]=true,[72]=true,[76]=true,[77]=true}
 local animationTypes={[48]="ClimbAnimation",[50]="FallAnimation",[51]="IdleAnimation",[52]="JumpAnimation",[53]="RunAnimation",[54]="SwimAnimation",[55]="WalkAnimation",[56]="PoseAnimation"}
+local SCALE_PROPERTIES={height="BodyHeightScale",width="BodyWidthScale",depth="BodyDepthScale",head="HeadScale",bodyType="BodyTypeScale",proportion="BodyProportionScale"}
 local function safeId(v)return type(v)=="number" and v==v and v>0 and v%1==0 and v<9007199254740992 end
 local function hex(c)
     local function n(v)return math.clamp(math.floor(v*255+0.5),0,255) end
@@ -172,7 +173,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         if settings.body and settings.body~="Blocky" then source=bodyDescription(settings.body) end
         if source~=desc then definition.scales.bodyType=source.BodyTypeScale;definition.scales.proportion=source.ProportionScale end
         -- Direct local scale changes do not update GetAppliedDescription().
-        for key,name in pairs(scaleValues)do
+        for key,name in pairs(SCALE_PROPERTIES)do
             local value=humanoid:FindFirstChild(name)
             if value and value:IsA("NumberValue") and value.Value==value.Value and value.Value>=0 and value.Value<=5 then
                 definition.scales[key]=value.Value
