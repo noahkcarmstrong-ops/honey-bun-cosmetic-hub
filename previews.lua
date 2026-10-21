@@ -325,6 +325,33 @@ return function(player)
         local model=game:GetService("Players"):CreateHumanoidModelFromDescriptionAsync(description,rigType)
         local ok,result=pcall(function()
             assert(alive,"Preview renderer was closed.")
+            -- Detached generated rigs have joints, but their part CFrames can
+            -- still overlap until a world simulates them. Resolve the joint
+            -- graph directly without parenting the preview into the game.
+            local root=model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+            assert(root,"Generated avatar has no root part.")
+            local edges={}
+            for _,joint in ipairs(model:GetDescendants())do
+                if joint:IsA("JointInstance") and joint.Part0 and joint.Part1 then
+                    local a,b=joint.Part0,joint.Part1
+                    edges[a]=edges[a] or {};edges[b]=edges[b] or {}
+                    local offset=joint.C0*(joint:IsA("Motor6D") and joint.Transform or CFrame.new())*joint.C1:Inverse()
+                    edges[a][#edges[a]+1]={part=b,offset=offset}
+                    edges[b][#edges[b]+1]={part=a,offset=offset:Inverse()}
+                end
+            end
+            local queue,seen={root},{[root]=true}
+            local index=1
+            while index<=#queue do
+                local part=queue[index];index=index+1
+                for _,edge in ipairs(edges[part] or {})do
+                    if not seen[edge.part]then
+                        seen[edge.part]=true
+                        edge.part.CFrame=part.CFrame*edge.offset
+                        queue[#queue+1]=edge.part
+                    end
+                end
+            end
             for _,part in ipairs(model:GetDescendants()) do
                 if part:IsA("MeshPart") and part.MeshId~="" then
                     local copy=cleanMesh(part)
