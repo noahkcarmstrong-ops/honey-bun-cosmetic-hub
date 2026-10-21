@@ -735,7 +735,7 @@ function M.create(player, getPreviews, describeSnapshot)
             indexed=true
         end
         if enabled and effectiveSnapshot == nil and not currentImage then
-            status="Waiting for avatar data.";return api.report()
+            renderVerification();status="Waiting for avatar data.";return api.report()
         end
         effectiveKey = nextKey
         if not enabled then
