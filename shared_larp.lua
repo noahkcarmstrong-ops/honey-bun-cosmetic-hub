@@ -94,6 +94,11 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         if not validRecord(record) or record.userId==tostring(localPlayer.UserId) then return end
         local target=Players:GetPlayerByUserId(tonumber(record.userId))
         if not target or target==localPlayer then return end
+        local character=target.Character
+        local readyHumanoid=character and character:FindFirstChildOfClass("Humanoid")
+        -- Keep latestRecords intact while Roblox finishes constructing the
+        -- character. The readiness events below replay this record.
+        if not readyHumanoid or readyHumanoid.Health<=0 or not character:FindFirstChild("Head") then return end
         local snapshot=record.snapshot
         local entry=peers[record.userId]
         if entry and entry.player==target and entry.character==target.Character
@@ -316,11 +321,37 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     end
     local function watchPlayer(player)
         if player==localPlayer then return end
-        local ok,connection=pcall(function()return player.CharacterAdded:Connect(function()
+        local characterConnection
+        local function replay()
             local key=tostring(player.UserId)
             if latestRecords[key]then pending[key]=latestRecords[key];processPending()end
-        end)end)
-        if ok then connections[#connections+1]=function()connection:Disconnect()end end
+        end
+        local function watchCharacter(character)
+            if characterConnection then characterConnection:Disconnect();characterConnection=nil end
+            local function ready()
+                local humanoid=character:FindFirstChildOfClass("Humanoid")
+                if player.Character~=character or not humanoid or humanoid.Health<=0 or not character:FindFirstChild("Head") then return end
+                if characterConnection then characterConnection:Disconnect();characterConnection=nil end
+                task.defer(replay)
+            end
+            characterConnection=character.ChildAdded:Connect(ready)
+            ready()
+        end
+        local added=player.CharacterAdded:Connect(watchCharacter)
+        local loaded=player.CharacterAppearanceLoaded:Connect(function(character)
+            if player.Character==character then
+                -- Roblox's appearance load can replace a body we applied as
+                -- soon as Head/Humanoid appeared. Reapply the retained record.
+                local entry=peers[tostring(player.UserId)]
+                if entry then entry.character=nil end
+                task.defer(replay)
+            end
+        end)
+        connections[#connections+1]=function()
+            added:Disconnect();loaded:Disconnect()
+            if characterConnection then characterConnection:Disconnect();characterConnection=nil end
+        end
+        if player.Character then watchCharacter(player.Character)end
     end
     for _,player in ipairs(Players:GetPlayers())do watchPlayer(player)end
     pcall(function()
@@ -342,8 +373,10 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         elseif value then
             sharing=true
             local ok,reason=pcall(publish)
-            if not ok then sharing=false;error(reason,0)end
-            status("Sharing your Larp appearance through desktop.")
+            -- Spawning or restoring an outfit can temporarily prevent a
+            -- snapshot. Keep the preference and retry on the next snapshot.
+            if not ok then status("Waiting to share your appearance: "..tostring(reason))
+            else status("Sharing your Larp appearance through desktop.")end
         end
         return api.status()
     end

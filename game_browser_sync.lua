@@ -699,8 +699,12 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     end
     function api.setSharing(value)
         if value.enabled then
-            assert(connected and socketReady,"Connect Larpblox Desktop before enabling sharing.")
-            assert(socketSupportsSharing,"Update Larpblox Desktop to use shared appearances.")
+            -- Preferences can arrive through HTTP before the socket handshake.
+            -- Keep the publication queued; the ready event sends it once the
+            -- transport is available instead of discarding the names update.
+            if socketReady then
+                assert(socketSupportsSharing,"Update Larpblox Desktop to use shared appearances.")
+            end
         end
         desiredSharing=value
         if not value.enabled then sharingConnected=false end
