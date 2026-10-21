@@ -35,6 +35,8 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     local lastSent
     local transport=presentation.transport
     local latestRecords,pending,connections={},{},{}
+    local liveRecords,profileRecords,profileRequests={},{},{}
+    local profileQueued=false
     local processing={}
     local nextStatus=0
     local function status(message)
@@ -310,6 +312,44 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         lastSent=record
     end
     local processPending
+    local function chooseRecord(userId)
+        local record=liveRecords[userId] or profileRecords[userId]
+        if record then queueRecord(record)
+        else latestRecords[userId]=nil;pending[userId]=false end
+    end
+    local function requestProfiles(userId)
+        if not sharing or not presentation.fetchProfiles then return end
+        if userId then profileRequests[userId]=true
+        else
+            for _,player in ipairs(Players:GetPlayers())do
+                if player~=localPlayer then profileRequests[tostring(player.UserId)]=true end
+            end
+        end
+        if profileQueued then return end
+        profileQueued=true
+        local mine=generation
+        task.defer(function()
+            if not sharing or generation~=mine or not isAlive()then return end
+            profileQueued=false
+            local ids={};for id in pairs(profileRequests)do ids[#ids+1]=id end;profileRequests={}
+            for start=1,#ids,50 do
+                local batch={};for i=start,math.min(start+49,#ids)do batch[#batch+1]=ids[i]end
+                local ok,records=pcall(presentation.fetchProfiles,batch)
+                if not sharing or generation~=mine or not isAlive()then return end
+                if ok and type(records)=="table"then
+                    local found={}
+                    for _,record in ipairs(records)do
+                        if validRecord(record)then found[record.userId]=record end
+                    end
+                    for _,id in ipairs(batch)do
+                        profileRecords[id]=found[id]
+                        if Players:GetPlayerByUserId(tonumber(id)) and not liveRecords[id]then chooseRecord(id)end
+                    end
+                    processPending()
+                elseif not ok then status("Saved shared appearances: "..tostring(records))end
+            end
+        end)
+    end
     processPending=function()
         if not sharing or not isAlive()then return end
         for userId in pairs(pending)do
@@ -337,15 +377,15 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             local seen={}
             for _,record in ipairs(event.players)do
                 if validRecord(record)and record.userId~=tostring(localPlayer.UserId)then
-                    seen[record.userId]=true;queueRecord(record)
+                    seen[record.userId]=true;liveRecords[record.userId]=record;queueRecord(record)
                 end
             end
-            for userId in pairs(latestRecords)do if not seen[userId]then latestRecords[userId]=nil;pending[userId]=false end end
+            for userId in pairs(liveRecords)do if not seen[userId]then liveRecords[userId]=nil;chooseRecord(userId);requestProfiles(userId)end end
         elseif event.type=="upsert"and validRecord(event.record)then
             local record=event.record
-            if record.userId~=tostring(localPlayer.UserId)then queueRecord(record)end
+            if record.userId~=tostring(localPlayer.UserId)then liveRecords[record.userId]=record;queueRecord(record)end
         elseif event.type=="remove"and type(event.userId)=="string"then
-            latestRecords[event.userId]=nil;pending[event.userId]=false
+            liveRecords[event.userId]=nil;chooseRecord(event.userId);requestProfiles(event.userId)
         end
         processPending()
     end
@@ -360,6 +400,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     end
     local function watchPlayer(player)
         if player==localPlayer then return end
+        requestProfiles(tostring(player.UserId))
         local characterConnection
         local function replay()
             local key=tostring(player.UserId)
@@ -396,7 +437,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     pcall(function()
         local added=Players.PlayerAdded:Connect(watchPlayer)
         local removed=Players.PlayerRemoving:Connect(function(player)
-            local key=tostring(player.UserId);pending[key]=false;processPending()
+            local key=tostring(player.UserId);liveRecords[key]=nil;profileRecords[key]=nil;latestRecords[key]=nil;pending[key]=false;processPending()
         end)
         connections[#connections+1]=function()added:Disconnect();removed:Disconnect()end
     end)
@@ -408,7 +449,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         if sharing then
             sharing=false
             if transport then pcall(transport.setSharing,{enabled=false})end
-            pending={};latestRecords={};processing={};cleanupAll();status("Shared Larp mode is off.")
+            pending={};latestRecords={};liveRecords={};profileRecords={};profileRequests={};profileQueued=false;processing={};cleanupAll();status("Shared Larp mode is off.")
         elseif value then
             sharing=true
             local ok,reason=pcall(publish)
@@ -416,6 +457,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             -- snapshot. Keep the preference and retry on the next snapshot.
             if not ok then status("Waiting to share your appearance: "..tostring(reason))
             else status("Sharing your Larp appearance through desktop.")end
+            requestProfiles()
         end
         return api.status()
     end
@@ -425,7 +467,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         if sharing and transport then pcall(transport.setSharing,{enabled=false})end
         sharing=false;generation=generation+1;cleanupAll()
         for _,disconnect in ipairs(connections)do pcall(disconnect)end
-        connections={};pending={};latestRecords={};processing={}
+        connections={};pending={};latestRecords={};liveRecords={};profileRecords={};profileRequests={};profileQueued=false;processing={}
     end
     return api
 end

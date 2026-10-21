@@ -46,6 +46,10 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local commandSnapshotPending=false
     local snapshotListeners,sharingListeners={},{}
     local desiredSharing,socketSupportsSharing=nil,false
+    local lastModeValue
+    local function readyForAppearance()
+        return not sharing or not sharing.isReady or sharing.isReady()
+    end
     local function notifySnapshot()
         for callback in pairs(snapshotListeners)do pcall(callback,lastSnapshot)end
     end
@@ -252,6 +256,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local function applyCommand(value)
         validSnapshot(value);assert(value.verified==nil or type(value.verified)=="boolean","Browser verification is invalid.");local revision=tonumber(value.revision);assert(revision and revision%1==0 and revision>0 and revision<9007199254740992,"Browser revision is invalid.")
         if not lastBrowserCommand or revision>=lastBrowserCommand.revision then lastBrowserCommand=value end
+        if not readyForAppearance() then return end
         if revision<=lastRevision then return end
         if browserModeKnown and not larpEnabled then lastRevision=revision;return end
         local avatar,clothes=getAvatar(),getClothes();local failed={};local loadErrors={};local desired={};local current={};local desiredGear
@@ -377,6 +382,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         if not ok then status("Browser outfit failed: "..tostring(msg)) elseif #failed>0 then status("Browser outfit applied; unsupported items: "..table.concat(failed,", ")) else status("Browser outfit applied locally.") end
     end
     local function applyNameState(value)
+        if value then lastModeValue=value end
         local state="disabled"
         local name=""
         local verified=false
@@ -412,7 +418,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         end
         if value then browserModeKnown=true end
         if state==lastNameState and not firstModeState then return end
-        if value and state=="disabled" then
+        if value and state=="disabled" and readyForAppearance() then
             -- Restore captured originals, without loading assets or replacing the character.
             -- The browser retains the saved Larp outfit for the next enable.
             retryCommand=nil;incoming.browser=nil
@@ -451,6 +457,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local function publishSnapshot()
         snapshotScheduleId=snapshotScheduleId+1
         snapshotPending=false
+        if not readyForAppearance() then return end
         local made,value=pcall(snapshot)
         if made then
             if commandSnapshotPending then
@@ -582,6 +589,17 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         local ok,err=pcall(function()
             while connected and generation==mine and next(incoming)do
                 local batch=incoming;incoming={}
+                if batch.browser and batch.browser.value and batch.browser.value.revision then
+                    -- Sharing can use the validated saved outfit before local
+                    -- asset restoration finishes. Never publish a half-restored body.
+                    local value=validSnapshot(batch.browser.value)
+                    local revision=tonumber(value.revision)
+                    assert(revision and revision%1==0 and revision>0 and revision<9007199254740992,"Browser revision is invalid.")
+                    if not lastBrowserCommand or revision>=lastBrowserCommand.revision then
+                        lastBrowserCommand=value
+                        for callback in pairs(snapshotListeners)do pcall(callback,nil)end
+                    end
+                end
                 if batch.names then applyNameState(batch.names.value)end
                 local previousRevision=lastRevision
                 if batch.browser and batch.browser.value and batch.browser.value.revision then
@@ -672,6 +690,22 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     function api.status()return connected and (socketReady and "Browser connected via WebSocket." or "Waiting for desktop WebSocket.") or "Browser disconnected."end
     function api.publish()assert(connected,"Connect the browser first.");local value=snapshot();local encoded=HttpService:JSONEncode(value);if encoded~=lastJson then send("game",value);lastJson=encoded end;return value end
     function api.snapshot()return snapshot()end
+    function api.snapshotForSharing()
+        local saved=lastBrowserCommand or lastBrowserSnapshot
+        if saved then
+            local value={};for key,item in pairs(saved)do value[key]=item end
+            value.verified=larpVerified
+            return value
+        end
+        assert(readyForAppearance(),"Waiting for the saved browser outfit.")
+        return snapshot()
+    end
+    function api.resumeAppearance()
+        if not readyForAppearance()then return end
+        if lastModeValue then lastNameState=nil;applyNameState(lastModeValue)end
+        if retryCommand then incoming.browser={value=retryCommand};retryCommand=nil end
+        if connected then task.defer(pump);scheduleSnapshot()end
+    end
     function api.onSnapshot(callback)
         snapshotListeners[callback]=true
         return function()snapshotListeners[callback]=nil end

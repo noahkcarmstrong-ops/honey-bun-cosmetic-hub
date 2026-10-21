@@ -70,4 +70,25 @@ assert(#blocked==1,'cancellation test must reach a pending body load')
 sync.setEnabled(false);block=false;jobs[#jobs+1]=table.remove(blocked,1);drain()
 assert(accessories[2]==22 and destroyed[2],'disabling sharing cancels pending accessory application')
 sync.destroy()
+local profiles={[2]=record(2,50,'SavedAlias')}
+local fetches=0
+sync=dofile('shared_larp.lua')(self,function()return record(1,1,'Self').snapshot end,function()return {}end,
+ avatar,clothes,animations,nameApi,function()return true end,function()end,{transport=transport,
+ fetchProfiles=function(ids)
+  fetches=fetches+1;local out={};for _,id in ipairs(ids)do if profiles[tonumber(id)]then out[#out+1]=profiles[tonumber(id)]end end;return out
+ end,
+ createViews=function(p)return {update=function(options)views[p.UserId]=options.name end,destroy=function()end}end})
+drain();sync.setEnabled(true);drain()
+assert(names[2]=='SavedAlias' and accessories[2]==50,'a saved extension profile applies without a peer game connection')
+receive({type='snapshot',players={}});drain()
+assert(names[2]=='SavedAlias','an empty live room must not remove a saved profile')
+receive({type='upsert',record=record(2,51,'LiveAlias')});drain()
+assert(names[2]=='LiveAlias' and accessories[2]==51,'live game updates override the saved profile')
+receive({type='remove',userId='2'});drain()
+assert(names[2]=='SavedAlias' and accessories[2]==50,'disconnecting the peer game returns to its saved profile')
+profiles[2]=nil;destroyed[2]=nil
+receive({type='remove',userId='2'});drain()
+assert(destroyed[2],'removing a public profile restores the original appearance')
+assert(fetches==3 and #jobs==0,'profile lookups follow lifecycle events without polling')
+sync.destroy()
 print('PASS: immediate names and portraits, independent peer loads, one body call, coalescing, deduplication and cancellation')
