@@ -90,6 +90,27 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local bodyRegions={{"Head",17},{"Torso",27},{"RightArm",28},{"LeftArm",29},{"LeftLeg",30},{"RightLeg",31}}
     local bodyTypeRegions={[17]="Head",[79]="Head",[27]="Torso",[28]="RightArm",[29]="LeftArm",[30]="LeftLeg",[31]="RightLeg"}
     local browserBody,originalBody={},{ }
+    local browserScales,originalScales,scaleHumanoid={},{},nil
+    local scaleValues={height="BodyHeightScale",width="BodyWidthScale",depth="BodyDepthScale",head="HeadScale",bodyType="BodyTypeScale",proportion="BodyProportionScale"}
+    local function applyBrowserScales(scales)
+        local character=player.Character
+        local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+        if not humanoid then error("Avatar humanoid is unavailable.") end
+        if humanoid~=scaleHumanoid then browserScales,originalScales,scaleHumanoid={},{},humanoid end
+        if humanoid.RigType~=Enum.HumanoidRigType.R15 then return end
+        for key,name in pairs(scaleValues)do
+            local value=humanoid:FindFirstChild(name)
+            local wanted=scales[key]
+            if value and value:IsA("NumberValue") then
+                if originalScales[key]==nil then originalScales[key]=value.Value end
+                if wanted~=nil then
+                    value.Value=wanted;browserScales[key]=true
+                elseif browserScales[key] then
+                    value.Value=originalScales[key];originalScales[key]=nil;browserScales[key]=nil
+                end
+            elseif wanted~=nil then error("Avatar scale value is unavailable: "..name) end
+        end
+    end
     local browserFace=false
     local function definitionKey(definition)
         if type(definition)~="table" then return "" end
@@ -226,29 +247,25 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             for _,item in ipairs(before.items)do local region=bodyTypeRegions[item.assetType];if region then currentBody[region]=item.id end end
             for _,item in ipairs(value.items)do local region=bodyTypeRegions[item.assetType];if region then desiredBody[region]=item.id end end
             local bodySettings=avatar.getSettings()
+            local resetBody=false
             if bodySettings.body and avatar.restoreBody then
                 local loaded,reason=pcall(avatar.restoreBody)
-                if loaded then currentBody={};browserBody={};originalBody={}
+                if loaded then currentBody={};browserBody={};originalBody={};resetBody=true
                 else loadErrors[#loadErrors+1]="Body: "..tostring(reason)end
             end
             for _,entry in ipairs(bodyRegions)do
                 local region=entry[1];local wanted=desiredBody[region];local owned=browserBody[region] or (bodySettings.bodyParts or {})[region]
-                if owned and not wanted then
-                    local original=originalBody[region]
-                    if avatar.restoreBodyPart then
-                        local loaded,reason=pcall(avatar.restoreBodyPart,region)
-                        if not loaded then loadErrors[#loadErrors+1]=region..": "..tostring(reason);error(table.concat(loadErrors,"; "))end
-                    elseif original then
-                        local loaded,reason=pcall(avatar.applyBodyPart,region,original)
-                        if not loaded then loadErrors[#loadErrors+1]=region..": "..tostring(reason)end
-                    end
-                    browserBody[region]=nil;originalBody[region]=nil
-                elseif wanted and currentBody[region]~=wanted then
+                if wanted and currentBody[region]~=wanted then
                     if not originalBody[region] then originalBody[region]=currentBody[region] end
                     local loaded,reason=pcall(avatar.applyBodyPart,region,wanted)
                     if loaded then browserBody[region]=wanted else loadErrors[#loadErrors+1]=region..": "..tostring(reason)end
+                elseif not wanted and browserBody[region]~=0 and (resetBody or owned or currentBody[region]~=nil) then
+                    local loaded,reason=pcall(avatar.applyBodyPart,region,0)
+                    if loaded then browserBody[region]=0;originalBody[region]=nil else loadErrors[#loadErrors+1]=region..": "..tostring(reason)end
                 end
             end
+            local scaled,scaleError=pcall(applyBrowserScales,value.definition.scales or {})
+            if not scaled then loadErrors[#loadErrors+1]="Body scale: "..tostring(scaleError)end
             local currentFace,desiredFace
             for _,item in ipairs(before.items)do if item.assetType==18 then currentFace=item.id end end
             for _,item in ipairs(value.items)do if item.assetType==18 then desiredFace=item.id end end

@@ -79,7 +79,7 @@ return function(player,onStatus,readAsset)
             if type(saved.body)=="string" then settings.body=saved.body end
             if type(saved.bodyParts)=="table" then
                 for region,value in pairs(saved.bodyParts) do
-                    if bodyRegions[region] and ((type(value)=="number" and value>0 and value%1==0 and value<9007199254740992)
+                    if bodyRegions[region] and ((type(value)=="number" and value>=0 and value%1==0 and value<9007199254740992)
                         or (type(value)=="string" and #value<=8192)) then settings.bodyParts[region]=value end
                 end
             end
@@ -695,7 +695,8 @@ return function(player,onStatus,readAsset)
         local cacheKey=tostring(ctx.humanoid.RigType)..":"..region..":"..text
         local cached=bodyPartTemplates[cacheKey]
         local id=cached and cached.id
-        if not isBundle and not cached then id=idFrom(value,"catalog") end
+        local isDefault=text=="0"
+        if not isBundle and not cached then id=isDefault and 0 or idFrom(value,"catalog") end
         if cached then
             -- Reuse only a successfully applied and validated source model.
         elseif isBundle then
@@ -718,7 +719,7 @@ return function(player,onStatus,readAsset)
             source:Destroy()
             assert(type(selected)=="number" and selected>0,"That bundle has no selected "..region..".")
             id=selected
-        else
+        elseif not isDefault then
             local service=game:GetService("MarketplaceService")
             local ok,info=pcall(function() return service:GetProductInfoAsync(id,Enum.InfoType.Asset) end)
             check(ctx)
@@ -748,7 +749,9 @@ return function(player,onStatus,readAsset)
         if isR6 then
             local applied,message=pcall(function()
                 capture(ctx)
-                if region=="Head" then
+                if isDefault then
+                    removeR6RegionMeshes(ctx,region)
+                elseif region=="Head" then
                     local source=template:FindFirstChild("Head")
                     local target=ctx.character:FindFirstChild("Head")
                     assert(source and source:IsA("BasePart") and target and target:IsA("BasePart"),"That package has no compatible R6 head.")

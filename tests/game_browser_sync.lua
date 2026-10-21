@@ -4,14 +4,19 @@ math.clamp=function(v,a,b)return math.max(a,math.min(b,v))end
 local body={HeadColor3=color(255,0,0),TorsoColor3=color(0,255,0),LeftArmColor3=color(0,0,255),RightArmColor3=color(255,255,0),LeftLegColor3=color(255,0,255),RightLegColor3=color(0,255,255)}
 local character={BodyColors=body,Head={Color=color(255,0,0)},UpperTorso={Color=color(0,255,0)}}
 function character:FindFirstChildOfClass(k)return k=="BodyColors" and body or k=="Humanoid" and self.humanoid end
+function character:GetDescendants()return {}end
 local desc={Shirt=101,Pants=202,Head=301,Face=302,Torso=303,LeftArm=304,RightArm=305,LeftLeg=306,RightLeg=307,GraphicTShirt=308,HeightScale=1,WidthScale=1,DepthScale=1,HeadScale=1,BodyTypeScale=0,ProportionScale=0}
 function desc:GetAccessories()return {{AssetId=11,Name="Original Hat"}} end
 for _,property in ipairs({"ClimbAnimation","FallAnimation","IdleAnimation","JumpAnimation","RunAnimation","SwimAnimation","WalkAnimation"})do desc[property]=0 end
 setmetatable(desc,{__index=function(_,property)error(property.." is not a valid member of HumanoidDescription")end})
 local humanoid={Health=100,RigType={Name="R15"}}
+local scales={BodyHeightScale={Value=1},BodyWidthScale={Value=1},BodyDepthScale={Value=1},HeadScale={Value=1},BodyTypeScale={Value=0},BodyProportionScale={Value=0}}
+for _,value in pairs(scales)do function value:IsA(class)return class=="NumberValue"end end
+function humanoid:FindFirstChild(name)return scales[name]end
 function humanoid:GetAppliedDescription()return desc end
 humanoid.Parent=character;character.humanoid=humanoid
 local player={UserId=7,Character=character}
+function player:FindFirstChildOfClass()return nil end
 local localHats={{key=1,id=12,name="Local Hat"}}
 local gearEntry=nil
 local settings={accessories={12},hideOriginals=false,colors={},bodyParts={},body="Blocky",face=302}
@@ -43,18 +48,22 @@ function http:JSONDecode(v)return v end
 local extraTypes={};local productCalls={}
 game={GetService=function(_,name)if name=="HttpService"then return http end;if name=="MarketplaceService"then return {GetProductInfo=function(_,id)productCalls[id]=(productCalls[id] or 0)+1;return {Name="Asset"..id,AssetTypeId=extraTypes[id] or ({[101]=11,[202]=12,[301]=17,[302]=18,[303]=27,[304]=29,[305]=28,[306]=30,[307]=31,[308]=2})[id] or 8}end}end end}
 Enum={InfoType={Asset={}},HumanoidRigType={R6={},R15={}}};Color3={fromRGB=function(r,g,b)return color(r,g,b)end};humanoid.RigType=Enum.HumanoidRigType.R15
-local posted;local command={version=1,userId="7",revision=1,definition={assets={},bodyColors={headColor="ff0000",torsoColor="00ff00",leftArmColor="0000ff",rightArmColor="ffff00",leftLegColor="ff00ff",rightLegColor="00ffff"},scales={},playerAvatarType={playerAvatarType="R15"}},items={{id=11,name="Original Hat",itemType="Asset",assetType=8},{id=13,name="New Hat",itemType="Asset",assetType=8},{id=101,name="Shirt",itemType="Asset",assetType=11}}}
+local posted;local command={version=1,userId="7",revision=1,definition={assets={},bodyColors={headColor="ff0000",torsoColor="00ff00",leftArmColor="0000ff",rightArmColor="ffff00",leftLegColor="ff00ff",rightLegColor="00ffff"},scales={height=1.2,width=0.8,depth=0.9,head=1.1,bodyType=0.7,proportion=0.4},playerAvatarType={playerAvatarType="R15"}},items={{id=11,name="Original Hat",itemType="Asset",assetType=8},{id=13,name="New Hat",itemType="Asset",assetType=8},{id=101,name="Shirt",itemType="Asset",assetType=11}}}
 function request(o)if o.Method=="GET" and o.Url:find("status")then return {StatusCode=200,Body={version=1,connected=true}}end;if o.Method=="GET"then return {StatusCode=200,Body=command}end;posted=o.Body;return {StatusCode=200,Body={}}end
-local jobs={};task={spawn=function(f)jobs[#jobs+1]=f end,wait=function()end}
+local jobs={};task={spawn=function(f)local i=1;while jobs[i]do i=i+1 end;jobs[i]=f end,wait=function()end,delay=function()end}
 local create=dofile("game_browser_sync.lua");local sync=create(player,function()return avatar end,function()return clothing end,function()return true end,function()end)
-sync.connect(string.rep("a",32));local snapshot=sync.publish();local hasGraphic=false;for _,a in ipairs(snapshot.definition.assets)do if a.id==308 then hasGraphic=true end end;assert(snapshot.definition.assets[1].id==12,"local hat is published");assert(hasGraphic,"graphic shirt is published")
+jobs={};sync.connect(string.rep("a",32));local snapshot=sync.publish();local hasGraphic=false;for _,a in ipairs(snapshot.definition.assets)do if a.id==308 then hasGraphic=true end end;assert(snapshot.definition.assets[1].id==12,"local hat is published");assert(hasGraphic,"graphic shirt is published")
 extraTypes[1900]=19;gearEntry={id=1900,name="Blaster"};snapshot=sync.publish();local hasGear=false;for _,item in ipairs(snapshot.items)do if item.id==1900 and item.assetType==19 then hasGear=true end end;assert(hasGear,"hub gear is published as asset type 19");gearEntry=nil
 task.wait=function()sync.disconnect()end
+settings.body=nil
 jobs[1]();assert(#localHats==1 and localHats[1].id==13,"new hat equips without reloading an unchanged unavailable original")
+assert(settings.bodyParts.LeftLeg==0 and settings.bodyParts.RightLeg==0,"missing browser leg assets replace custom local legs with default legs")
+assert(scales.BodyHeightScale.Value==1.2 and scales.BodyWidthScale.Value==0.8 and scales.BodyDepthScale.Value==0.9 and scales.HeadScale.Value==1.1 and scales.BodyTypeScale.Value==0.7 and scales.BodyProportionScale.Value==0.4,"browser avatar body scales are applied")
 assert((productCalls[13] or 0)==0,"browser hat metadata avoids a marketplace lookup while applying")
 local keptOriginal=false;for _,item in ipairs(posted.items)do if item.id==11 then keptOriginal=true end end;assert(keptOriginal,"unchanged original remains visible")
 for _,item in ipairs(posted.items)do assert(item.id~=12,"same sync cycle publishes the completed removal instead of the previous outfit")end
-command.revision=2;command.items={{id=13,name="New Hat",itemType="Asset",assetType=8}};jobs[1]=nil;task.wait=function()sync.disconnect()end;sync.connect(string.rep("a",32));jobs[1]();assert(#localHats==1 and localHats[1].id==13,"command removes an original hat without duplication")
+command.revision=2;command.definition.scales={};command.items={{id=13,name="New Hat",itemType="Asset",assetType=8}};jobs[1]=nil;task.wait=function()sync.disconnect()end;sync.connect(string.rep("a",32));jobs[1]();assert(#localHats==1 and localHats[1].id==13,"command removes an original hat without duplication")
+assert(scales.BodyHeightScale.Value==1 and scales.BodyWidthScale.Value==1 and scales.BodyDepthScale.Value==1 and scales.HeadScale.Value==1 and scales.BodyTypeScale.Value==0 and scales.BodyProportionScale.Value==0,"removed browser scales restore their original values")
 assert(clothes.Shirt==0 and clothes.Pants==0,"removed classic clothing stays removed")
 settings.body=nil;settings.bodyParts={Head="https://www.roblox.com/catalog/999/Test"};clothes.Shirt=nil
 local preserved=sync.connect(string.rep("a",32));local captured=sync.publish();local ids={};for _,asset in ipairs(captured.definition.assets)do ids[asset.id]=true end
@@ -168,7 +177,7 @@ bodyCalls={};faceCalls={};jobs={};task.wait=function()bodySync.disconnect()end;b
 local publishedFace;for _,item in ipairs(posted.items or {})do if item.assetType==18 then publishedFace=item.id end end;assert(publishedFace==404,"snapshot publishes the selected face")
 local beforeRemoval=#bodyCalls
 command.revision=21;command.items={{id=999,name="Head",itemType="Asset",assetType=17},{id=303,name="Torso",itemType="Asset",assetType=27},{id=305,name="RightArm",itemType="Asset",assetType=28},{id=304,name="LeftArm",itemType="Asset",assetType=29},{id=307,name="RightLeg",itemType="Asset",assetType=31}}
-jobs={};bodySync.connect(string.rep("a",32));jobs[1]();assert(#bodyCalls>beforeRemoval and bodyCalls[#bodyCalls][1]=="LeftLeg" and bodyCalls[#bodyCalls][2]=="restore","removed browser body part restores through avatar API");assert(faceCalls[#faceCalls][1]=="restore","removed browser face restores through avatar API")
+jobs={};bodySync.connect(string.rep("a",32));jobs[1]();assert(#bodyCalls>beforeRemoval and bodyCalls[#bodyCalls][1]=="LeftLeg" and bodyCalls[#bodyCalls][2]==0,"removed browser body part resets to default instead of restoring the local part");assert(faceCalls[#faceCalls][1]=="restore","removed browser face restores through avatar API")
 bodySync.destroy();print("Game browser body selections apply and restore selectively.")
 settings.bodyParts.LeftLeg=8888
 local restartedBodySync=create(player,function()return avatar end,function()return clothing end,function()return true end,function()end)
@@ -176,8 +185,8 @@ command.revision=25;command.items={};bodyCalls={};jobs={}
 task.wait=function()restartedBodySync.disconnect()end
 restartedBodySync.connect(string.rep("a",32));jobs[1]()
 assert(not settings.bodyParts.LeftLeg,"an outfit without a leg removes an override restored before this sync started")
-local restoredLeg=false;for _,entry in ipairs(bodyCalls)do if entry[1]=="LeftLeg" and entry[2]=="restore" then restoredLeg=true end end
-assert(restoredLeg,"persisted body override is restored instead of retained")
+local defaultLeg=false;for _,entry in ipairs(bodyCalls)do if entry[1]=="LeftLeg" and entry[2]==0 then defaultLeg=true end end
+assert(defaultLeg,"persisted body override is reset to the default instead of retained")
 restartedBodySync.destroy()
 
 
