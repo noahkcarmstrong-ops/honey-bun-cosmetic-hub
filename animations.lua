@@ -10,14 +10,15 @@ local function bundleId(value)
     assert(id and id>0 and id%1==0 and id<9007199254740992,"Paste a Roblox animation bundle link or bundle ID.")
     return id
 end
-return function(player,onStatus)
+return function(player,onStatus,managedRespawn)
     local gui=player:FindFirstChildOfClass("PlayerGui")
     local attribute="HoneyBunCosmeticAnimationBundle"
     local savedId=gui and gui:GetAttribute(attribute)
-    local savedAssets,savedComponents
+    local savedAssets,savedComponents,savedLabels,savedName
+    savedLabels={}
     if type(savedId)=="string" then
         local ok,value=pcall(function() return Http:JSONDecode(savedId) end)
-        if ok and type(value)=="table" then savedAssets=value.assets;savedId=value.bundleId end
+        if ok and type(value)=="table" then savedAssets=value.assets;savedId=value.bundleId;savedLabels=type(value.labels)=="table" and value.labels or {};savedName=value.name end
     end
     if type(savedId)~="number" or savedId<=0 or savedId%1~=0 or savedId>=9007199254740992 then savedId=nil end
     local function validAssetType(value) return assetStates[tonumber(value)] end
@@ -29,7 +30,7 @@ return function(player,onStatus)
             local id=tonumber(item.id);local assetType=tonumber(item.assetType)
             assert(id and id>0 and id%1==0 and id<9007199254740992 and validAssetType(assetType),
                 "Animation components need a valid catalog asset ID and supported assetType (48, 50-56).")
-            result[#result+1]={id=id,assetType=assetType}
+            result[#result+1]={id=id,assetType=assetType,name=type(item.name)=="string" and item.name:sub(1,128) or nil}
         end
         return result
     end
@@ -39,6 +40,11 @@ return function(player,onStatus)
     end
     local alive,generation=true,0
     local snapshot,cache=nil,{}
+    local avatarSnapshot,avatarAssets
+    if gui then
+        local ok,value=pcall(function()return Http:JSONDecode(gui:GetAttribute("HoneyBunCosmeticUI_avatarAnimations") or "null")end)
+        if ok and type(value)=="table" then local valid,items=pcall(normalizeAssets,value);if valid then avatarAssets=items end end
+    end
     local function context()
         assert(alive,"The cosmetic menu was closed.")
         local character=player.Character
@@ -78,7 +84,10 @@ return function(player,onStatus)
             for _,folder in pairs(previous.originals) do folder:Destroy() end
         end
     end
+    local componentCache,componentOrder={},{}
     local function extractAsset(id,default,ctx)
+        local key=tostring(id)..":"..default
+        if componentCache[key]then return componentCache[key]end
         local loaded,roots=pcall(function() return game:GetObjects("rbxassetid://"..string.format("%.0f",id)) end)
         local extracted={}
         if loaded and type(roots)=="table" then
@@ -98,6 +107,12 @@ return function(player,onStatus)
             for _,root in ipairs(roots) do root:Destroy() end
         end
         check(ctx);assert(next(extracted),"Roblox could not load the "..default.." animation component. Your current animations were kept.")
+        local assets={}
+        for _,entries in pairs(extracted)do for _,entry in ipairs(entries)do assets[#assets+1]=entry.id end end
+        game:GetService("ContentProvider"):PreloadAsync(assets)
+        check(ctx)
+        componentCache[key]=extracted;componentOrder[#componentOrder+1]=key
+        if #componentOrder>64 then componentCache[table.remove(componentOrder,1)]=nil end
         return extracted
     end
     local function groupsForAssets(items,ctx)
@@ -165,41 +180,183 @@ return function(player,onStatus)
         return #items
     end
     local api={}
+    local searches={}
+    local catalogTypes={idle="IdleAnimation",walk="WalkAnimation",run="RunAnimation",jump="JumpAnimation",fall="FallAnimation",climb="ClimbAnimation",swim="SwimAnimation"}
+    function api.searchChoices(kind,query,page,sort)
+        query=tostring(query or ""):match("^%s*(.-)%s*$"):sub(1,100)
+        page=tonumber(page) or 1
+        assert(page>=1 and page%1==0,"Choose a valid catalog page.")
+        sort=sort or "Relevance"
+        local sorts={Relevance=true,MostFavorited=true,Bestselling=true,RecentlyCreated=true,PriceLowToHigh=true,PriceHighToLow=true}
+        assert(sorts[sort],"Choose a valid catalog sort order.")
+        local key=kind..":"..query:lower()..":"..sort
+        local saved=searches[key]
+        if saved and page==1 and not saved.loading and os.clock()-saved.time>300 then saved=nil end
+        if not saved then saved={results={},time=os.clock(),loading=false,finished=false};searches[key]=saved end
+        while saved.loading do task.wait()end
+        if saved.results[page]then return saved.results[page],page<#saved.results or not saved.finished end
+        assert(page==#saved.results+1,"Return to the previous catalog page first.")
+        if saved.finished then return {},false end
+        saved.loading=true
+        local ok,result=pcall(function()
+            if not saved.cursor then
+                local params=CatalogSearchParams.new()
+                params.SearchKeyword=query;params.Limit=30;params.IncludeOffSale=true
+                params.SortType=Enum.CatalogSortType[sort]
+                if kind=="bundle" then params.BundleTypes={Enum.BundleType.Animations}
+                else assert(catalogTypes[kind],"Choose an animation type.");params.AssetTypes={Enum.AvatarAssetType[catalogTypes[kind]]}end
+                saved.cursor=game:GetService("AvatarEditorService"):SearchCatalogAsync(params)
+            else saved.cursor:AdvanceToNextPageAsync()end
+            local items,seen={},{}
+            for _,item in ipairs(saved.cursor:GetCurrentPage())do
+                local id=tonumber(item.Id)
+                if id and not seen[id]then
+                    seen[id]=true;items[#items+1]={id=id,name=tostring(item.Name or "Roblox item"),itemType=kind=="bundle" and "Bundle" or "Asset"}
+                end
+            end
+            saved.finished=saved.cursor.IsFinished
+            saved.results[page]=items
+            return items
+        end)
+        saved.loading=false
+        if not ok then error(result,0)end
+        return result,not saved.finished
+    end
+    function api.setAvatarAssets(items)
+        local normalized=normalizeAssets(items)
+        local same=avatarAssets and #avatarAssets==#normalized
+        if same then
+            local ids={};for _,item in ipairs(avatarAssets)do ids[item.assetType]=item.id end
+            for _,item in ipairs(normalized)do if ids[item.assetType]~=item.id then same=false;break end end
+        end
+        if same and not savedId and not savedAssets then return false end
+        local groups=#normalized>0 and groupsForAssets(normalized,context()) or nil
+        restoreCurrent()
+        snapshot=avatarSnapshot;avatarSnapshot=nil;restoreCurrent()
+        if groups then applyGroups(groups);avatarSnapshot=snapshot;snapshot=nil end
+        avatarAssets=normalized;savedId=nil;savedAssets=nil;savedComponents=nil;savedLabels={};savedName=nil
+        if gui then gui:SetAttribute(attribute,nil);gui:SetAttribute("HoneyBunCosmeticUI_avatarAnimations",Http:JSONEncode(normalized)) end
+        return true
+    end
     function api.equipBundle(value)
         local id=bundleId(value)
         local name=apply(id)
-        savedId=id;savedAssets=nil;savedComponents=cache[id] and cache[id].assets;if gui then gui:SetAttribute(attribute,id) end
+        savedId=id;savedAssets=nil;savedComponents=cache[id] and cache[id].assets;savedName=name
+        savedLabels={}
+        for _,item in ipairs(savedComponents or {}) do savedLabels[assetStates[item.assetType]]=name end
+        if gui then gui:SetAttribute(attribute,Http:JSONEncode({bundleId=id,labels=savedLabels,name=name})) end
         return "Equipped "..name..". Walk or run to try it."
     end
     function api.equipAssets(items)
         local normalized=normalizeAssets(items)
         local count=applyAssets(normalized)
         savedId=nil;savedAssets=normalized;savedComponents=normalized
-        if gui then gui:SetAttribute(attribute,Http:JSONEncode({assets=normalized})) end
+        savedLabels={};savedName=nil
+        for _,item in ipairs(normalized) do
+            if item.name then savedLabels[assetStates[item.assetType]]=item.name:gsub("[ -]+[Aa]nimation$",""):gsub("[ -]+[Ii]dle$",""):gsub("[ -]+[Ww]alk$",""):gsub("[ -]+[Rr]un$",""):gsub("[ -]+[Jj]ump$",""):gsub("[ -]+[Ff]all$",""):gsub("[ -]+[Cc]limb$",""):gsub("[ -]+[Ss]wim$","") end
+        end
+        if gui then gui:SetAttribute(attribute,Http:JSONEncode({assets=normalized,labels=savedLabels})) end
         return "Equipped "..count.." animation component"..(count==1 and "" or "s")..". Walk or run to try it."
     end
     function api.restore()
-        restoreCurrent();savedId=nil;savedAssets=nil;savedComponents=nil;if gui then gui:SetAttribute(attribute,nil) end
+        restoreCurrent();savedId=nil;savedAssets=nil;savedComponents=nil;savedLabels={};savedName=nil;if gui then gui:SetAttribute(attribute,nil) end
         return "Original movement animations restored."
     end
+    function api.prepareSaved()
+        if not savedId and not savedAssets and (not avatarAssets or #avatarAssets==0)then return end
+        local ctx=context()
+        if avatarAssets and #avatarAssets>0 then groupsForAssets(avatarAssets,ctx)end
+        if savedAssets then groupsForAssets(savedAssets,ctx)end
+        if savedId then loadBundle(savedId,ctx)end
+        check(ctx)
+    end
     function api.reapplySaved()
+        if avatarAssets and not avatarSnapshot then
+            local base=avatarAssets
+            local overrideId,overrideAssets,overrideComponents,overrideLabels,overrideName=savedId,savedAssets,savedComponents,savedLabels,savedName
+            avatarAssets=nil;api.setAvatarAssets(base)
+            savedId,savedAssets,savedComponents,savedLabels,savedName=overrideId,overrideAssets,overrideComponents,overrideLabels,overrideName
+            if gui then
+                if savedId then gui:SetAttribute(attribute,Http:JSONEncode({bundleId=savedId,labels=savedLabels,name=savedName}))
+                elseif savedAssets then gui:SetAttribute(attribute,Http:JSONEncode({assets=savedAssets,labels=savedLabels})) end
+            end
+        end
         if savedAssets then return "Restored "..applyAssets(savedAssets).." animation components." end
-        if savedId then return "Restored "..apply(savedId).."." end
+        if savedId then
+            local name=apply(savedId)
+            savedComponents=cache[savedId] and cache[savedId].assets
+            savedName=name
+            for _,item in ipairs(savedComponents or {}) do savedLabels[assetStates[item.assetType]]=name end
+            return "Restored "..name.."."
+        end
         return "No movement animation bundle selected."
     end
     function api.getSettings()
-        local source=savedAssets or savedComponents
-        local assets
-        if source then assets={};for i,item in ipairs(source) do assets[i]={id=item.id,assetType=item.assetType} end end
-        return {bundleId=savedId,assets=assets}
+        local merged,labels={},{}
+        for _,item in ipairs(avatarAssets or {})do
+            merged[item.assetType]=item
+            if item.name then labels[assetStates[item.assetType]]=item.name:gsub("[ -]+[Aa]nimation$",""):gsub("[ -]+[Ii]dle$",""):gsub("[ -]+[Ww]alk$",""):gsub("[ -]+[Rr]un$",""):gsub("[ -]+[Jj]ump$",""):gsub("[ -]+[Ff]all$",""):gsub("[ -]+[Cc]limb$",""):gsub("[ -]+[Ss]wim$","") end
+        end
+        for _,item in ipairs(savedAssets or savedComponents or {})do merged[item.assetType]=item end
+        for key,value in pairs(savedLabels)do labels[key]=value end
+        local assets={};for _,item in pairs(merged)do assets[#assets+1]={id=item.id,assetType=item.assetType}end
+        local common
+        for _,item in ipairs(assets)do
+            local label=labels[assetStates[item.assetType]]
+            if not label then common=false;break end
+            if common==nil then common=label elseif common~=label then common=false;break end
+        end
+        return {bundleId=savedId,assets=assets,labels=labels,name=savedName or common or nil}
+    end
+    local function typeAssets()
+        if savedAssets or savedComponents then return savedAssets or savedComponents end
+        if savedId then local ctx=context();savedComponents=loadBundle(savedId,ctx).assets;return savedComponents end
+        return {}
+    end
+    local function replaceType(state,item,label)
+        assert(states[state],"Choose a supported animation type.")
+        local nextAssets={}
+        for _,previous in ipairs(typeAssets()) do if assetStates[previous.assetType]~=state then nextAssets[#nextAssets+1]=previous end end
+        if item then nextAssets[#nextAssets+1]=item end
+        if #nextAssets>0 then applyAssets(nextAssets) else restoreCurrent() end
+        savedAssets=#nextAssets>0 and nextAssets or nil;savedComponents=savedAssets;savedId=nil;savedName=nil;savedLabels[state]=label
+        if gui then gui:SetAttribute(attribute,savedAssets and Http:JSONEncode({assets=savedAssets,labels=savedLabels}) or nil) end
+        return "Animation updated."
+    end
+    function api.equipTypeFromBundle(state,value,label)
+        local ctx=context();local bundle=loadBundle(bundleId(value),ctx);check(ctx)
+        for _,item in ipairs(bundle.assets) do
+            if assetStates[item.assetType]==state then return replaceType(state,item,label or bundle.name) end
+        end
+        error("This bundle has no "..tostring(state).." animation.")
+    end
+    function api.equipType(state,value)
+        local id=tonumber(tostring(value):match("^%s*(%d+)%s*$") or tostring(value):match("/catalog/(%d+)"))
+        assert(id and id>0 and id%1==0 and id<9007199254740992,"Paste an animation catalog link or ID.")
+        local ctx=context()
+        local info=game:GetService("MarketplaceService"):GetProductInfo(id)
+        check(ctx)
+        local assetType=tonumber(info.AssetTypeId)
+        assert(assetStates[assetType]==state,"Choose a "..state.." animation catalog item.")
+        local label=tostring(info.Name or "Custom"):gsub("[ -]+[Ii]dle$",""):gsub("[ -]+[Ww]alk$",""):gsub("[ -]+[Rr]un$",""):gsub("[ -]+[Jj]ump$",""):gsub("[ -]+[Ff]all$",""):gsub("[ -]+[Cc]limb$",""):gsub("[ -]+[Ss]wim$","")
+        return replaceType(state,{id=id,assetType=assetType},label)
+    end
+    function api.restoreType(state) return replaceType(state,nil,nil) end
+    function api.getPreviewIds(state)
+        local character=player.Character;local animate=character and character:FindFirstChild("Animate")
+        local folder=animate and animate:FindFirstChild(state)
+        local ids={}
+        if folder then for _,item in ipairs(folder:GetDescendants()) do if item:IsA("Animation") and item.AnimationId~="" then ids[#ids+1]=item.AnimationId end end end
+        return ids
     end
     local changed=player.CharacterAdded:Connect(function(character)
         generation=generation+1;local ticket=generation
         restoreCurrent()
-        if not savedId and not savedAssets then return end
+        snapshot=avatarSnapshot;avatarSnapshot=nil;restoreCurrent()
+        if managedRespawn or (not savedId and not savedAssets and not avatarAssets) then return end
         task.spawn(function()
             for attempt=1,100 do
-                if not alive or generation~=ticket or player.Character~=character or (not savedId and not savedAssets) then return end
+                if not alive or generation~=ticket or player.Character~=character or (not savedId and not savedAssets and not avatarAssets) then return end
                 local ready=pcall(context)
                 local ok,appearance=pcall(function() return player:HasAppearanceLoaded() end)
                 if ready and ((ok and appearance) or attempt>=50) then
@@ -215,6 +372,7 @@ return function(player,onStatus)
     function api.destroy()
         if not alive then return end
         alive=false;generation=generation+1;changed:Disconnect();pcall(restoreCurrent)
+        snapshot=avatarSnapshot;avatarSnapshot=nil;pcall(restoreCurrent)
     end
     return api
 end

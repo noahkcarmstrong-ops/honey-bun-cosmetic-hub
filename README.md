@@ -2,7 +2,7 @@
   <img src="assets/larpblox-logo.png" alt="Larpblox" width="520">
 </p>
 
-<p align="center">best way to larp.</p>
+<p align="center">be who you never will.</p>
 
 ![Without Larpblox and with Larpblox comparison](assets/larpblox-before-after.png)
 
@@ -14,7 +14,7 @@
 - Share supported appearances with Larpblox users in the same live server.
 
 > [!NOTE]
-> Appearance changes affect your local client. Both players must enable **Connection → Share Larp appearance** to see each other's shared looks. A custom Larp name is optional.
+> Appearance changes affect your local client. Enable **Share appearance** on the browser's Avatar page to share supported looks with other Larpblox users in the same server. Both players must enable sharing. A custom Larp name is optional.
 
 <details>
 <summary>Murder Mystery 2</summary>
@@ -26,6 +26,8 @@ Local inventory, weapon, and effect previews. They do not grant ownership. See t
 ## Load
 
 Run in a compatible Roblox client executor:
+
+The interface uses [Prism](https://github.com/3xjn/prism) with Larpblox's classic styling. The executor needs local file and asset support (`writefile` and `getcustomasset` or `getsynasset`).
 
 ```lua
 local branch = "main"

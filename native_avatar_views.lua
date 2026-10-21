@@ -1,4 +1,4 @@
--- Adds the local player's live appearance to Roblox's own player-list thumbnails.
+-- Shows the saved Larp appearance in Roblox's native avatar thumbnails.
 -- Restores native images when its local preview is disabled.
 local function read(object, key)
     local ok, value = pcall(function() return object and object[key] end)
@@ -185,7 +185,7 @@ local function authoredTransparency(image)
     return current
 end
 
-function M.create(player, getPreviews)
+function M.create(player, getPreviews, describeSnapshot)
     assert(player, "player is required"); assert(type(getPreviews) == "function", "getPreviews is required")
     local ownerKey=tostring(read(player,"UserId"))
     local previousOwner=rendererOwners[ownerKey]
@@ -196,7 +196,10 @@ function M.create(player, getPreviews)
     local pending = {}
     local directImages={}
     local ownedOverlays={}
+    local failedImages={}
     local stagingFolder
+    local outfitSnapshot,previewBuild,previewKey
+    local ensurePreview
     local imageCandidates=setmetatable({}, {__mode="k"})
     local indexed=false
     local coreGui, playerGui, roots, available
@@ -254,8 +257,11 @@ function M.create(player, getPreviews)
         LeftUpperArm=true,LeftLowerArm=true,LeftHand=true,RightUpperArm=true,RightLowerArm=true,RightHand=true,
         LeftUpperLeg=true,LeftLowerLeg=true,LeftFoot=true,RightUpperLeg=true,RightLowerLeg=true,RightFoot=true}
     local function fullPortrait(image)
-        local source=tostring(read(image,"Image") or ""):lower()
-        return source:find("type=avatar&",1,true) or source:find("/thumbs/avatar.ashx",1,true)
+        local source=tostring(nativeImageSources[image] or read(image,"Image") or ""):lower()
+        -- Asset/CDN URLs often omit the thumbnail type. Only explicit head/bust
+        -- slots need a different crop; full-body PNGs keep their native image slot.
+        return not (source:find("avatarheadshot",1,true) or source:find("avatarbust",1,true)
+            or source:find("bust-thumbnail",1,true) or tostring(read(image,"Name") or ""):lower()=="headshot")
     end
     local function posePortrait(frame,image)
         if not fullPortrait(image) then return end
@@ -299,6 +305,16 @@ function M.create(player, getPreviews)
     end
     local function matchPortraitMask(image,overlay)
         local native=image:FindFirstChildOfClass("UICorner")
+        -- Native thumbnails may put their mask on a same-sized wrapper.
+        local ancestor=image.Parent
+        for _=1,3 do
+            if native or not ancestor or not ancestor:IsA("GuiObject") then break end
+            local size=ancestor.AbsoluteSize
+            local imageSize=image.AbsoluteSize
+            if math.abs(size.X-imageSize.X)>1 or math.abs(size.Y-imageSize.Y)>1 then break end
+            native=ancestor:FindFirstChildOfClass("UICorner")
+            ancestor=ancestor.Parent
+        end
         local corner=overlay:FindFirstChildOfClass("UICorner")
         if native then
             if not corner then corner=Instance.new("UICorner");corner.Parent=overlay end
@@ -308,25 +324,33 @@ function M.create(player, getPreviews)
     local function updateGeometry(image)
         for _,overlay in pairs({overlays[image],pending[image] and pending[image].overlay}) do
             matchPortraitMask(image,overlay)
-            if overlay:IsA("ViewportFrame") then frameCamera(overlay,image) end
+            local viewport=overlay:IsA("ViewportFrame") and overlay or overlay:FindFirstChild("Viewport")
+            if viewport then frameCamera(viewport,image) end
         end
     end
     local function makeOverlay(image, imageSource)
-        local class = imageSource and "ImageLabel" or "ViewportFrame"
+        local class = imageSource and "ImageLabel" or "CanvasGroup"
         local overlay = Instance.new(class)
         ownedOverlays[overlay]=true
         overlay.Destroying:Connect(function() ownedOverlays[overlay]=nil end)
         overlay.Name = "LarpbloxOwnAvatarPreview"
         overlay.Position = UDim2.fromScale(0, 0); overlay.Size = UDim2.fromScale(1, 1)
         overlay.BackgroundTransparency = 1; overlay.BorderSizePixel = 0
+        overlay.ClipsDescendants = true
         overlay.Visible = false
         overlay.ZIndex = read(image, "ZIndex") or 1; overlay.Parent = image
         if imageSource then overlay.Image = imageSource;overlay.ScaleType=read(image,"ScaleType") or Enum.ScaleType.Fit end
+        if not imageSource then
+            local viewport=Instance.new("ViewportFrame")
+            viewport.Name="Viewport";viewport.Size=UDim2.fromScale(1,1)
+            viewport.BackgroundTransparency=1;viewport.BorderSizePixel=0
+            viewport.ZIndex=overlay.ZIndex;viewport.Parent=overlay
+        end
         return overlay
     end
     local render
     render=function(image)
-        if not previewSnapshot and not currentImage then return end
+        if not previewSnapshot and not currentImage then ensurePreview();return end
         if directImages[image] and overlayKeys[image]==effectiveKey then return end
         local existing=overlays[image]
         if existing and read(existing,"Parent")~=image then
@@ -341,7 +365,8 @@ function M.create(player, getPreviews)
         end
         -- Native full-body slots use the Roblox-rendered PNG. Headshots need
         -- a distinct crop/render, so never squeeze a full-body image into them.
-        local imageSource, snapshot = fullPortrait(image) and currentImage or nil, previewSnapshot
+        local imageSource, snapshot = fullPortrait(image) and currentImage and not failedImages[currentImage] and currentImage or nil, previewSnapshot
+        if not imageSource and (not snapshot or previewKey~=signature(outfitSnapshot)) then ensurePreview();return end
         local overlay = makeOverlay(image, imageSource)
         if imageSource then
             -- Keep preload images outside the styled native GUI. Image children
@@ -399,6 +424,11 @@ function M.create(player, getPreviews)
                 local source=nativeImageSources[image];nativeImageSources[image]=nil
                 if source then image.Image=source end
             end
+            -- Roblox can clone/reuse a thumbnail carrying an old preview child.
+            -- Such copies are outside our ownership tables and must not stack.
+            for _,child in ipairs(image:GetChildren())do
+                if child~=overlay and child~=previous and child.Name=="LarpbloxOwnAvatarPreview" and not ownedOverlays[child] then child:Destroy()end
+            end
             overlays[image]=overlay;overlayKeys[image]=staged.key
             -- Claim the mask before exposing the new portrait. Visibility
             -- listeners must never observe both the fallback and replacement.
@@ -412,15 +442,31 @@ function M.create(player, getPreviews)
                 if overlay.IsLoaded then commit() end
             end)
             if overlay.IsLoaded then commit() end
+            task.spawn(function()
+                local loaded=false
+                local ok=pcall(function()
+                    game:GetService("ContentProvider"):PreloadAsync({overlay},function(_,result)
+                        if result==Enum.AssetFetchStatus.Success then loaded=true end
+                    end)
+                end)
+                if pending[image]~=staged then return end
+                if ok and (loaded or overlay.IsLoaded)then commit()
+                else
+                    failedImages[imageSource]=true
+                    discard()
+                    if alive and enabled then render(image)end
+                end
+            end)
             return
         end
         local ok, previews = pcall(getPreviews)
         if not ok or not previews or type(previews.show) ~= "function" then status = "Preview renderer unavailable.";discard();return end
-        local shown, result = pcall(function() return previews.show(overlay, snapshot) end)
+        local viewport=overlay:FindFirstChild("Viewport") or overlay
+        local shown, result = pcall(function() return previews.show(viewport, snapshot) end)
         if shown and result ~= false and pending[image]==staged then
             matchPortraitMask(image,overlay)
-            posePortrait(overlay,image)
-            frameCamera(overlay,image)
+            posePortrait(viewport,image)
+            frameCamera(viewport,image)
             commit()
         else discard() end
     end
@@ -563,15 +609,38 @@ function M.create(player, getPreviews)
         end
     end
 
+    ensurePreview=function()
+        if not alive or not enabled or not outfitSnapshot or type(describeSnapshot)~="function" then return end
+        local key=signature(outfitSnapshot)
+        if previewKey==key or (previewBuild and previewBuild.key==key)then return end
+        local ticket={key=key};previewBuild=ticket
+        local selected=outfitSnapshot
+        task.spawn(function()
+            local desc
+            local ok,captured=pcall(function()
+                desc=describeSnapshot(selected)
+                local rig=selected.definition.playerAvatarType
+                local rigType=rig and rig.playerAvatarType=="R6" and Enum.HumanoidRigType.R6 or Enum.HumanoidRigType.R15
+                return getPreviews().captureDescription(desc,rigType)
+            end)
+            if desc then desc:Destroy()end
+            if previewBuild~=ticket then return end
+            previewBuild=nil
+            if not alive or not enabled or signature(outfitSnapshot)~=key then return end
+            if not ok then status="Waiting for the saved avatar preview.";return end
+            previewSnapshot=captured;previewKey=key
+            scan()
+        end)
+    end
     local api = {}
     function api.update(options)
         if not alive then return api.report() end
         options = options or {}; local wasEnabled=enabled; local previousName=currentName
         enabled = options.enabled == true; currentName = tostring(options.name or "")
         currentImage = type(options.image)=="string" and options.image~="" and options.image or nil
-        local character = read(player, "Character")
         local effectiveSnapshot = options.snapshot
-        local nextKey = signature(effectiveSnapshot) .. "|" .. tostring(character) .. "|" .. tostring(currentImage or "")
+        outfitSnapshot=effectiveSnapshot
+        local nextKey = signature(effectiveSnapshot) .. "|" .. tostring(currentImage or "")
         if enabled and wasEnabled and previousName==currentName and nextKey==effectiveKey and (currentImage or previewSnapshot) then return api.report() end
         if enabled and not indexed then
             local preflight = {}
@@ -581,27 +650,12 @@ function M.create(player, getPreviews)
             for _, object in ipairs(preflight) do watch(object); watchPeopleText(object) end
             indexed=true
         end
-        if enabled and effectiveSnapshot ~= nil and (nextKey ~= effectiveKey or previewSnapshot == nil) then
-            local captured
-            local okPreview, previews = pcall(getPreviews)
-            if okPreview and previews and type(previews.capture) == "function" then
-                local capturedOk, result = pcall(previews.capture)
-                if capturedOk then captured = result end
-            end
-            -- Transitional captures must not replace the last working portrait.
-            local visiblePart=false
-            for _,record in ipairs(captured and captured.records or {}) do
-                if record.size and (tonumber(record.transparency) or 0)<1 then visiblePart=true;break end
-            end
-            if not visiblePart then status="Waiting for a complete avatar preview.";return api.report() end
-            previewSnapshot=captured
-        end
         if enabled and effectiveSnapshot == nil and not currentImage then
             status="Waiting for avatar data.";return api.report()
         end
         effectiveKey = nextKey
         if not enabled then
-            previewSnapshot = nil
+            previewSnapshot = nil;previewKey=nil;previewBuild=nil
             for image in pairs(directImages) do destroyOverlay(image) end
             for image in pairs(overlays) do destroyOverlay(image) end
             for image in pairs(pending) do destroyOverlay(image) end
@@ -613,7 +667,7 @@ function M.create(player, getPreviews)
     function api.report() return status .. " Scans: " .. tostring(scanCount) .. "; rendered: " .. tostring(renderedCount) .. "." end
     function api.destroy()
         if not alive then return end
-        alive = false
+        alive = false;previewBuild=nil
         if rendererOwners[ownerKey]==api then rendererOwners[ownerKey]=nil end
         for _, connection in pairs(connections) do pcall(function() connection:Disconnect() end) end
         for _,group in ipairs({transparencyConnections,textConnections})do

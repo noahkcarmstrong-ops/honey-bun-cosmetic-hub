@@ -1,5 +1,5 @@
 -- Client-only skybox customizer. The caller supplies the local game object.
-return function(game)
+return function(game,schema)
     local lighting = game:GetService("Lighting")
     local originals = {}
     local custom
@@ -79,6 +79,7 @@ return function(game)
     end
 
     local api = {}
+    local advancedEnforce,advancedRestore
 
     local function stopOverride()
         if skyAdded then skyAdded:Disconnect();skyAdded=nil end
@@ -125,6 +126,7 @@ return function(game)
     end
     local function enforceSky()
         if destroyed then return end
+        if advancedEnforce then advancedEnforce()end
         if environmentSettings then enforceEnvironment() end
         if custom then
             if not environmentSettings and daylight and lighting.ClockTime~=14 then lighting.ClockTime=14 end
@@ -332,10 +334,171 @@ return function(game)
         return table.concat(lines,"\n")
     end
 
+    -- Only properties edited by this editor are overridden. Game values are captured lazily.
+    local edits,lightingOriginals,effectOriginals,effects={},{},{},{}
+    local byId={}
+    for _,group in ipairs(schema or {})do byId[group.id]=group end
+    local function encode(value)return typeof(value)=="Color3" and ("#"..value:ToHex()) or value end
+    local function decode(value,field)
+        if field.type=="color"then
+            local hex=type(value)=="string" and value:match("^#?(%x%x%x%x%x%x)$")
+            assert(hex,"Enter a six-digit hex color.")
+            return Color3.fromRGB(tonumber(hex:sub(1,2),16),tonumber(hex:sub(3,4),16),tonumber(hex:sub(5,6),16))
+        elseif field.type=="number"then
+            value=tonumber(value);assert(finite(value)and value>=field.min and value<=field.max,"Enter a value between "..field.min.." and "..field.max..".")
+            return value
+        elseif field.type=="boolean"then assert(type(value)=="boolean","Choose On or Off.");return value
+        else
+            assert(type(value)=="string"and #value<512,"Enter an image asset ID.")
+            if value==""then return value end
+            local asset=value:match("^%d+$")or value:match("^rbxassetid://(%d+)$")or value:match("[?&]id=(%d+)")or value:match("/catalog/(%d+)")
+            assert(asset,"Enter a Roblox image ID.");return "rbxassetid://"..asset
+        end
+    end
+    local function effect(group)
+        if effects[group.id]then return effects[group.id]end
+        local originalsForGroup={}
+        for _,child in ipairs(lighting:GetChildren())do if child:IsA(group.target)then originalsForGroup[#originalsForGroup+1]=child end end
+        local object=originalsForGroup[1]and originalsForGroup[1]:Clone()or Instance.new(group.target)
+        object.Name="LarpbloxLighting_"..group.id
+        for _,child in ipairs(object:GetChildren())do child:Destroy()end
+        for _,child in ipairs(originalsForGroup)do child.Parent=nil end
+        effectOriginals[group.id]=originalsForGroup;effects[group.id]=object;object.Parent=lighting
+        return object
+    end
+    local function editableSky()
+        if custom then return custom end
+        local current=lighting:FindFirstChildOfClass("Sky")
+        snapshotClock();originals={}
+        for _,child in ipairs(lighting:GetChildren())do if child:IsA("Sky")then originals[#originals+1]={object=child,parent=lighting}end end
+        custom=current and current:Clone()or Instance.new("Sky")
+        for _,child in ipairs(custom:GetChildren())do child:Destroy()end
+        for _,entry in ipairs(originals)do entry.object.Parent=nil end
+        if blueprint then blueprint:Destroy()end
+        blueprint=custom:Clone();custom.Parent=lighting;appliedId="";daylight=false
+        return custom
+    end
+    local defaults={}
+    function api.values()
+        local result={}
+        for _,group in ipairs(schema or {})do
+            local object=group.target=="Lighting"and lighting or group.target=="Sky"and(custom or lighting:FindFirstChildOfClass("Sky"))or effects[group.id]or lighting:FindFirstChildOfClass(group.target)
+            if not object and defaults[group.id]then result[group.id]=table.clone(defaults[group.id]);continue end
+            local temporary
+            if not object then temporary=Instance.new(group.target);object=temporary end
+            local values={}
+            for _,field in ipairs(group.fields)do
+                if group.target=="Atmosphere"and field.key=="Enabled"then values.Enabled=object.Parent==lighting
+                else local ok,value=pcall(function()return object[field.key]end);if ok then values[field.key]=encode(value)end end
+            end
+            if temporary then if values.Enabled~=nil then values.Enabled=false end;defaults[group.id]=table.clone(values);temporary:Destroy()end
+            result[group.id]=values
+        end
+        return result
+    end
+    function api.update(groupId,key,value)
+        assert(not destroyed,"Lighting editor was closed.")
+        local group=byId[groupId];assert(group,"Unknown lighting section.")
+        local field;for _,candidate in ipairs(group.fields)do if candidate.key==key then field=candidate;break end end
+        assert(field,"Unknown lighting property.");local decoded=decode(value,field)
+        -- Migrate old preset overrides before accepting direct property controls.
+        if environmentSettings then
+            local inherited={ClockTime=lighting.ClockTime,FogStart=lighting.FogStart,FogEnd=lighting.FogEnd,FogColor=lighting.FogColor}
+            local inheritedTint=tint and tint.TintColor
+            api.restoreEnvironment()
+            api.update("light","ClockTime",inherited.ClockTime)
+            for _,property in ipairs({"FogStart","FogEnd","FogColor"})do api.update("fog",property,encode(inherited[property]))end
+            if inheritedTint then api.update("correction","TintColor",encode(inheritedTint));api.update("correction","Enabled",true)end
+        end
+        daylight=false
+        local object=group.target=="Lighting"and lighting or group.target=="Sky"and editableSky()or effect(group)
+        if group.target=="Lighting"and lightingOriginals[key]==nil then lightingOriginals[key]=object[key]end
+        if group.target=="Atmosphere"and key=="Enabled"then object.Parent=decoded and lighting or nil
+        else object[key]=decoded end
+        edits[groupId]=edits[groupId]or {};edits[groupId][key]=encode(decoded)
+        if group.target=="Sky"then if blueprint then blueprint:Destroy()end;blueprint=custom:Clone()end
+        startOverride()
+        return api.values()
+    end
+    advancedEnforce=function()
+        for groupId,values in pairs(edits)do
+            local group=byId[groupId]
+            local object=group.target=="Lighting"and lighting or group.target=="Sky"and custom or effects[groupId]
+            if object then
+                if group.target~="Lighting"and group.target~="Sky"then
+                    local enabled=group.target~="Atmosphere"or values.Enabled~=false
+                    object.Parent=enabled and lighting or nil
+                    for _,child in ipairs(lighting:GetChildren())do
+                        if child~=object and child:IsA(group.target)then
+                            local found=false;for _,old in ipairs(effectOriginals[groupId]or {})do if old==child then found=true end end
+                            if not found then table.insert(effectOriginals[groupId],child)end
+                            child.Parent=nil
+                        end
+                    end
+                end
+                for _,field in ipairs(group.fields)do
+                    local value=values[field.key]
+                    if value~=nil and not(group.target=="Atmosphere"and field.key=="Enabled")then
+                        local wanted=decode(value,field);if object[field.key]~=wanted then object[field.key]=wanted end
+                    end
+                end
+            end
+        end
+    end
+    advancedRestore=function()
+        edits={}
+        for key,value in pairs(lightingOriginals)do pcall(function()lighting[key]=value end)end
+        lightingOriginals={}
+        for _,object in pairs(effects)do object:Destroy()end
+        effects={}
+        for _,entries in pairs(effectOriginals)do for _,object in ipairs(entries)do pcall(function()object.Parent=lighting end)end end
+        effectOriginals={}
+    end
+    function api.configuration()return {version=2,asset=api.currentAsset()or "",daylight=false,properties=game:GetService("HttpService"):JSONDecode(game:GetService("HttpService"):JSONEncode(edits))}end
+    function api.gameSkyImage()
+        local sky
+        if custom then sky=originals[1]and originals[1].object else sky=lighting:FindFirstChildOfClass("Sky")end
+        if sky then return sky.SkyboxFt end
+        local default=Instance.new("Sky");local image=default.SkyboxFt;default:Destroy()
+        return image
+    end
+    function api.setSky(value)
+        local previous=edits.sky
+        edits.sky=nil
+        daylight=false
+        if value==""then
+            api.restore()
+        else
+            local ok,message=api.apply(value)
+            if not ok then edits.sky=previous;error(message,0)end
+        end
+        if next(edits)then startOverride()end
+        return api.values()
+    end
+    function api.loadConfiguration(value)
+        assert(type(value)=="table"and value.version==2 and type(value.properties)=="table","Invalid lighting preset.")
+        assert(type(value.asset)=="string"and #value.asset<=512 and(value.asset==""or id(value.asset)),"Invalid skybox asset.")
+        -- Validate the whole preset before changing anything.
+        for groupId,values in pairs(value.properties)do
+            local group=byId[groupId];assert(group and type(values)=="table","Invalid lighting section.")
+            for key,item in pairs(values)do local known;for _,field in ipairs(group.fields)do if field.key==key then decode(item,field);known=true;break end end;assert(known,"Invalid lighting property.")end
+        end
+        api.resetLighting()
+        api.setDaylight(false)
+        if value.asset and value.asset~=""then local ok,message=api.apply(value.asset);assert(ok,message)end
+        for groupId,values in pairs(value.properties)do for key,item in pairs(values)do api.update(groupId,key,item)end end
+        return api.values()
+    end
+    function api.resetLighting()
+        api.restoreEnvironment();api.restore();advancedRestore();stopOverride()
+        return api.values()
+    end
+
     function api.destroy()
         if destroyed then return end
         api.restore()
         if environmentSettings then api.restoreEnvironment() end
+        if advancedRestore then advancedRestore()end
         destroyed = true
     end
 
