@@ -687,16 +687,23 @@ gameBrowserSync=function()
     local source=readSource("game_browser_sync.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Game browser sync failed to load.")
+    local lookup
+    local function accountAvatar(target)
+        if not lookup then
+            local factory,reason=loadstring(readSource("avatar_lookup.lua",moduleRevision));assert(factory,reason)
+            lookup=factory()(Players)
+        end
+        return lookup(target,Players.LocalPlayer.UserId)
+    end
     gameBrowserSyncAPI=select(1,create(Players.LocalPlayer,function()return api()end,function()return clothes()end,function()return alive end,function(message)
         if alive then trace("Browser: "..message);statusText=message;if view then view.setStatus(message) end end
     end,function()return animations()end,function()return names end,nativeViews,{
         isReady=function()return startupComplete end,
-        lookupAvatar=function(target)
-            if not gameBrowserSyncAPI.lookupAvatar then
-                local factory,reason=loadstring(readSource("avatar_lookup.lua",moduleRevision));assert(factory,reason)
-                gameBrowserSyncAPI.lookupAvatar=factory()(Players)
-            end
-            return gameBrowserSyncAPI.lookupAvatar(target,Players.LocalPlayer.UserId)
+        lookupAvatar=accountAvatar,
+        clientRequest=function(method,params)
+            assert(method=="avatar.lookup","Unsupported client request.")
+            local target=tonumber(params.targetUserId)
+            return {targetUserId=tostring(params.targetUserId),snapshot=accountAvatar(target)}
         end,
         onConnectionState=function(connected)
             if not alive then return end

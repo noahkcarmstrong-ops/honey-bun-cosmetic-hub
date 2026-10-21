@@ -702,6 +702,18 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if value.instanceId~=api.instanceId then lastRevision=0;lastNameState=nil;api.instanceId=value.instanceId end
                 scheduleSnapshot()
                 status("Browser connected via WebSocket.")
+            elseif value.type=="client-request" and sharing and sharing.clientRequest then
+                local id,method,params=value.id,value.method,value.params
+                if type(id)~="string" or #id~=36 or not id:match("^[%x%-]+$") or type(method)~="string" or #method>64 or not method:match("^[%l%d%._]+$") or type(params)~="table"then return end
+                task.spawn(function()
+                    if socket~=candidate or generation~=mine or not isAlive()then return end
+                    local loaded,result=pcall(sharing.clientRequest,method,params)
+                    if socket~=candidate or generation~=mine or not isAlive()then return end
+                    local response={type="client-result",id=id,ok=loaded}
+                    if loaded then response.result=result
+                    else response.error=tostring(result):gsub("%c"," "):sub(1,256)end
+                    pcall(function()candidate:Send(HttpService:JSONEncode(response))end)
+                end)
             elseif value.type=="avatar-lookup" and sharing and sharing.lookupAvatar then
                 local id,target=value.id,tonumber(value.targetUserId)
                 if type(id)~="string" or #id~=36 or not id:match("^[%x%-]+$") or not safeId(target)then return end
@@ -720,7 +732,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 incoming[value.channel]={value=value.value};task.spawn(pump)
             elseif value.type=="error" then connectionState(false);closeSocket()end
         end)
-        local sent=pcall(function()candidate:Send(HttpService:JSONEncode({version=1,type="auth",token=token,userId=tostring(player.UserId),role="game",avatarLookup=sharing and type(sharing.lookupAvatar)=="function" or false}))end)
+        local sent=pcall(function()candidate:Send(HttpService:JSONEncode({version=1,type="auth",token=token,userId=tostring(player.UserId),role="game",avatarLookup=sharing and type(sharing.lookupAvatar)=="function" or false,clientRequests=sharing and type(sharing.clientRequest)=="function" or false}))end)
         if not sent then connectionState(false);closeSocket();return false end
         task.delay(5,function()
             if socket==candidate and generation==mine and not socketReady then
