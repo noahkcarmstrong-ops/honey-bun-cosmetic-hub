@@ -64,6 +64,9 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local file="larpblox-browser-pair-"..tostring(player.UserId)..".txt"
     local cache,assetTypes,bodyCache={},{},{}
     local function status(message)if onStatus and isAlive() then onStatus(message)end end
+    local function connectionState(ready)
+        if sharing and sharing.onConnectionState and isAlive()then sharing.onConnectionState(ready)end
+    end
     local viewOptions,viewPending,cachedViews
     local function queueViews(options)
         viewOptions=options
@@ -636,16 +639,18 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local function openSocket()
         local ws=WebSocket or websocket or (syn and syn.websocket)
         local connect=ws and (ws.connect or ws.new)
-        if type(connect)~="function" or socket then return false end
+        if socket then return false end
+        if type(connect)~="function"then connectionState(false);return false end
         local mine=generation;local serial=socketMine
         local ok,candidate=pcall(connect,"ws://127.0.0.1:"..PORT.."/v1/socket")
-        if not ok or not candidate then status("Desktop connection unavailable. Open desktop and reload the interface.");return false end
+        if not ok or not candidate then connectionState(false);status("Desktop connection unavailable. Open desktop and reload the interface.");return false end
         if mine~=generation then pcall(function()candidate:Close()end);return end
         socket=candidate
         candidate.OnClose:Connect(function()
             if socket==candidate then
                 local wasReady=socketReady
                 socket=nil;socketReady=false;lastJson=nil;sharingConnected=false
+                connectionState(false)
                 status("Desktop disconnected. Open desktop and reload the interface.")
                 if wasReady then task.defer(function()if connected and generation==mine then pcall(api.connect)end end)end
             end
@@ -656,6 +661,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             if not read or type(value)~="table" then return end
             if value.type=="ready" then
                 socketReady=true;lastJson=nil
+                connectionState(true)
                 local function keepAlive()
                     task.delay(20,function()
                         if socket~=candidate or generation~=mine or not socketReady then return end
@@ -677,12 +683,13 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 notifySharing(value.value)
             elseif value.type=="state" and (value.channel=="browser" or value.channel=="names" or value.channel=="image") then
                 incoming[value.channel]={value=value.value};task.spawn(pump)
-            elseif value.type=="error" then closeSocket()end
+            elseif value.type=="error" then connectionState(false);closeSocket()end
         end)
         local sent=pcall(function()candidate:Send(HttpService:JSONEncode({version=1,type="auth",token=token,userId=tostring(player.UserId),role="game"}))end)
-        if not sent then closeSocket();return false end
+        if not sent then connectionState(false);closeSocket();return false end
         task.delay(5,function()
             if socket==candidate and generation==mine and not socketReady then
+                connectionState(false)
                 closeSocket();status("Desktop did not complete the connection. Reload the interface to reconnect.")
             end
         end)
@@ -756,7 +763,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     task.defer(function()
         if not isAlive()then return end
         local ok,err=pcall(api.connect)
-        if not ok then status("Open Larpblox Desktop, then reload the interface to connect.")end
+        if not ok then connectionState(false);status("Open Larpblox Desktop, then reload the interface to connect.")end
     end)
     return api,saved
 end

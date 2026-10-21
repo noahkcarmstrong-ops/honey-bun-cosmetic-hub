@@ -117,6 +117,28 @@ gui.DisplayOrder = 100
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = playerGui
+gui:SetAttribute("LarpbloxRevision",moduleRevision)
+local versionLabel=Instance.new("TextLabel")
+versionLabel.Name="ScriptVersion"
+versionLabel.AnchorPoint=Vector2.new(1,1)
+versionLabel.Position=UDim2.new(1,-12,1,-10)
+versionLabel.Size=UDim2.fromOffset(260,20)
+versionLabel.BackgroundTransparency=1
+versionLabel.Font=Enum.Font.SourceSans
+versionLabel.TextSize=14
+versionLabel.TextColor3=Color3.fromRGB(220,220,220)
+versionLabel.TextStrokeTransparency=0.5
+versionLabel.TextXAlignment=Enum.TextXAlignment.Right
+versionLabel.Text="Larpblox · "..(moduleRevision=="local" and "local" or moduleRevision:sub(1,7))
+versionLabel.Parent=gui
+local connectionFailure=versionLabel:Clone()
+connectionFailure.Name="DesktopConnectionFailure"
+connectionFailure.Position=UDim2.new(1,-12,1,-30)
+connectionFailure.Size=UDim2.fromOffset(360,20)
+connectionFailure.TextColor3=Color3.fromRGB(255,120,120)
+connectionFailure.Text="Could not connect to Larpblox Desktop"
+connectionFailure.Visible=false
+connectionFailure.Parent=gui
 
 local panel = Instance.new("CanvasGroup")
 panel.Visible=false
@@ -619,6 +641,9 @@ gameBrowserSync=function()
         if alive then trace("Browser: "..message);statusText=message;if view then view.setStatus(message) end end
     end,function()return animations()end,function()return names end,nativeViews,{
         isReady=function()return startupComplete end,
+        onConnectionState=function(connected)
+            if alive then connectionFailure.Visible=not connected end
+        end,
         getMotion=function()return motion()end,
         getBackgroundState=function()return backgroundId>=0 and backgroundId or nil,backgroundChoices end,
         setBackgroundState=function(id,choices)
