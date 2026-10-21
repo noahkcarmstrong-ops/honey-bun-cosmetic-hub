@@ -198,7 +198,6 @@ function M.create(player, getPreviews, describeSnapshot)
     local ownedOverlays={}
     local failedImages={}
     local verificationBadges={}
-    local verificationBillboard
     local renderingVerification=false
     local verificationCharacterConnections={}
     local stagingFolder
@@ -214,7 +213,6 @@ function M.create(player, getPreviews, describeSnapshot)
             pcall(function() badge:Destroy() end)
             verificationBadges[label]=nil
         end
-        if verificationBillboard then pcall(function() verificationBillboard:Destroy() end);verificationBillboard=nil end
     end
     local function verificationText(object)
         local text=plainText(read(object,"Text"))
@@ -238,14 +236,6 @@ function M.create(player, getPreviews, describeSnapshot)
             if not read(label,"Parent") then pcall(function() badge:Destroy() end);verificationBadges[label]=nil end
         end
         if not alive or not enabled or not verified then clearVerification();renderingVerification=false;return end
-        local character=read(player,"Character");local head=character and character:FindFirstChild("Head")
-        if head and (not verificationBillboard or not read(verificationBillboard,"Parent") or verificationBillboard.Adornee~=head) then
-            if verificationBillboard then pcall(function() verificationBillboard:Destroy() end) end
-            local gui=Instance.new("BillboardGui");gui.Name="LarpbloxVerification";gui.Adornee=head;gui.AlwaysOnTop=true
-            gui.Size=UDim2.fromOffset(22,18);gui.StudsOffset=Vector3.new(0,3.1,0);gui.Parent=head
-            local badge=Instance.new("ImageLabel");badge.Name="LarpbloxVerifiedBadge";badge.BackgroundTransparency=1;badge.Size=UDim2.fromScale(1,1)
-            badge.Image="rbxasset://textures/ui/VerifiedBadgeNameIcon.png";badge.Parent=gui;verificationBillboard=gui
-        end
         local seen={}
         for _,root in ipairs(roots) do
             local objects=read(root,"GetDescendants") and root:GetDescendants() or {}

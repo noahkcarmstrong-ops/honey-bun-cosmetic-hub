@@ -105,6 +105,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local entry=peers[record.userId]
         if entry and entry.player==target and entry.character==target.Character
             and sameValue(entry.snapshot,snapshot) and sameValue(entry.name,record.name)
+            and entry.verified==(record.verified==true)
             and entry.imageUrl==record.imageUrl then return end
         if entry and (entry.player~=target or entry.character~=target.Character)then
             cleanupPeer(record.userId);entry=nil
@@ -217,6 +218,8 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                 if type(name)=="table" and name.enabled then pcall(entry.names.set,name.username,name.displayName)
                 else pcall(entry.names.restore)end
             end
+            if entry.names.setVerified then entry.names.setVerified(record.verified==true) end
+            entry.verified=record.verified==true
             if presentation.createViews and peers[record.userId]==entry and sharing and isAlive() then
                 if not entry.views then entry.views=presentation.createViews(target)end
                 local options={enabled=true,name=name and name.enabled and name.username or "",displayName=name and name.enabled and name.displayName or "",verified=record.verified==true,snapshot=snapshot,image=entry.image}

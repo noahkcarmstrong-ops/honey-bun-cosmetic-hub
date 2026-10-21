@@ -439,13 +439,18 @@ return function(player, playerGui, gameObject)
     end
     watchRoot(coreGui);watchRoot(playerGui);watchRoot(gameObject);watchRoot(game.Workspace)
     local humanoids={}
+    local verified=false
     local function applyHumanoid(character)
         local humanoid=character and character:FindFirstChildOfClass("Humanoid")
         if not humanoid then return end
         if humanoids[humanoid]==nil then humanoids[humanoid]=humanoid.DisplayName end
         local settings=controller.settings
         pcall(function()
-            humanoid.DisplayName=settings.enabled and (settings.displayName~="" and settings.displayName or originalDisplay) or humanoids[humanoid]
+            local display=settings.enabled and (settings.displayName~="" and settings.displayName or originalDisplay) or humanoids[humanoid]
+            -- Roblox's native verified glyph (DefaultChatMessage.lua); let the
+            -- engine place it beside the overhead name, never over the viewer.
+            if verified and players and player~=players.LocalPlayer then display=display..utf8.char(0xE000) end
+            humanoid.DisplayName=display
         end)
     end
     local characterConnection=player.CharacterAdded:Connect(applyHumanoid)
@@ -460,6 +465,7 @@ return function(player, playerGui, gameObject)
         applyHumanoid(player.Character)
     end
     local api={}
+    function api.setVerified(value) verified=value==true;applyHumanoid(player.Character) end
     function api.set(username,displayName)
         username,displayName=trim(username),trim(displayName)
         assert(username=="" or (#username>=3 and #username<=20 and username:match("^[A-Za-z0-9_]+$")),"Username must be 3-20 ASCII letters, numbers, or underscores.")
@@ -469,7 +475,7 @@ return function(player, playerGui, gameObject)
     end
     function api.setEnabled(value) controller.settings.enabled=value==true;refresh();return api.report() end
     function api.getSettings() local s=controller.settings;return {enabled=s.enabled,username=s.username,displayName=s.displayName} end
-    function api.restore() controller.settings={enabled=false,username="",displayName=""};refresh();return "Original names restored locally." end
+    function api.restore() verified=false;controller.settings={enabled=false,username="",displayName=""};refresh();return "Original names restored locally." end
     function api.report() return "Names are local only. "..(controller.settings.enabled and "Override enabled locally. "..chatStatus or "Override disabled.") end
     function api.destroy()
         if controllers[id]~=controller then return end

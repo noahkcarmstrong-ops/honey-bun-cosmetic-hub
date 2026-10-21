@@ -11,7 +11,7 @@ local ok,result=pcall(function()
     assert(badge and badge.Image=="rbxasset://textures/ui/VerifiedBadgeNameIcon.png","Native row badge missing")
     local head=player.Character.Head
     local overhead=head:FindFirstChild("LarpbloxVerification")
-    assert(overhead,"Head badge missing")
+    assert(not overhead,"Standalone head badge must not be created")
     api.update({enabled=true,verified=true,name=player.Name})
     assert(label:FindFirstChild("LarpbloxVerifiedBadge")==badge,"Repeated update recreated row badge")
     assert(head:FindFirstChild("LarpbloxVerification")==overhead,"Repeated update recreated head badge")
@@ -22,7 +22,7 @@ local ok,result=pcall(function()
     api.update({enabled=true,verified=true,name=player.Name})
     api.destroy()
     assert(not label:FindFirstChild("LarpbloxVerifiedBadge") and not head:FindFirstChild("LarpbloxVerification"),"Destroy leaked badges")
-    return "PASS: live native row/head badges render, reuse instances, disable, and clean up without changing text."
+    return "PASS: native row badges render and clean up without a standalone head badge."
 end)
 pcall(api.destroy);screen:Destroy()
 assert(ok,result)
