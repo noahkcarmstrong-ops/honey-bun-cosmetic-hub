@@ -226,6 +226,7 @@ function M.create(player, getPreviews, describeSnapshot)
     local ownedOverlays={}
     local failedImages={}
     local verificationBadges={}
+    local verificationGeometry={}
     local renderingVerification=false
     local verificationCharacterConnections={}
     local stagingFolder
@@ -236,10 +237,16 @@ function M.create(player, getPreviews, describeSnapshot)
     local coreGui, playerGui, roots, available
     local status = "Native avatar thumbnails are disabled."
 
+    local function removeVerification(label)
+        for _,connection in ipairs(verificationGeometry[label] or {}) do connection:Disconnect() end
+        verificationGeometry[label]=nil
+        local badge=verificationBadges[label]
+        if badge then pcall(function() badge:Destroy() end) end
+        verificationBadges[label]=nil
+    end
     local function clearVerification()
         for label,badge in pairs(verificationBadges) do
-            pcall(function() badge:Destroy() end)
-            verificationBadges[label]=nil
+            removeVerification(label)
         end
     end
     local function verificationText(object)
@@ -261,7 +268,7 @@ function M.create(player, getPreviews, describeSnapshot)
         if renderingVerification then return end
         renderingVerification=true
         for label,badge in pairs(verificationBadges) do
-            if not read(label,"Parent") then pcall(function() badge:Destroy() end);verificationBadges[label]=nil end
+            if not read(label,"Parent") then removeVerification(label) end
         end
         if not alive or not enabled or not verified then clearVerification();renderingVerification=false;return end
         local seen={}
@@ -280,12 +287,29 @@ function M.create(player, getPreviews, describeSnapshot)
                         badge.Position=UDim2.new(1,2,0.5,0);badge.ZIndex=(tonumber(read(object,"ZIndex")) or 1)+1
                         badge.Image="rbxasset://textures/ui/VerifiedBadgeNameIcon.png";badge.Parent=object
                         verificationBadges[object]=badge
+                        local bindings={}
+                        verificationGeometry[object]=bindings
+                        for _,property in ipairs({"TextBounds","AbsoluteSize","TextXAlignment"}) do
+                            local ok,signal=pcall(function() return object:GetPropertyChangedSignal(property) end)
+                            if ok and signal then bindings[#bindings+1]=signal:Connect(renderVerification) end
+                        end
+                    end
+                    -- Native names auto-size before their badge. Some People cards
+                    -- keep a full-width label instead, so use the visible text end.
+                    local badge=verificationBadges[object]
+                    local bounds,size=read(object,"TextBounds"),read(object,"AbsoluteSize")
+                    if bounds and size then
+                        local width=math.min(bounds.X,size.X)
+                        local alignment=read(object,"TextXAlignment")
+                        local start=alignment==Enum.TextXAlignment.Right and size.X-width
+                            or alignment==Enum.TextXAlignment.Center and (size.X-width)/2 or 0
+                        badge.Position=UDim2.new(0,start+width+2,0.5,0)
                     end
                 end
             end
         end
         for label,badge in pairs(verificationBadges) do
-            if not seen[label] then pcall(function() badge:Destroy() end);verificationBadges[label]=nil end
+            if not seen[label] then removeVerification(label) end
         end
         renderingVerification=false
     end
