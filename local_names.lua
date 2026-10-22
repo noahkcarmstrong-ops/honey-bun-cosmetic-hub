@@ -100,12 +100,25 @@ local function resolve(entry)
     entry.chatSpan=span
     if sender then return sender end
     local text=plain(entry.source,entry.object.RichText==true):gsub(" %(You%)$", "")
+    local semanticField
+    local ancestor=entry.object
+    while ancestor do
+        local objectName=tostring(ancestor.Name or "")
+        if objectName=="Username" then semanticField="username";break end
+        if objectName=="DisplayName" then semanticField="displayName";break end
+        ancestor=ancestor.Parent
+    end
+    entry.semanticField=semanticField
     local name=text:match("^@(.+)$") or text:match("^(.-)'s%s") or text
-    local id=usernames[name]
-    if id==nil then id=displays[name] end
+    local ranked=text:match("^#%d+%s*%-%s*(.+)$")
+    if ranked and semanticField then name=ranked end
+    local id
+    if semanticField=="username" then id=usernames[name]
+    elseif semanticField=="displayName" then id=displays[name]
+    else id=usernames[name];if id==nil then id=displays[name] end end
     if id==nil then return nil end
     -- Explicit conflicting identity wins over coincidentally matching text.
-    local ancestor=entry.object
+    ancestor=entry.object
     local explicitId
     while ancestor do
         local ok, ignored=pcall(function() return ancestor:GetAttribute("LarpbloxIgnoreNameOverride") end)
@@ -249,7 +262,10 @@ local function replacement(entry, controller)
     local function segment(text)
         -- One substitution pass prevents aliases from being substituted again.
         local matches={}
-        for _,pair in ipairs({{identity.username,username},{identity.display,display}}) do
+        local replacements=entry.semanticField=="username" and {{identity.username,username}}
+            or entry.semanticField=="displayName" and {{identity.display,display}}
+            or {{identity.username,username},{identity.display,display}}
+        for _,pair in ipairs(replacements) do
             local cursor=1
             while true do
                 local first,last=text:find("%f[%w_]"..pattern(pair[1]).."%f[^%w_]",cursor)
