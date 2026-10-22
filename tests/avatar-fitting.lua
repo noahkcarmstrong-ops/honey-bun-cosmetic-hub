@@ -44,6 +44,7 @@ local head=body:FindFirstChild("Head");local ha=node("Attachment","HatAttachment
 local player={Character=body,CharacterAdded=signal()};local accessory=node("Accessory","Blue Hat");local handle=node("Part","Handle");handle.CFrame=cf();handle.AttachmentPoint=cf();handle.Parent=accessory;local at=node("Attachment","HatAttachment");at.CFrame=cf();at.Parent=handle;local injected=node("Script","Injected");injected.Parent=accessory
 local template=node("Model","Template");for _,n in ipairs({"Head","UpperTorso","LowerTorso","LeftUpperArm","LeftLowerArm","LeftHand","RightUpperArm","RightLowerArm","RightHand","LeftUpperLeg","LeftLowerLeg","LeftFoot","RightUpperLeg","RightLowerLeg","RightFoot"})do local p=node("MeshPart",n);p.CFrame=cf();p.Parent=template end
 local armCage=node("WrapTarget","ArmCage");armCage.Parent=template:FindFirstChild("LeftUpperArm")
+local incomingFlame=node("Fire","IncomingBodyFlame");incomingFlame.Parent=template:FindFirstChild("LeftUpperArm")
 local players={template=template};function players:GetHumanoidDescriptionFromOutfitIdAsync(id)local d=node("HumanoidDescription","Description");d.id=id;d.Head=901;d.Torso=902;d.LeftArm=903;d.RightArm=904;d.LeftLeg=905;d.RightLeg=906;return d end;function players:CreateHumanoidModelFromDescriptionAsync(description)self.lastDescription=description;self.generated=true;if self.onGenerate then self.onGenerate()end;return self.template:Clone() end
 local savedSettings=nil;local http={bundleType="BodyParts"};function http:GetAsync()return'{"items":[{"type":"UserOutfit","id":131929576}]}'end;function http:JSONDecode(value)if value=="settings-token"then return savedSettings end;return{bundleType=self.bundleType,items={{type="UserOutfit",id=131929576}}}end;function http:JSONEncode(value)savedSettings=value;return"settings-token"end
 local gui=node("PlayerGui","PlayerGui");function gui:SetAttribute(k,v)self[k]=v end;function gui:GetAttribute(k)return self[k]end
@@ -62,6 +63,8 @@ local create=dofile("avatar.lua")
 -- attachment frame, and layered clothing keeps the replacement WrapTarget.
 local arm=body:FindFirstChild("LeftUpperArm")
 local liveAttachment=node("Attachment","LeftShoulderAttachment");liveAttachment.CFrame=cf();liveAttachment.Parent=arm
+local liveFlame=node("Fire","BodyFlame");liveFlame.Parent=arm
+local nestedFlame=node("ParticleEmitter","NestedBodyFlame");nestedFlame.Parent=liveAttachment
 local shoulderAccessory=node("Accessory","Shoulder");local shoulderHandle=node("Part","Handle");shoulderHandle.CFrame=cf();shoulderHandle.AttachmentPoint=cf();shoulderHandle.Parent=shoulderAccessory
 local shoulderPoint=node("Attachment","LeftShoulderAttachment");shoulderPoint.CFrame=cf();shoulderPoint.Parent=shoulderHandle
 game.GetObjects=function()return{shoulderAccessory}end
@@ -73,6 +76,12 @@ assert(fitting.applyBodyPart("LeftArm",456):match("LeftArm"),"body part replacem
 local weld=shoulder:FindFirstChild("Handle"):FindFirstChild("AccessoryWeld")
 assert(weld and weld.C1.x==4,"classic shoulder weld follows the replacement attachment")
 assert(arm:FindFirstChild("ArmCage"),"replacement body part preserves its layered WrapTarget cage")
-fitting.destroy()
+assert(not arm:FindFirstChild("BodyFlame"),"replaced body part removes its old direct visual effect")
+assert(not liveAttachment:FindFirstChild("NestedBodyFlame"),"replaced body part removes nested visual effects")
+assert(arm:FindFirstChild("IncomingBodyFlame"),"replacement body part keeps its incoming visual effect")
+fitting.restoreBodyPart("LeftArm")
+assert(arm:FindFirstChild("BodyFlame"),"restoring the avatar restores its original direct visual effect")
+assert(arm:FindFirstChild("LeftShoulderAttachment"):FindFirstChild("NestedBodyFlame"),"restoring the avatar restores nested visual effects")
+assert(not arm:FindFirstChild("IncomingBodyFlame"),"restoring the avatar removes the replacement visual effect")
 print("PASS: shoulder refit and layered WrapTarget preservation")
 

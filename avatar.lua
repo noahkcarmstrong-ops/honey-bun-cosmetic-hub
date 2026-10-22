@@ -388,6 +388,10 @@ return function(player,onStatus,readAsset,managedRespawn)
         weld.C0,weld.C1=c0,c1
         weld.Parent=handle
     end
+    local function isBodyVisualEffect(item)
+        return item:IsA("ParticleEmitter") or item:IsA("Beam") or item:IsA("Trail")
+            or item:IsA("Light") or item:IsA("Fire") or item:IsA("Smoke") or item:IsA("Sparkles")
+    end
     local function applyPartAppearance(target,source)
         if target:IsA("MeshPart") and source:IsA("MeshPart") then
             target:ApplyMesh(source)
@@ -457,6 +461,32 @@ return function(player,onStatus,readAsset,managedRespawn)
                     -- Generated body parts also carry hat/hair/face attachment
                     -- points. Preserve those when the replicated part is early.
                     attachment:Clone().Parent=target
+                end
+            end
+        end
+        -- Body assets can carry visual effects on the part or its attachments.
+        -- Replace that appearance state with the incoming asset so old flames
+        -- cannot survive a body swap; the snapshot restores them on unequip.
+        for _,item in ipairs(target:GetDescendants()) do
+            if isBodyVisualEffect(item) then item:Destroy() end
+        end
+        local function liveEffectParent(node)
+            if node==source then return target end
+            if not node then return nil end
+            local parent=liveEffectParent(node.Parent)
+            return parent and parent:FindFirstChild(node.Name)
+        end
+        for _,item in ipairs(source:GetDescendants()) do
+            if isBodyVisualEffect(item) then
+                local parent=liveEffectParent(item.Parent)
+                if parent then
+                    local copy=item:Clone()
+                    if item:IsA("Beam") or item:IsA("Trail") then
+                        for _,field in ipairs({"Attachment0","Attachment1"}) do
+                            copy[field]=liveEffectParent(item[field])
+                        end
+                    end
+                    copy.Parent=parent
                 end
             end
         end
