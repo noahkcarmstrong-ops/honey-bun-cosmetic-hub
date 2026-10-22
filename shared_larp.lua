@@ -100,7 +100,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         local snapshot=record.snapshot
         if type(snapshot)~="table" or snapshot.version~=1 or tostring(snapshot.userId)~=record.userId then return false end
         if snapshot.verified~=nil and type(snapshot.verified)~="boolean" then return false end
-        if not safeId(record.userId) or type(snapshot.definition)~="table" or type(snapshot.definition.assets)~="table" or #snapshot.definition.assets>100 or type(snapshot.items)~="table" or #snapshot.items>100 then return false end
+        if not safeId(record.userId) or type(snapshot.definition)~="table" or type(snapshot.definition.assets)~="table" or #snapshot.definition.assets>512 or type(snapshot.items)~="table" or #snapshot.items>512 then return false end
         if record.imageUrl~=nil and not safeImageUrl(record.imageUrl) then return false end
         if record.verified~=nil and type(record.verified)~="boolean" then return false end
         if record.name~=nil then

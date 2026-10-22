@@ -20,6 +20,8 @@ local function validScales(values)
     end
     return true
 end
+local accessoryKinds={[8]="Hat",[41]="Hair",[42]="Face",[43]="Neck",[44]="Shoulder",[45]="Front",[46]="Back",[47]="Waist",[64]="TShirt",[65]="Shirt",[66]="Pants",[67]="Jacket",[68]="Sweater",[69]="Shorts",[70]="LeftShoe",[71]="RightShoe",[72]="DressSkirt",[76]="Eyebrow",[77]="Eyelash"}
+local validAccessoryKinds={};for _,kind in pairs(accessoryKinds)do validAccessoryKinds[kind]=true end
 local outfits={Girl=131929545,["Robloxian 2.0"]=131929576}
 local function accessoryMeta(value)
     if value==nil then return nil end
@@ -100,11 +102,11 @@ return function(player,onStatus,readAsset,managedRespawn)
     local nextKey=0
     local playerGui=player:FindFirstChildOfClass("PlayerGui")
     local attribute="HoneyBunCosmeticSettings"
-    local settings={accessories={},colors={},bodyParts={},hideOriginals=false,gear=nil}
+    local settings={accessoryKinds={},accessories={},colors={},bodyParts={},hideOriginals=false,gear=nil}
     local reapplying,replayGeneration,replayToken=false,nil,0
     local appearanceVersion=0
     local function copySettings()
-        local copy={accessories={},colors={},bodyParts={},hideOriginals=settings.hideOriginals,body=settings.body,gear=settings.gear,face=settings.face}
+        local copy={accessoryKinds=table.clone(settings.accessoryKinds),accessories={},colors={},bodyParts={},hideOriginals=settings.hideOriginals,body=settings.body,gear=settings.gear,face=settings.face}
         if settings.scales then copy.scales=table.clone(settings.scales) end
         copy.accessoryMeta={}
         for id,meta in pairs(settings.accessoryMeta or {})do copy.accessoryMeta[id]=accessoryMeta(meta)end
@@ -133,8 +135,10 @@ return function(player,onStatus,readAsset,managedRespawn)
             end
             if type(saved.accessories)=="table" then
                 for _,id in ipairs(saved.accessories) do
-                    if type(id)=="number" and id>0 and id%1==0 and id<9007199254740992 and #settings.accessories<20 then
+                    if type(id)=="number" and id>0 and id%1==0 and id<9007199254740992 and #settings.accessories<512 then
                         table.insert(settings.accessories,id)
+                        local kind=type(saved.accessoryKinds)=="table" and saved.accessoryKinds[tostring(id)]
+                        if validAccessoryKinds[kind]then settings.accessoryKinds[tostring(id)]=kind end
                         local ok,meta=pcall(accessoryMeta,type(saved.accessoryMeta)=="table" and saved.accessoryMeta[tostring(id)] or nil)
                         if ok then settings.accessoryMeta[tostring(id)]=meta end
                     end
@@ -603,12 +607,19 @@ return function(player,onStatus,readAsset,managedRespawn)
             joint.C0=(CFrame.new(baseline.c0.Position*scale)*baseline.c0.Rotation)*adjustment:Inverse()
         end
     end
-    function api.equipAccessory(value,metadata)
+    function api.equipAccessory(value,metadata,assetType)
         local ctx=context()
         local id=idFrom(value,"catalog")
         local meta=accessoryMeta(metadata)
-        assert(#added<20,"Remove an added accessory before adding more (20 maximum).")
         local candidate=wearable(ctx,id,"Accessory")
+        local function accessoryKind(object)
+            local ok,kind=pcall(function()return object.AccessoryType.Name end)
+            return ok and kind~="Unknown" and kind or "Hat"
+        end
+        local kind=accessoryKinds[assetType] or settings.accessoryKinds[tostring(id)] or accessoryKind(candidate)
+        local count=0
+        for _,entry in ipairs(added)do if (entry.kind or accessoryKind(entry.object))==kind then count=count+1 end end
+        if count>=20 then candidate:Destroy();error("You can wear at most 20 "..kind.." accessories at once.")end
         strip(candidate)
         -- The original Dusekkar script gates these existing effects to user 916.
         if id==1474657 then
@@ -630,12 +641,13 @@ return function(player,onStatus,readAsset,managedRespawn)
         capture(ctx)
         candidate.Parent=ctx.character
         nextKey=nextKey+1
-        local entry={key=nextKey,id=id,name=candidate.Name,object=candidate,meta=meta}
+        local entry={key=nextKey,id=id,name=candidate.Name,object=candidate,meta=meta,kind=kind}
         adjustAccessory(entry,meta)
         table.insert(added,entry)
         if id==1527622 then bunnyExplosion(ctx,candidate) end
         if not reapplying then
             table.insert(settings.accessories,id)
+            settings.accessoryKinds[tostring(id)]=kind
             settings.accessoryMeta=settings.accessoryMeta or {};settings.accessoryMeta[tostring(id)]=meta;save()
         end
         return "Equipped "..candidate.Name.." (visible to you)."
@@ -1228,7 +1240,7 @@ return function(player,onStatus,readAsset,managedRespawn)
     end
     function api.restore()
         local message=restoreAppearance()
-        settings={accessories={},colors={},bodyParts={},hideOriginals=false,gear=nil};save()
+        settings={accessoryKinds={},accessories={},colors={},bodyParts={},hideOriginals=false,gear=nil};save()
         return message
     end
     function api.getSettings() return copySettings() end

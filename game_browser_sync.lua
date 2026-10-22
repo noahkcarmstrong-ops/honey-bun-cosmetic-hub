@@ -180,7 +180,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         for _,pair in ipairs({{"HeightScale","height"},{"WidthScale","width"},{"DepthScale","depth"},{"HeadScale","head"},{"BodyTypeScale","bodyType"},{"ProportionScale","proportion"}})do local live=humanoid:FindFirstChild(({height="BodyHeightScale",width="BodyWidthScale",depth="BodyDepthScale",head="HeadScale",bodyType="BodyTypeScale",proportion="BodyProportionScale"})[pair[2]]);local v=live and live:IsA("NumberValue") and live.Value or desc[pair[1]];if type(v)=="number" and v==v and v<math.huge then definition.scales[pair[2]]=v end end
         local items,seen={},{}
         local function add(id,name,assetType,include,meta)
-            if include and safeId(id) and not seen[id] and #items<100 then
+            if include and safeId(id) and not seen[id] and #items<512 then
                 local label=product(id,name);assetType=assetTypes[id] or assetType
                 seen[id]=true;items[#items+1]={id=id,name=string.sub(label,1,128),itemType="Asset",assetType=assetType};definition.assets[#definition.assets+1]={id=id,meta=meta}
             end
@@ -237,8 +237,8 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     end
     local function validSnapshot(value)
         assert(type(value)=="table" and value.version==1 and tostring(value.userId)==tostring(player.UserId),"Browser snapshot is for a different account.")
-        assert(type(value.definition)=="table" and type(value.definition.assets)=="table" and #value.definition.assets<=100,"Browser snapshot assets are invalid.")
-        assert(type(value.items)=="table" and #value.items<=100,"Browser snapshot items are invalid.")
+        assert(type(value.definition)=="table" and type(value.definition.assets)=="table" and #value.definition.assets<=512,"Browser snapshot assets are invalid.")
+        assert(type(value.items)=="table" and #value.items<=512,"Browser snapshot items are invalid.")
         for _,asset in ipairs(value.definition.assets)do assert(type(asset)=="table" and safeId(asset.id),"Browser asset is invalid.")end
         local colors=value.definition.bodyColors;local colorKeys={"headColor","torsoColor","leftArmColor","rightArmColor","leftLegColor","rightLegColor"}
         assert(type(colors)=="table", "Browser body colors are invalid.")
@@ -353,7 +353,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 end
                 for _,item in ipairs(value.items)do
                     if accessoryTypes[item.assetType] and not present[item.id] then
-                        local loaded,reason=pcall(avatar.equipAccessory,item.id,accessoryMetadata[item.id])
+                        local loaded,reason=pcall(avatar.equipAccessory,item.id,accessoryMetadata[item.id],item.assetType)
                         if loaded then present[item.id]=true else loadErrors[#loadErrors+1]=item.name..": "..tostring(reason) end
                     end
                 end
