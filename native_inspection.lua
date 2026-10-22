@@ -563,9 +563,9 @@ function M.create(player,getPreviews)
                 task.spawn(function()pcall(function()game:GetService("ContentProvider"):PreloadAsync(thumbs)end)end)
             end
         end
-        -- The default native inspector displays a full-body thumbnail with Fit.
-        -- Keep the isolated model fallback until the matching PNG arrives.
-        currentImage=type(options.image)=="string" and options.image~="" and options.image or nil
+        -- InspectAndBuy renders a model without a profile background. Published
+        -- browser PNGs can bake that background in, so use the outfit viewport.
+        currentImage=nil
         if not currentSnapshot then previewData=nil;previewKey=nil end
         local alias=tostring(options.name or "")
         local name=alias~="" and alias or player.Name
