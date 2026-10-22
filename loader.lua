@@ -72,6 +72,7 @@ local mm2WeaponEditorAPI
 local mm2GunLibraryAPI
 local nativeViewsAPI
 local localNamesAPI
+local playerCollisionsAPI
 local accessorySoundsAPI
 local mm2Enabled=false
 local mm2EmotesShown=false
@@ -324,6 +325,7 @@ local function uiSetting(key,default)
     return type(value)==type(default) and value or default
 end
 local hideOnStart=uiSetting("hideOnStart",false)
+local noPlayerCollisions=uiSetting("noPlayerCollisions",false)
 local openingKey=Enum.KeyCode.RightShift
 local savedOpeningKey=uiSetting("openingKey","RightShift")
 for _,key in ipairs(Enum.KeyCode:GetEnumItems())do
@@ -401,6 +403,7 @@ local paletteOpen=uiSetting("palette",false)
 local function saveUI()
     local values={page=activePage,accessory=accessoryInput,bundle=bundleInput,red=rgb[1],green=rgb[2],blue=rgb[3],hex=hexInput,region=regionIndex,palette=paletteOpen,emote=emoteInput,animationBundle=animationInput,emoteSlot=emoteSlot,shirt=shirtInput,pants=pantsInput}
     values.hideOnStart=hideOnStart
+    values.noPlayerCollisions=noPlayerCollisions
     values.openingKey=openingKey.Name
     values.animationSection=animationSection
     values.backgroundId=backgroundId
@@ -439,6 +442,10 @@ local function module(file)
     return chunk()
 end
 local lightingSchema=module("lighting_schema.lua")
+local function playerCollisions()
+    if not playerCollisionsAPI then playerCollisionsAPI=module("player_collisions.lua")(Players,workspace) end
+    return playerCollisionsAPI
+end
 local gamePages={}
 local pages={"Animations","Emotes","Lighting"}
 for _,descriptor in ipairs(module("game_pages.lua"))do
@@ -1148,6 +1155,14 @@ render=function()
             capturingOpeningKey=not capturingOpeningKey;render()
         end})
         button("Hide on start: "..(hideOnStart and "On" or "Off"),function()hideOnStart=not hideOnStart;saveUI();render()end,"HideOnStart")
+        button("No player collisions: "..(noPlayerCollisions and "On" or "Off"),function()
+            action(function()
+                local enabled=not noPlayerCollisions
+                playerCollisions().setEnabled(enabled)
+                noPlayerCollisions=enabled;saveUI()
+                return enabled and "Player collisions disabled locally." or "Normal player collisions restored."
+            end)
+        end,"NoPlayerCollisions")
         button("Reload interface",refreshMenu)
         button("Reapply cosmetics",function()action(reapplyAll)end)
         caption("Emotes",28,{size=18,color=theme.ink})
@@ -1413,6 +1428,7 @@ gui.Destroying:Connect(function()
     if gameBrowserSyncAPI then pcall(gameBrowserSyncAPI.destroy) end
     if nativeViewsAPI then pcall(nativeViewsAPI.destroy) end
     if localNamesAPI then pcall(localNamesAPI.destroy) end
+    if playerCollisionsAPI then pcall(playerCollisionsAPI.destroy) end
     if persistence then pcall(persistence.destroy) end
     if avatarAPI then pcall(avatarAPI.destroy) end
     if motionAPI then pcall(motionAPI.destroy) end
@@ -1438,6 +1454,13 @@ panel.GroupTransparency=1
 panel.Position=UDim2.new(1,-12,0.5,0)
 showMenu(not hideOnStart)
 trace("Menu rendered; starting saved cosmetics")
+if noPlayerCollisions then
+    local ok,message=pcall(function()playerCollisions().setEnabled(true)end)
+    if not ok then
+        noPlayerCollisions=false;saveUI()
+        warn("Larpblox: player collisions could not load: "..tostring(message))
+    end
+end
 -- Connect before asset restoration so peer identity is available immediately.
 -- The bridge defers changes to our own body until restoration has completed.
 trace("Starting browser connection")
