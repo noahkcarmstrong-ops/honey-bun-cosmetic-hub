@@ -3,7 +3,10 @@ local launchOptions = ...
 if type(launchOptions) ~= "table" then launchOptions = {} end
 local sourceBranch = launchOptions.branch or "main"
 local startupComplete=false
+local diagnostics
 local function trace(stage)
+    if diagnostics and not stage:match("^Loading module:") and not stage:match("^Loaded module:")
+        and not stage:match("^Avatar: Restoring ") then diagnostics.log("status",{detail=stage})end
     if not startupComplete and type(launchOptions.trace)=="function" then launchOptions.trace(stage)end
 end
 local function resolveRevision()
@@ -77,6 +80,14 @@ local loadGeneration=(playerGui:GetAttribute("LarpbloxLoadGeneration") or 0)+1
 playerGui:SetAttribute("LarpbloxLoadGeneration",loadGeneration)
 trace("Loading Prism controls")
 local moduleRevision = resolveRevision()
+local diagnosticOk,diagnosticResult=pcall(function()
+    local factory,err=loadstring(readSource("diagnostics.lua",moduleRevision));assert(factory,err)
+    return factory()({revision=moduleRevision,playerId=localPlayer.UserId,placeId=game.PlaceId})
+end)
+if diagnosticOk then diagnostics=diagnosticResult end
+local function logDiagnostic(event,fields)
+    if diagnostics then diagnostics.log(event,fields)end
+end
 local prismChunk, prismError = loadstring(readSource("prism.lua", moduleRevision))
 assert(prismChunk, prismError)
 local prismRuntime = prismChunk()(function(file) return readSource(file, moduleRevision) end)
@@ -117,6 +128,7 @@ gui.DisplayOrder = 100
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = playerGui
+gui:SetAttribute("LarpbloxRevision",moduleRevision)
 
 local panel = Instance.new("CanvasGroup")
 panel.Visible=false
@@ -214,7 +226,7 @@ tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
 local content = Instance.new("ScrollingFrame")
 content.Name = "CosmeticsPage"
 content.Position = UDim2.fromOffset(18, 112)
-content.Size = UDim2.new(1, -36, 1, -126)
+content.Size = UDim2.new(1, -36, 1, -154)
 content.BackgroundTransparency = 1
 content.BorderSizePixel = 0
 content.ScrollBarThickness = 2
@@ -223,12 +235,54 @@ content.CanvasSize = UDim2.fromOffset(0, 0)
 content.AutomaticCanvasSize = Enum.AutomaticSize.Y
 content.ScrollingDirection = Enum.ScrollingDirection.Y
 content.Parent = panel
+local connectionPill=Instance.new("Frame",panel)
+connectionPill.Name="DesktopConnectionStatus"
+connectionPill.AnchorPoint=Vector2.new(1,1)
+connectionPill.Position=UDim2.new(1,-18,1,-8)
+connectionPill.Size=UDim2.fromOffset(154,26)
+connectionPill.BorderSizePixel=0
+Instance.new("UICorner",connectionPill).CornerRadius=UDim.new(1,0)
+local connectionBorder=Instance.new("UIStroke",connectionPill)
+connectionBorder.Thickness=1
+local connectionDot=Instance.new("Frame",connectionPill)
+connectionDot.Position=UDim2.fromOffset(11,9)
+connectionDot.Size=UDim2.fromOffset(8,8)
+connectionDot.BorderSizePixel=0
+Instance.new("UICorner",connectionDot).CornerRadius=UDim.new(1,0)
+local connectionStatus=text(connectionPill,"",UDim2.fromOffset(26,0),UDim2.new(1,-34,1,0),14)
+connectionStatus.Font=Enum.Font.SourceSansSemibold
+local function setConnectionStatus(connected)
+    local foreground,background,edge
+    if connected==true then
+        connectionStatus.Text="Desktop connected"
+        foreground=Color3.fromRGB(31,112,83)
+        background=Color3.fromRGB(227,241,234)
+        edge=Color3.fromRGB(185,216,199)
+    elseif connected==false then
+        connectionStatus.Text="Desktop disconnected"
+        foreground=Color3.fromRGB(156,57,57)
+        background=Color3.fromRGB(249,233,233)
+        edge=Color3.fromRGB(230,194,194)
+    else
+        connectionStatus.Text="Desktop connecting"
+        foreground=theme.muted
+        background=Color3.fromRGB(232,237,242)
+        edge=Color3.fromRGB(206,215,225)
+    end
+    connectionPill.Size=UDim2.fromOffset(connected==false and 174 or 154,26)
+    connectionStatus.TextColor3=foreground
+    connectionDot.BackgroundColor3=foreground
+    connectionPill.BackgroundColor3=background
+    connectionBorder.Color=edge
+end
+setConnectionStatus(nil)
 local layout = Instance.new("UIListLayout", content)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
 local avatarAPI,motionAPI,animationAPI,clothesAPI,previewsAPI,gameBrowserSyncAPI,sharedLarpAPI
 local avatarFactory,animationFactory,clothesFactory,nameFactory
 local previewFactory,portraitFactory,inspectionRouter
+local corpseAPI
 local fetchSharedProfiles
 local refreshing = false
 local function refreshMenu()
@@ -459,8 +513,8 @@ local function api()
         assert(loaded and type(objects)=="table" and #objects>0,"This executor could not load Dominus Azurelight's visual asset.")
         return objects
     end
-    local function createAvatar(player,onStatus)
-        return create(player,onStatus,readAsset)
+    local function createAvatar(player,onStatus,assetReader,managedRespawn)
+        return create(player,onStatus,assetReader or readAsset,managedRespawn)
     end
     avatarFactory=createAvatar
     avatarAPI=create(Players.LocalPlayer,function(message,working)
@@ -485,6 +539,7 @@ local function motion()
     local chunk,message=loadstring(source);assert(chunk,message)
     motionAPI=chunk()(Players.LocalPlayer,function(message)
         if not alive then return end
+        trace("Emote: "..tostring(message))
         statusText=message
         if view then view.setStatus(message) end
     end,true)
@@ -519,7 +574,6 @@ local function clothes()
 end
 local function localNames()
     if localNamesAPI then return localNamesAPI end
-    api()
     local source=readSource("local_names.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     nameFactory=chunk()
@@ -557,6 +611,23 @@ local function peerViews(player)
         destroy=function()inspection.destroy();portraits.destroy();preview.destroy()end,
     }
 end
+local function corpseController()
+    if corpseAPI then return corpseAPI end
+    local factory=module("corpse_appearance.lua")
+    corpseAPI=factory(function(userId)
+        if userId==Players.LocalPlayer.UserId then
+            if not gameBrowserSyncAPI or not gameBrowserSyncAPI.isLarpEnabled() or not avatarAPI then return nil end
+            local source=avatarAPI.corpseSource()
+            if source then source.originalClothes=clothes().corpseOriginalClothes()end
+            return source
+        end
+        return sharedLarpAPI and sharedLarpAPI.corpseSource(userId) or nil
+    end,logDiagnostic,function(userId)
+        if userId==Players.LocalPlayer.UserId then return gameBrowserSyncAPI and gameBrowserSyncAPI.isLarpEnabled() end
+        return sharedLarpAPI and sharedLarpAPI.hasSharedAppearance(userId)
+    end)
+    return corpseAPI
+end
 local function sharedLarp()
     if sharedLarpAPI then return sharedLarpAPI end
     api();clothes();animations();localNames()
@@ -572,7 +643,7 @@ local function sharedLarp()
             if not alive then return end
             statusText=message
             if view then view.setStatus(message) end
-        end,{getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews,transport=gameBrowserSync(),
+        end,{onAppearanceApplied=function(userId)corpseController().refresh(tonumber(userId))end,log=logDiagnostic,getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews,transport=gameBrowserSync(),
             fetchProfiles=function(ids)
                 if not fetchSharedProfiles then
                     local chunk,message=loadstring(readSource("shared_profiles.lua",moduleRevision));assert(chunk,message)
@@ -612,16 +683,33 @@ local function nativeViews()
 end
 gameBrowserSync=function()
     if gameBrowserSyncAPI then return gameBrowserSyncAPI end
-    api();clothes()
     local names=localNames()
-    local views=nativeViews()
     local source=readSource("game_browser_sync.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
     local create=chunk();assert(type(create)=="function","Game browser sync failed to load.")
+    local lookup
+    local function accountAvatar(target)
+        if not lookup then
+            local factory,reason=loadstring(readSource("avatar_lookup.lua",moduleRevision));assert(factory,reason)
+            lookup=factory()(Players)
+        end
+        return lookup(target,Players.LocalPlayer.UserId)
+    end
     gameBrowserSyncAPI=select(1,create(Players.LocalPlayer,function()return api()end,function()return clothes()end,function()return alive end,function(message)
         if alive then trace("Browser: "..message);statusText=message;if view then view.setStatus(message) end end
-    end,function()return animations()end,function()return names end,function()return views end,{
+    end,function()return animations()end,function()return names end,nativeViews,{
         isReady=function()return startupComplete end,
+        lookupAvatar=accountAvatar,
+        clientRequest=function(method,params)
+            assert(method=="avatar.lookup","Unsupported client request.")
+            local target=tonumber(params.targetUserId)
+            return {targetUserId=tostring(params.targetUserId),snapshot=accountAvatar(target)}
+        end,
+        onConnectionState=function(connected)
+            if not alive then return end
+            setConnectionStatus(connected)
+            logDiagnostic("desktop_connection",{connected=connected})
+        end,
         getMotion=function()return motion()end,
         getBackgroundState=function()return backgroundId>=0 and backgroundId or nil,backgroundChoices end,
         setBackgroundState=function(id,choices)
@@ -638,23 +726,20 @@ gameBrowserSync=function()
             elseif sharedLarpAPI then sharedLarpAPI.setEnabled(false)end
         end,
     }))
+    gameBrowserSyncAPI.onSnapshot(function()corpseController().refresh()end)
+    corpseController().refresh()
     return gameBrowserSyncAPI
 end
 local function reapplyAll(editor,expectedCharacter)
-    trace("Preparing saved avatar assets")
-    if editor.prepareSaved then editor.prepareSaved()end
-    local clothing=clothes()
-    if clothing.prepareSaved then clothing.prepareSaved()end
-    local animation=animations()
-    if animation.prepareSaved then animation.prepareSaved()end
     assert(not expectedCharacter or Players.LocalPlayer.Character==expectedCharacter,"Your character changed while preparing the avatar.")
     local failures={}
     for _,step in ipairs({
-        {"avatar",function() return editor.reapplySaved() end},
+        {"avatar",function() if editor.prepareSaved then editor.prepareSaved()end;return editor.reapplySaved() end},
         {"emote wheel",function() return motion().reapplySaved() end},
-        {"movement animations",function() return animations().reapplySaved() end},
-        {"clothing",function() return clothes().reapplySaved() end},
+        {"movement animations",function() local controller=animations();if controller.prepareSaved then controller.prepareSaved()end;return controller.reapplySaved() end},
+        {"clothing",function() local controller=clothes();if controller.prepareSaved then controller.prepareSaved()end;return controller.reapplySaved() end},
     }) do
+        assert(not expectedCharacter or Players.LocalPlayer.Character==expectedCharacter,"Your character changed while restoring the avatar.")
         trace("Restoring "..step[1])
         local ok,message=pcall(step[2])
         trace("Finished restoring "..step[1]..(ok and "" or ": "..tostring(message)))
@@ -1268,6 +1353,7 @@ local function clearReadiness()
     readyConnections={}
 end
 local respawn=Players.LocalPlayer.CharacterAdded:Connect(function(character)
+    logDiagnostic("local_respawn")
     respawnGeneration=respawnGeneration+1
     local ticket=respawnGeneration
     clearReadiness()
@@ -1284,7 +1370,13 @@ local respawn=Players.LocalPlayer.CharacterAdded:Connect(function(character)
             if not humanoid or humanoid.Health<=0 or not character:FindFirstChild("Head") or busy
                 or not Players.LocalPlayer:HasAppearanceLoaded()then return end
             finished=true;clearReadiness()
-            action(function()return reapplyAll(api(),character)end,true)
+            action(function()
+                local message=reapplyAll(api(),character)
+                if alive and Players.LocalPlayer.Character==character and gameBrowserSyncAPI then
+                    gameBrowserSyncAPI.resumeAppearance(true)
+                end
+                return message
+            end,true)
         end)
     end
     local function watch(object)
@@ -1299,6 +1391,7 @@ end)
 
 gui.Destroying:Connect(function()
     alive=false
+    if diagnostics then diagnostics.close()end
     pcall(view.destroy)
     connection:Disconnect()
     for object,tween in pairs(tweens) do tween:Cancel();tweens[object]=nil end
@@ -1315,6 +1408,7 @@ gui.Destroying:Connect(function()
     if mm2API then pcall(mm2API.destroy) end
     if crosshairAPI then pcall(crosshairAPI.destroy) end
     if accessorySoundsAPI then pcall(accessorySoundsAPI.destroy) end
+    if corpseAPI then pcall(corpseAPI.destroy) end
     if sharedLarpAPI then pcall(sharedLarpAPI.destroy) end
     if gameBrowserSyncAPI then pcall(gameBrowserSyncAPI.destroy) end
     if nativeViewsAPI then pcall(nativeViewsAPI.destroy) end
@@ -1348,7 +1442,10 @@ trace("Menu rendered; starting saved cosmetics")
 -- The bridge defers changes to our own body until restoration has completed.
 trace("Starting browser connection")
 local syncOk,syncError=pcall(gameBrowserSync)
-if not syncOk then trace("Browser startup error: "..tostring(syncError))end
+if not syncOk then
+    trace("Browser startup error: "..tostring(syncError))
+    warn("Larpblox: browser startup failed: "..tostring(syncError))
+end
 action(function()
     trace("Restoring atmosphere")
     if isMM2 and crosshairImage~="" then pcall(function()customCrosshair().set(crosshairImage)end) end

@@ -150,6 +150,34 @@ local function signature(value, seen)
     return "{" .. table.concat(out, ";") .. "}"
 end
 
+local function appearanceSignature(snapshot)
+    if type(snapshot)~="table" then return tostring(snapshot)end
+    local types={}
+    for _,item in ipairs(snapshot.items or {})do types[#types+1]={id=item.id,assetType=item.assetType}end
+    return signature({definition=snapshot.definition,types=types})
+end
+
+-- Index native UI once for all subjects; keep it current through lifecycle events.
+local rootIndexes={}
+local function retainRoot(root)
+    local index=rootIndexes[root]
+    if index then index.users=index.users+1;return end
+    index={users=1,objects=setmetatable({}, {__mode="k"})}
+    rootIndexes[root]=index
+    local function add(object)
+        if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("ImageLabel") or object:IsA("ImageButton")then index.objects[object]=true end
+    end
+    index.added=root.DescendantAdded:Connect(add)
+    index.removed=root.DescendantRemoving:Connect(function(object)index.objects[object]=nil end)
+    for _,object in ipairs(root:GetDescendants())do add(object)end
+end
+local function releaseRoot(root)
+    local index=rootIndexes[root]
+    if not index then return end
+    index.users=index.users-1
+    if index.users==0 then index.added:Disconnect();index.removed:Disconnect();rootIndexes[root]=nil end
+end
+
 local M = {isAvatarImage = isAvatarImage, hasOwnId = hasOwnId}
 -- All subjects share the native image's authored transparency. A second
 -- renderer must never save the first renderer's masking value as its baseline.
@@ -201,7 +229,7 @@ function M.create(player, getPreviews, describeSnapshot)
     local renderingVerification=false
     local verificationCharacterConnections={}
     local stagingFolder
-    local outfitSnapshot,previewBuild,previewKey
+    local outfitSnapshot,outfitKey,previewBuild,previewKey
     local ensurePreview
     local imageCandidates=setmetatable({}, {__mode="k"})
     local indexed=false
@@ -238,12 +266,12 @@ function M.create(player, getPreviews, describeSnapshot)
         if not alive or not enabled or not verified then clearVerification();renderingVerification=false;return end
         local seen={}
         for _,root in ipairs(roots) do
-            local objects=read(root,"GetDescendants") and root:GetDescendants() or {}
-            for _,object in ipairs(objects) do
+            local index=rootIndexes[root]
+            for object in pairs(index and index.objects or {}) do
                 local class=read(object,"ClassName")
                 local rosterText=plainText(read(object,"Text")):gsub("%s*%(You%)%s*$","")
                 if (class=="TextLabel" or class=="TextButton") and
-                    ((verificationText(object) and (hasOwnId(object,player) or uniquePeopleRow(object,player,{name=currentName)))
+                    ((verificationText(object) and (hasOwnId(object,player) or uniquePeopleRow(object,player,{name=currentName})))
                         or (verifiedRosterRow(object) and rosterText=="@"..currentName)) then
                     seen[object]=true
                     if not verificationBadges[object] then
@@ -281,11 +309,10 @@ function M.create(player, getPreviews, describeSnapshot)
         verificationCharacterConnections={}
         clearVerification()
         if not character then return end
-        local function changed()
-            if player.Character==character and enabled and verified then renderVerification() end
-        end
-        pcall(function() verificationCharacterConnections[#verificationCharacterConnections+1]=character.ChildAdded:Connect(changed) end)
-        if enabled and verified then renderVerification() end
+        -- Badges belong to UI labels, not the character's body/accessories.
+        -- UI text/addition events already refresh them; scanning for every
+        -- spawned limb or accessory multiplies full UI work during respawns.
+        if enabled and verified then queueVerification() end
     end
 
     local function restoreImage(image)
@@ -467,7 +494,7 @@ function M.create(player, getPreviews, describeSnapshot)
         -- Native full-body slots use the Roblox-rendered PNG. Headshots need
         -- a distinct crop/render, so never squeeze a full-body image into them.
         local imageSource, snapshot = fullPortrait(image) and currentImage and not failedImages[currentImage] and currentImage or nil, previewSnapshot
-        if not imageSource and (not snapshot or previewKey~=signature(outfitSnapshot)) then ensurePreview();return end
+        if not imageSource and (not snapshot or previewKey~=outfitKey) then ensurePreview();return end
         local overlay = makeOverlay(image, imageSource)
         if imageSource then
             -- Keep preload images outside the styled native GUI. Image children
@@ -668,10 +695,8 @@ function M.create(player, getPreviews, describeSnapshot)
         pcall(function() connection = signal:Connect(function()
             if not alive or not enabled then return end
             -- A profile name change only affects portraits inside that profile/list.
-            local ok, objects = pcall(function() return scope:GetDescendants() end)
-            if not ok then return end
-            for _, image in ipairs(objects) do
-                if watchableImage(image) then
+            for image in pairs(imageCandidates) do
+                if image:IsDescendantOf(scope) then
                     if isAvatarImage(image, player, {name = currentName}) then watch(image); render(image)
                     elseif hiddenImages[image] then destroyOverlay(image) end
                 end
@@ -680,7 +705,7 @@ function M.create(player, getPreviews, describeSnapshot)
         end) end)
         if connection then textConnections[object] = connection end
     end
-    local ok = pcall(function() coreGui = game:GetService("CoreGui"); coreGui:GetDescendants() end)
+    local ok = pcall(function() coreGui = game:GetService("CoreGui") end)
     -- Portraits of every player are rendered in the viewing client's UI.
     -- The subject player supplies identity/appearance, not the GUI root.
     local viewer = player
@@ -689,6 +714,7 @@ function M.create(player, getPreviews, describeSnapshot)
     roots = {}
     if ok and coreGui then roots[#roots + 1] = coreGui end
     if playerGui then roots[#roots + 1] = playerGui end
+    for _,root in ipairs(roots)do retainRoot(root)end
     available = #roots > 0
     if not available then status = "Roblox CoreGui is unavailable; native avatar thumbnails could not be inspected." end
     pcall(function()
@@ -718,7 +744,7 @@ function M.create(player, getPreviews, describeSnapshot)
 
     ensurePreview=function()
         if not alive or not enabled or not outfitSnapshot or type(describeSnapshot)~="function" then return end
-        local key=signature(outfitSnapshot)
+        local key=outfitKey
         if previewKey==key or (previewBuild and previewBuild.key==key)then return end
         local ticket={key=key};previewBuild=ticket
         local selected=outfitSnapshot
@@ -733,7 +759,7 @@ function M.create(player, getPreviews, describeSnapshot)
             if desc then desc:Destroy()end
             if previewBuild~=ticket then return end
             previewBuild=nil
-            if not alive or not enabled or signature(outfitSnapshot)~=key then return end
+            if not alive or not enabled or outfitKey~=key then return end
             if not ok then status="Waiting for the saved avatar preview.";return end
             previewSnapshot=captured;previewKey=key
             scan()
@@ -743,19 +769,25 @@ function M.create(player, getPreviews, describeSnapshot)
     function api.update(options)
         if not alive then return api.report() end
         options = options or {}; local wasEnabled=enabled; local previousName=currentName
+        local previousDisplayName,previousVerified=currentDisplayName,verified
         enabled = options.enabled == true; currentName = tostring(options.name or "")
         currentDisplayName=tostring(options.displayName or "")
         verified=options.verified==true
         currentImage = type(options.image)=="string" and options.image~="" and options.image or nil
         local effectiveSnapshot = options.snapshot
         outfitSnapshot=effectiveSnapshot
-        local nextKey = signature(effectiveSnapshot) .. "|" .. tostring(currentImage or "")
-        if enabled and wasEnabled and previousName==currentName and nextKey==effectiveKey and (currentImage or previewSnapshot) then renderVerification();return api.report() end
+        outfitKey=appearanceSignature(effectiveSnapshot)
+        local nextKey = outfitKey .. "|" .. tostring(currentImage or "")
+        if enabled and wasEnabled and previousName==currentName and nextKey==effectiveKey and (currentImage or previewSnapshot) then
+            if previousDisplayName~=currentDisplayName or previousVerified~=verified then renderVerification()end
+            return api.report()
+        end
         if enabled and not indexed then
             local preflight = {}
-            for _, root in ipairs(roots) do pcall(function()
-                for _, object in ipairs(root:GetDescendants()) do preflight[#preflight + 1] = object end
-            end) end
+            for _, root in ipairs(roots) do
+                local index=rootIndexes[root]
+                for object in pairs(index and index.objects or {})do preflight[#preflight+1]=object end
+            end
             for _, object in ipairs(preflight) do watch(object); watchPeopleText(object) end
             indexed=true
         end
@@ -777,6 +809,7 @@ function M.create(player, getPreviews, describeSnapshot)
     function api.destroy()
         if not alive then return end
         alive = false;previewBuild=nil
+        for _,root in ipairs(roots)do releaseRoot(root)end
         if rendererOwners[ownerKey]==api then rendererOwners[ownerKey]=nil end
         for _, connection in pairs(connections) do pcall(function() connection:Disconnect() end) end
         for _,group in ipairs({transparencyConnections,textConnections})do

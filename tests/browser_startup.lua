@@ -20,8 +20,11 @@ local http={JSONEncode=function(_,v)return v end,JSONDecode=function(_,v)return 
 game={GetService=function(_,name)return name=='HttpService' and http or {}end}
 request=function()return {StatusCode=200,Body={instanceId='startup',code=string.rep('a',32)}}end
 local socket={OnMessage=signal(),OnClose=signal(),Close=function()end}
+local responses,clientResponses,auth={},{},nil
 function socket:Send(value)
- if value.type=='auth'then self.OnMessage:Fire({type='ready',instanceId='startup',sharing=true})end
+ if value.type=='auth'then auth=value;self.OnMessage:Fire({type='ready',instanceId='startup',sharing=true})end
+ if value.type=='avatar-lookup-result'then responses[#responses+1]=value end
+ if value.type=='client-result'then clientResponses[#clientResponses+1]=value end
 end
 WebSocket={connect=function()return socket end}
 local settings={bodyParts={}}
@@ -34,12 +37,25 @@ local backgroundId,backgrounds=0,{}
 local backgroundChanges=0
 sync=dofile('game_browser_sync.lua')(player,function()return avatar end,function()return clothes end,function()return true end,
  nil,nil,function()return names end,nil,{isReady=function()return ready end,
+ lookupAvatar=function(target)assert(target==99);return {version=1,userId='1',items={}}end,
+ clientRequest=function(method,params)assert(method=='test.echo','Unsupported client request.');return params end,
  getBackgroundState=function()return backgroundId,backgrounds end,
  setBackgroundState=function(id,choices)backgroundId=id; backgroundChanges=backgroundChanges+1;if choices then backgrounds=choices end end,
  setEnabled=function(value)
  if value then enabled=enabled+1;shared=sync.snapshotForSharing()end
 end})
 drain()
+assert(auth.avatarLookup==true,'client advertises its native lookup support')
+assert(auth.clientRequests==true,'client advertises the stable data request bridge')
+socket.OnMessage:Fire({type='client-request',id='12345678-1234-1234-1234-123456789022',method='test.echo',params={value=42}});drain()
+assert(clientResponses[1].result.value==42,'new named feature data goes through the same bridge')
+socket.OnMessage:Fire({type='client-request',id='12345678-1234-1234-1234-123456789023',method='not.registered',params={}});drain()
+assert(clientResponses[2].ok==false,'unregistered methods cannot execute')
+socket.OnMessage:Fire({type='avatar-lookup',id='12345678-1234-1234-1234-123456789012',targetUserId='99'});drain()
+assert(#responses==1 and responses[1].ok and responses[1].snapshot.userId=='1','one-shot account lookup returns through the same socket')
+assert(reads==0,'lookup never reads the player character')
+socket.OnMessage:Fire({type='avatar-lookup',id='bad',targetUserId='99'});drain()
+assert(#responses==1,'malformed lookup requests are ignored')
 local command={version=1,userId='1',revision=1,items={},definition={assets={},scales={},playerAvatarType={playerAvatarType='R15'},bodyColors={}}}
 for _,key in ipairs({'head','torso','leftArm','rightArm','leftLeg','rightLeg'})do command.definition.bodyColors[key..'Color']='ffffff'end
 socket.OnMessage:Fire({type='state',channel='browser',value=command})
@@ -58,5 +74,7 @@ assert(backgroundChanges==2,'a duplicate revision does not reapply the backgroun
 command.revision=3;command.backgroundId=0
 socket.OnMessage:Fire({type='state',channel='browser',value=command});drain()
 assert(backgroundId==0 and sync.publish().backgroundId==0,'explicit removal clears and confirms the background')
-sync.destroy()
+socket.OnMessage:Fire({type='avatar-lookup',id='12345678-1234-1234-1234-123456789013',targetUserId='99'})
+sync.destroy();drain()
+assert(#responses==1,'disconnect cancels pending lookup work')
 print('PASS: early connection and sharing, no partial-avatar publication, deferred appearance replay')

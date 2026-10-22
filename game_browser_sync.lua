@@ -1,9 +1,9 @@
--- Local-only game <-> browser pairing. The relay never receives game code or commands.
+-- Local-only appearance data and typed avatar lookups. No executable code crosses the relay.
 local HttpService=game:GetService("HttpService")
 local MarketplaceService=game:GetService("MarketplaceService")
 local PORT=38261
 local accessoryTypes={[8]=true,[41]=true,[42]=true,[43]=true,[44]=true,[45]=true,[46]=true,[47]=true,[64]=true,[65]=true,[66]=true,[67]=true,[68]=true,[69]=true,[70]=true,[71]=true,[72]=true,[76]=true,[77]=true}
-local animationTypes={[48]="ClimbAnimation",[50]="FallAnimation",[51]="IdleAnimation",[52]="JumpAnimation",[53]="RunAnimation",[54]="SwimAnimation",[55]="WalkAnimation",[56]="PoseAnimation"}
+local animationTypes={[48]="ClimbAnimation",[50]="FallAnimation",[51]="IdleAnimation",[52]="JumpAnimation",[53]="RunAnimation",[54]="SwimAnimation",[55]="WalkAnimation",[56]="PoseAnimation",[78]="MoodAnimation"}
 local SCALE_PROPERTIES={height="BodyHeightScale",width="BodyWidthScale",depth="BodyDepthScale",head="HeadScale",bodyType="BodyTypeScale",proportion="BodyProportionScale"}
 local function safeId(v)return type(v)=="number" and v==v and v>0 and v%1==0 and v<9007199254740992 end
 local function hex(c)
@@ -29,7 +29,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local lastSharingPreference=nil
     local sharingConnected=false
     local scheduleSnapshot
-    local larpEnabled,larpName,larpVerified,lastSnapshot=false,"",false,nil
+    local larpEnabled,larpName,larpDisplayName,larpVerified,lastSnapshot=false,"","",false,nil
     local browserModeKnown=false
     local socket,socketReady,socketMine=nil,false,0
     local incoming,pumping={},false
@@ -64,6 +64,24 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local file="larpblox-browser-pair-"..tostring(player.UserId)..".txt"
     local cache,assetTypes,bodyCache={},{},{}
     local function status(message)if onStatus and isAlive() then onStatus(message)end end
+    local function connectionState(ready)
+        if sharing and sharing.onConnectionState and isAlive()then sharing.onConnectionState(ready)end
+    end
+    local viewOptions,viewPending,cachedViews
+    local function queueViews(options)
+        viewOptions=options
+        if not getViews or viewPending or (not options.enabled and not cachedViews)then return end
+        viewPending=true
+        task.defer(function()
+            local ok,reason=pcall(function()
+                if not isAlive()then return end
+                cachedViews=cachedViews or getViews()
+                if isAlive()then cachedViews.update(viewOptions)end
+            end)
+            viewPending=false
+            if not ok and isAlive()then status("Avatar preview: "..tostring(reason))end
+        end)
+    end
     local function validToken(v)return type(v)=="string" and #v==32 and v:match("^%x+$") end
     local function readSaved()
         if type(readfile)=="function" and type(isfile)=="function" then
@@ -120,7 +138,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         return imageAsset and imageAssetDefinition and (not expected or definitionKey(imageAssetDefinition)==definitionKey(expected)) and imageAsset or nil
     end
     local function updateViews()
-        if getViews then getViews().update({enabled=larpEnabled,name=larpName,verified=larpVerified,snapshot=lastBrowserSnapshot or lastSnapshot,image=currentImage()})end
+        queueViews({enabled=larpEnabled,name=larpName,displayName=larpDisplayName,verified=larpVerified,snapshot=lastBrowserSnapshot or lastSnapshot,image=currentImage()})
     end
     local function applyImage(value)
         if type(value)~="table" or value.version~=1 or tostring(value.userId)~=tostring(player.UserId) then return end
@@ -167,7 +185,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 seen[id]=true;items[#items+1]={id=id,name=string.sub(label,1,128),itemType="Asset",assetType=assetType};definition.assets[#definition.assets+1]={id=id,meta=meta}
             end
         end
-        local added={};for _,entry in ipairs(getAvatar():listAccessories())do added[entry.id]=true;local typeId=assetTypes[entry.id] or 8;add(entry.id,entry.name,typeId,true)end
+        local added={};for _,entry in ipairs(getAvatar():listAccessories())do added[entry.id]=true;local typeId=assetTypes[entry.id] or 8;add(entry.id,entry.name,typeId,true,entry.meta)end
         if getAvatar().listGear then for _,entry in ipairs(getAvatar():listGear())do add(entry.id,entry.name,19,true) end end
         local ok,entries=pcall(function()return desc:GetAccessories(true)end)
         if ok and type(entries)=="table" then for _,entry in ipairs(entries)do local id=entry.AssetId;local typeId=assetTypes[id] or 8;add(id,entry.Name,typeId,not settings.hideOriginals or added[id],entry.IsLayered and {order=entry.Order or 0,puffiness=entry.Puffiness or 0} or nil)end end
@@ -259,12 +277,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         if not readyForAppearance() then return end
         if revision<=lastRevision then return end
         if browserModeKnown and not larpEnabled then lastRevision=revision;return end
-        local avatar,clothes=getAvatar(),getClothes();local failed={};local loadErrors={};local desired={};local current={};local desiredGear
+        local avatar,clothes=getAvatar(),getClothes();local failed={};local loadErrors={};local desired={};local current={}
         for _,item in ipairs(value.items)do
             assetTypes[item.id]=item.assetType
             cache[item.id]=item.name
             if accessoryTypes[item.assetType] then desired[item.id]=true end
-            if item.assetType==19 then desiredGear=item end
         end
         local ok,msg=pcall(function()
             local before=snapshot()
@@ -312,7 +329,14 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if not loaded then loadErrors[#loadErrors+1]="Face: "..tostring(reason)end
                 browserFace=false
             end
-            local changed=false;for id in pairs(desired)do if not current[id]then changed=true end end;for id in pairs(current)do if not desired[id]then changed=true end end
+            local accessoryMetadata={}
+            for _,asset in ipairs(value.definition.assets)do accessoryMetadata[asset.id]=asset.meta end
+            local managed={};for _,entry in ipairs(avatar.listAccessories())do managed[entry.id]=true end
+            local function needsManaged(id)
+                local meta=accessoryMetadata[id]
+                return not managed[id] and meta and (meta.scale or meta.position or meta.rotation)
+            end
+            local changed=false;for id in pairs(desired)do if not current[id] or needsManaged(id)then changed=true end end;for id in pairs(current)do if not desired[id]then changed=true end end
             if changed then
                 -- Keep unchanged instances: some already-worn hats cannot be loaded again.
                 local entries=avatar.listAccessories();local localIds={};local present={}
@@ -320,7 +344,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 local hideOriginals=false
                 for id in pairs(current)do
                     if not localIds[id] then
-                        if desired[id] then present[id]=true else hideOriginals=true end
+                        if desired[id] and not needsManaged(id) then present[id]=true else hideOriginals=true end
                     end
                 end
                 if hideOriginals then avatar.removeCurrentAccessories();present={} end
@@ -329,21 +353,23 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 end
                 for _,item in ipairs(value.items)do
                     if accessoryTypes[item.assetType] and not present[item.id] then
-                        local loaded,reason=pcall(avatar.equipAccessory,item.id)
+                        local loaded,reason=pcall(avatar.equipAccessory,item.id,accessoryMetadata[item.id])
                         if loaded then present[item.id]=true else loadErrors[#loadErrors+1]=item.name..": "..tostring(reason) end
                     end
                 end
             end
-            local currentGear=avatar.listGear and avatar.listGear()[1]
-            if (currentGear and not desiredGear) or (desiredGear and (not currentGear or currentGear.id~=desiredGear.id)) then
-                if desiredGear then
-                    local loaded,reason=pcall(avatar.equipGear,desiredGear.id)
-                    if not loaded then loadErrors[#loadErrors+1]=desiredGear.name..": "..tostring(reason) end
-                elseif currentGear then avatar.removeGear()
+            if avatar.setAccessoryMetadata then
+                for _,entry in ipairs(avatar.listAccessories())do
+                    if desired[entry.id]then
+                        local loaded,reason=pcall(avatar.setAccessoryMetadata,entry.key,accessoryMetadata[entry.id])
+                        if not loaded then loadErrors[#loadErrors+1]="Accessory adjustments: "..tostring(reason)end
+                    end
                 end
             end
+            -- Gear remains in the saved browser outfit, but is not rendered
+            -- until equip/unequip state can be synchronized.
             local currentClothes=clothes.getSettings();local clothingTypes={[2]={"ShirtGraphic","equipTShirt","removeTShirt"},[11]={"Shirt","equipShirt","removeShirt"},[12]={"Pants","equipPants","removePants"}}
-            local visibleClothes={};for _,item in ipairs(snapshot().items)do if clothingTypes[item.assetType] then visibleClothes[item.assetType]=item.id end end
+            local visibleClothes={};for _,item in ipairs(before.items)do if clothingTypes[item.assetType] then visibleClothes[item.assetType]=item.id end end
             local wantedClothes={};local wantedAnimations={}
             for _,item in ipairs(value.items)do
                 local slot=clothingTypes[item.assetType]
@@ -356,7 +382,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             for assetType,slot in pairs(clothingTypes)do if not wantedClothes[assetType] and currentClothes[slot[1]]~=0 and clothes[slot[3]] then clothes[slot[3]]()end end
             if getAnimations then
                 local animationApi=getAnimations();local settings=animationApi.getSettings()
-                local currentAnimations={};for _,item in ipairs(snapshot().items)do if animationTypes[item.assetType] then currentAnimations[item.assetType]=item.id end end
+                local currentAnimations={};for _,item in ipairs(before.items)do if animationTypes[item.assetType] then currentAnimations[item.assetType]=item.id end end
                 local changedAnimations=false;local desiredAnimations={}
                 for _,item in ipairs(wantedAnimations)do desiredAnimations[item.assetType]=item.id;if currentAnimations[item.assetType]~=item.id then changedAnimations=true end end
                 for assetType in pairs(currentAnimations)do if not desiredAnimations[assetType] then changedAnimations=true end end
@@ -402,7 +428,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         end
         local firstModeState=value~=nil and not browserModeKnown
         local reenabled=browserModeKnown and not larpEnabled and state~="disabled"
-        larpEnabled=state~="disabled";larpName=displayName;larpVerified=larpEnabled and verified or false
+        larpEnabled=state~="disabled";larpName=username;larpDisplayName=displayName;larpVerified=larpEnabled and verified or false
         if reenabled then
             -- Turning off restores the real avatar without deleting the saved
             -- Larp command. A mode-only toggle does not create a new revision.
@@ -440,7 +466,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             else names.set(username,displayName)end
             if names.setVerified then names.setVerified(larpVerified) end
         end
-        if getViews then getViews().update({enabled=larpEnabled,name=larpName,verified=larpVerified,image=currentImage()})end
+        updateViews()
         lastNameState=state
         -- Rebuild before publishing so peers receive the new verification flag.
         if scheduleSnapshot then scheduleSnapshot() else notifySnapshot()end
@@ -457,13 +483,26 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             if ok then return end
             closeSocket()
         end
-        return call("POST","/v1/"..(channel=="game" and "game" or channel).."/"..player.UserId,token,value)
+        local path="/v1/"..(channel=="game" and "game" or channel).."/"..player.UserId
+        local ok,result=pcall(call,"POST",path,token,value)
+        if not ok and tostring(result):find("HTTP 401",1,true)then
+            -- A desktop restart can invalidate the cached credential before
+            -- the socket closes. Recover once in response to that rejection.
+            local paired,pair=pcall(call,"GET","/v1/pair","")
+            if paired and pair and validToken(pair.code) and pair.code~=token then
+                local connectedAgain=pcall(api.connect,pair.code)
+                if connectedAgain then return call("POST",path,token,value)end
+            end
+        end
+        if not ok then connectionState(false);error(result,0)end
+        return result
     end
     local function publishSnapshot()
         snapshotScheduleId=snapshotScheduleId+1
         snapshotPending=false
         if not readyForAppearance() then return end
         local made,value=pcall(snapshot)
+        local changed=false
         if made then
             if commandSnapshotPending then
                 commandSnapshotPending=false
@@ -472,10 +511,13 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             end
             lastSnapshot=value
             local encoded=HttpService:JSONEncode(value)
-            if encoded~=lastJson then send("game",value);lastJson=encoded end
+            if encoded~=lastJson then
+                changed=true
+                local sent,reason=pcall(send,"game",value)
+                if sent then lastJson=encoded else status("Desktop update failed: "..tostring(reason))end
+            end
         end
-        updateViews()
-        if made then notifySnapshot()end
+        if changed then updateViews();notifySnapshot()end
     end
     local function disconnectAll(connections)
         for _,connection in ipairs(connections)do pcall(function()connection:Disconnect()end)end
@@ -508,8 +550,21 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         end)
     end
     local function watchAppearanceInstance(instance)
-        if instanceConnections[instance]then return end
+        if instanceConnections[instance]then return false end
+        -- Effects, animation tracks and equipped tools are not outfit data.
+        -- In particular, Chroma weapon colors change continuously.
+        local character=player.Character
+        if instance:FindFirstAncestorOfClass("Tool")then return false end
+        local relevant=instance:IsA("Accessory") or instance:IsA("Humanoid") or instance:IsA("BodyColors")
+            or instance:IsA("Clothing") or instance:IsA("ShirtGraphic") or instance:IsA("CharacterMesh")
+            or (instance:IsA("BasePart") and instance.Parent==character)
+        local scale=false
+        if instance:IsA("NumberValue") and instance.Parent and instance.Parent:IsA("Humanoid")then
+            for _,name in pairs(SCALE_PROPERTIES)do if instance.Name==name then scale=true;break end end
+        end
+        if not relevant and not scale then return false end
         instanceConnections[instance]={}
+        if scale then watchProperty(instance,"Value");return true end
         local okHumanoid,isHumanoid=pcall(function()return instance:IsA("Humanoid")end)
         if okHumanoid and isHumanoid then
             local ok,signal=pcall(function()return instance.ApplyDescriptionFinished end)
@@ -520,10 +575,10 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             for _,property in ipairs({"HeadColor3","TorsoColor3","LeftArmColor3","RightArmColor3","LeftLegColor3","RightLegColor3"})do
                 watchProperty(instance,property)
             end
-            return
+            return true
         end
         local okPart,isPart=pcall(function()return instance:IsA("BasePart")end)
-        if okPart and isPart then watchProperty(instance,"Color")end
+        if okPart and isPart and instance.Parent==character then watchProperty(instance,"Color")end
         local propertyByClass={
             Shirt={"ShirtTemplate"},Pants={"PantsTemplate"},ShirtGraphic={"Graphic"},
             MeshPart={"MeshId","TextureID"},SpecialMesh={"MeshId","TextureId","VertexColor"},
@@ -536,6 +591,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 for _,property in ipairs(properties)do watchProperty(instance,property)end
             end
         end
+        return true
     end
     local function forgetAppearanceSubtree(root)
         for instance,connections in pairs(instanceConnections)do
@@ -550,12 +606,12 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         disconnectCharacterWatchers()
         if not character then return end
         connectSignal(character.DescendantAdded,characterConnections,function(instance)
-            watchAppearanceInstance(instance)
-            scheduleSnapshot()
+            if watchAppearanceInstance(instance)then scheduleSnapshot()end
         end)
         connectSignal(character.DescendantRemoving,characterConnections,function(instance)
+            local relevant=instanceConnections[instance]~=nil
             forgetAppearanceSubtree(instance)
-            scheduleSnapshot()
+            if relevant then scheduleSnapshot()end
         end)
         for _,instance in ipairs(character:GetDescendants())do watchAppearanceInstance(instance)end
         scheduleSnapshot()
@@ -625,16 +681,18 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local function openSocket()
         local ws=WebSocket or websocket or (syn and syn.websocket)
         local connect=ws and (ws.connect or ws.new)
-        if type(connect)~="function" or socket then return false end
+        if socket then return false end
+        if type(connect)~="function"then connectionState(false);return false end
         local mine=generation;local serial=socketMine
         local ok,candidate=pcall(connect,"ws://127.0.0.1:"..PORT.."/v1/socket")
-        if not ok or not candidate then status("Desktop connection unavailable. Open desktop and reload the interface.");return false end
+        if not ok or not candidate then connectionState(false);status("Desktop connection unavailable. Open desktop and reload the interface.");return false end
         if mine~=generation then pcall(function()candidate:Close()end);return end
         socket=candidate
         candidate.OnClose:Connect(function()
             if socket==candidate then
                 local wasReady=socketReady
                 socket=nil;socketReady=false;lastJson=nil;sharingConnected=false
+                connectionState(false)
                 status("Desktop disconnected. Open desktop and reload the interface.")
                 if wasReady then task.defer(function()if connected and generation==mine then pcall(api.connect)end end)end
             end
@@ -645,6 +703,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             if not read or type(value)~="table" then return end
             if value.type=="ready" then
                 socketReady=true;lastJson=nil
+                connectionState(true)
                 local function keepAlive()
                     task.delay(20,function()
                         if socket~=candidate or generation~=mine or not socketReady then return end
@@ -662,16 +721,41 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if value.instanceId~=api.instanceId then lastRevision=0;lastNameState=nil;api.instanceId=value.instanceId end
                 scheduleSnapshot()
                 status("Browser connected via WebSocket.")
+            elseif value.type=="client-request" and sharing and sharing.clientRequest then
+                local id,method,params=value.id,value.method,value.params
+                if type(id)~="string" or #id~=36 or not id:match("^[%x%-]+$") or type(method)~="string" or #method>64 or not method:match("^[%l%d%._]+$") or type(params)~="table"then return end
+                task.spawn(function()
+                    if socket~=candidate or generation~=mine or not isAlive()then return end
+                    local loaded,result=pcall(sharing.clientRequest,method,params)
+                    if socket~=candidate or generation~=mine or not isAlive()then return end
+                    local response={type="client-result",id=id,ok=loaded}
+                    if loaded then response.result=result
+                    else response.error=tostring(result):gsub("%c"," "):sub(1,256)end
+                    pcall(function()candidate:Send(HttpService:JSONEncode(response))end)
+                end)
+            elseif value.type=="avatar-lookup" and sharing and sharing.lookupAvatar then
+                local id,target=value.id,tonumber(value.targetUserId)
+                if type(id)~="string" or #id~=36 or not id:match("^[%x%-]+$") or not safeId(target)then return end
+                task.spawn(function()
+                    if socket~=candidate or generation~=mine or not isAlive()then return end
+                    local loaded,result=pcall(sharing.lookupAvatar,target)
+                    if socket~=candidate or generation~=mine or not isAlive()then return end
+                    local response={type="avatar-lookup-result",id=id,ok=loaded}
+                    if loaded then response.snapshot=result
+                    else response.error=tostring(result):gsub("%c"," "):sub(1,256)end
+                    pcall(function()candidate:Send(HttpService:JSONEncode(response))end)
+                end)
             elseif value.type=="state" and value.channel=="shared" then
                 notifySharing(value.value)
             elseif value.type=="state" and (value.channel=="browser" or value.channel=="names" or value.channel=="image") then
                 incoming[value.channel]={value=value.value};task.spawn(pump)
-            elseif value.type=="error" then closeSocket()end
+            elseif value.type=="error" then connectionState(false);closeSocket()end
         end)
-        local sent=pcall(function()candidate:Send(HttpService:JSONEncode({version=1,type="auth",token=token,userId=tostring(player.UserId),role="game"}))end)
-        if not sent then closeSocket();return false end
+        local sent=pcall(function()candidate:Send(HttpService:JSONEncode({version=1,type="auth",token=token,userId=tostring(player.UserId),role="game",avatarLookup=sharing and type(sharing.lookupAvatar)=="function" or false,clientRequests=sharing and type(sharing.clientRequest)=="function" or false}))end)
+        if not sent then connectionState(false);closeSocket();return false end
         task.delay(5,function()
             if socket==candidate and generation==mine and not socketReady then
+                connectionState(false)
                 closeSocket();status("Desktop did not complete the connection. Reload the interface to reconnect.")
             end
         end)
@@ -690,7 +774,8 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         if not opened then connected=false end
         return opened
     end
-    function api.disconnect()generation=generation+1;stopAppearanceWatchers();closeSocket();incoming={};retryCommand=nil;connected=false;token=nil;lastJson=nil;lastNameState=nil;sharingConnected=false;applyNameState(nil);lastSharingPreference=nil;if getViews then getViews().update({enabled=false})end;status("Browser disconnected.")end
+    function api.disconnect()generation=generation+1;stopAppearanceWatchers();closeSocket();incoming={};retryCommand=nil;connected=false;token=nil;lastJson=nil;lastNameState=nil;sharingConnected=false;applyNameState(nil);lastSharingPreference=nil;queueViews({enabled=false});status("Browser disconnected.")end
+    function api.isLarpEnabled()return larpEnabled end
     function api.isConnected()return connected end
     function api.status()return connected and (socketReady and "Browser connected via WebSocket." or "Waiting for desktop WebSocket.") or "Browser disconnected."end
     function api.publish()assert(connected,"Connect the browser first.");local value=snapshot();local encoded=HttpService:JSONEncode(value);if encoded~=lastJson then send("game",value);lastJson=encoded end;return value end
@@ -705,8 +790,14 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         assert(readyForAppearance(),"Waiting for the saved browser outfit.")
         return snapshot()
     end
-    function api.resumeAppearance()
+    function api.resumeAppearance(characterChanged)
         if not readyForAppearance()then return end
+        -- A revision belongs to an applied character, not just a received outfit.
+        -- Replay the retained browser selection after respawn restoration finishes.
+        if characterChanged and larpEnabled and lastBrowserCommand then
+            lastRevision=0
+            retryCommand=lastBrowserCommand
+        end
         if lastModeValue then lastNameState=nil;applyNameState(lastModeValue)end
         if retryCommand then incoming.browser={value=retryCommand};retryCommand=nil end
         if connected then task.defer(pump);scheduleSnapshot()end
@@ -745,7 +836,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     task.defer(function()
         if not isAlive()then return end
         local ok,err=pcall(api.connect)
-        if not ok then status("Open Larpblox Desktop, then reload the interface to connect.")end
+        if not ok then connectionState(false);status("Open Larpblox Desktop, then reload the interface to connect.")end
     end)
     return api,saved
 end
