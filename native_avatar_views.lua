@@ -264,6 +264,24 @@ function M.create(player, getPreviews, describeSnapshot)
         end
         return false
     end
+    local function positionVerification(object,badge)
+        local card,row=false,false
+        for _,ancestor in ipairs(ancestors(object)) do
+            local name=read(ancestor,"Name")
+            if name=="CardContent" then card=true;break end
+            if name=="PersonRow" then row=true;break end
+        end
+        badge.Position=UDim2.new(1,2,0.5,0)
+        if not card and not row then return end
+        local bounds,size=read(object,"TextBounds"),read(object,"AbsoluteSize")
+        if bounds and size then
+            local width=math.min(bounds.X,size.X)
+            -- Rows keep the original right-edge anchor. Roblox can retain a
+            -- wider name slot after alias replacement; remove that empty space.
+            badge.Position=card and UDim2.new(0,width+2,0.5,0)
+                or UDim2.new(1,width-size.X+2,0.5,0)
+        end
+    end
     local function renderVerification()
         if renderingVerification then return end
         renderingVerification=true
@@ -289,22 +307,26 @@ function M.create(player, getPreviews, describeSnapshot)
                         verificationBadges[object]=badge
                         local bindings={}
                         verificationGeometry[object]=bindings
-                        for _,property in ipairs({"TextBounds","AbsoluteSize","TextXAlignment"}) do
-                            local ok,signal=pcall(function() return object:GetPropertyChangedSignal(property) end)
-                            if ok and signal then bindings[#bindings+1]=signal:Connect(renderVerification) end
+                        local queued=false
+                        local function settledPosition()
+                            if queued then return end
+                            queued=true
+                            task.defer(function()
+                                -- Roblox replaces/sizes the native name over the
+                                -- current frame. Reading bounds inside its signal
+                                -- can still return the previous account name width.
+                                task.wait()
+                                queued=false
+                                if verificationBadges[object]==badge then positionVerification(object,badge) end
+                            end)
                         end
+                        for _,property in ipairs({"Text","TextBounds","AbsoluteSize"}) do
+                            local ok,signal=pcall(function() return object:GetPropertyChangedSignal(property) end)
+                            if ok and signal then bindings[#bindings+1]=signal:Connect(settledPosition) end
+                        end
+                        settledPosition()
                     end
-                    -- Native names auto-size before their badge. Some People cards
-                    -- keep a full-width label instead, so use the visible text end.
-                    local badge=verificationBadges[object]
-                    local bounds,size=read(object,"TextBounds"),read(object,"AbsoluteSize")
-                    if bounds and size then
-                        local width=math.min(bounds.X,size.X)
-                        local alignment=read(object,"TextXAlignment")
-                        local start=alignment==Enum.TextXAlignment.Right and size.X-width
-                            or alignment==Enum.TextXAlignment.Center and (size.X-width)/2 or 0
-                        badge.Position=UDim2.new(0,start+width+2,0.5,0)
-                    end
+                    positionVerification(object,verificationBadges[object])
                 end
             end
         end

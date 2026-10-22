@@ -1,6 +1,7 @@
--- Runs the production badge renderer against both native menu label shapes.
+-- Real renderer, including deferred native layout events (no replacement layout math).
 return function(source)
-    local block=assert(source:match("    local function renderVerification%(%)%s*(.-)    local verificationQueued=false"))
+    local block=assert(source:match("    local function positionVerification%(object,badge%)(.-)    local verificationQueued=false"))
+    block="local function positionVerification(object,badge)"..block
     local run=assert(loadstring([[return function(env)
         local verificationBadges,verificationGeometry,renderingVerification={},{},false
         local alive,enabled,verified=true,true,true
@@ -15,32 +16,31 @@ return function(source)
         local function uniquePeopleRow() return false end
         local function verifiedRosterRow() return false end
         local function clearVerification() end
-        local Instance,UDim2,Vector2,Enum=env.Instance,env.UDim2,env.Vector2,env.Enum
-        local renderVerification
-        renderVerification=function()
+        local function ancestors(o) return {o,o.Parent} end
+        local Instance,UDim2,Vector2,task=env.Instance,env.UDim2,env.Vector2,env.task
     ]]..block..[[
         renderVerification()
         return verificationBadges[env.label],renderVerification
     end]]))()
-    local function check(width,textWidth,alignment,expected)
-        local label={ClassName="TextLabel",Text="Noah",Parent={},AbsoluteSize={X=width,Y=18},TextBounds={X=textWidth,Y=18},TextXAlignment=alignment,ZIndex=3}
-        local badge,refresh=run({root={},label=label,
+    for _,card in ipairs({false,true}) do
+        local queue,signals={},{}
+        local label={ClassName="TextLabel",Text="Noah",Parent={Name=card and "CardContent" or "PersonRow"},AbsoluteSize={X=card and 129 or 72,Y=18},TextBounds={X=83,Y=18},ZIndex=3}
+        function label:GetPropertyChangedSignal(name)
+            signals[name]={Connect=function(_,callback) signals[name].callback=callback;return {Disconnect=function()end} end}
+            return signals[name]
+        end
+        local badge=run({root={},label=label,
             Instance={new=function() return {} end},
             UDim2={fromOffset=function(x,y)return {X={Scale=0,Offset=x},Y={Scale=0,Offset=y}}end,new=function(xs,x,ys,y)return {X={Scale=xs,Offset=x},Y={Scale=ys,Offset=y}}end},
             Vector2={new=function(x,y)return {X=x,Y=y}end},
-            Enum={TextXAlignment={Left="Left",Center="Center",Right="Right"}}})
-        local x=badge.Position.X.Scale*width+badge.Position.X.Offset
-        assert(x==expected,"badge must follow visible name, got "..x.." expected "..expected)
-        assert(badge.Size.X.Offset==16 and badge.Size.Y.Offset==16,"native badge size")
-        label.TextBounds.X=textWidth+10
-        if width==textWidth then label.AbsoluteSize.X=width+10 end
-        refresh()
-        local updated=badge.Position.X.Scale*width+badge.Position.X.Offset
-        assert(updated==expected+10*(alignment=="Left" and 1 or alignment=="Center" and 0.5 or 0),"badge must follow changed text bounds")
+            task={defer=function(f)queue[#queue+1]=f end,wait=function()end}})
+        -- Name replacement fires while bounds still describe the old account name.
+        signals.Text.callback()
+        label.TextBounds.X=card and 38 or 37
+        for _,f in ipairs(queue) do f() end
+        assert(badge.Position.X.Scale==(card and 0 or 1),"row must retain its original anchor")
+        assert(badge.Position.X.Offset==(card and 40 or -33),"card must use settled alias bounds; row removes unused native name space")
+        assert(badge.Size.X.Offset==16 and badge.Size.Y.Offset==16,"badge size is preserved")
     end
-    check(128,37,"Left",39)
-    check(37,37,"Left",39)
-    check(128,37,"Center",84.5)
-    check(128,37,"Right",130)
-    print("PASS: square/list badge follows visible name and updated text bounds")
+    print("PASS: original row placement and square card after native name/layout settles")
 end
