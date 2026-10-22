@@ -414,10 +414,27 @@ function M.create(player, getPreviews, describeSnapshot)
         LeftUpperLeg=true,LeftLowerLeg=true,LeftFoot=true,RightUpperLeg=true,RightLowerLeg=true,RightFoot=true}
     local function fullPortrait(image)
         local source=tostring(nativeImageSources[image] or read(image,"Image") or ""):lower()
-        -- Asset/CDN URLs often omit the thumbnail type. Only explicit head/bust
-        -- slots need a different crop; full-body PNGs keep their native image slot.
-        return not (source:find("avatarheadshot",1,true) or source:find("avatarbust",1,true)
-            or source:find("bust-thumbnail",1,true) or tostring(read(image,"Name") or ""):lower()=="headshot")
+        if source:find("avatarheadshot",1,true) or source:find("avatarbust",1,true)
+            or source:find("bust-thumbnail",1,true) then return false end
+        -- CDN URLs omit the thumbnail kind. Use the native portrait slot too,
+        -- so peers and our own avatar share the same headshot camera.
+        local name=tostring(read(image,"Name") or ""):lower()
+        if name=="headshot" or name=="avatarheadshot" then return false end
+        local imageSize=read(image,"AbsoluteSize")
+        for depth,ancestor in ipairs(ancestors(image)) do
+            if depth>6 then break end
+            local ancestorName=tostring(read(ancestor,"Name") or ""):lower()
+            if ancestorName=="cardcontent" then return true end
+            if ancestorName=="personrow" or ancestorName=="playerlist" or ancestorName=="playerlistmaster" then return false end
+            local size=read(ancestor,"AbsoluteSize")
+            if depth==1 or (size and imageSize and math.abs(size.X-imageSize.X)<=1 and math.abs(size.Y-imageSize.Y)<=1) then
+                local find=read(ancestor,"FindFirstChildOfClass")
+                local corner=find and ancestor:FindFirstChildOfClass("UICorner")
+                local radius=read(corner,"CornerRadius")
+                if radius and radius.Scale>=0.5 then return false end
+            end
+        end
+        return true
     end
     local function posePortrait(frame,image)
         if not fullPortrait(image) then return end
