@@ -1085,7 +1085,11 @@ return function(player,onStatus,readAsset,managedRespawn)
         end
         if not cached and not applied then template:Destroy()end
         assert(applied,message)
-        if not reapplying then settings.body=nil;settings.bodyParts=table.clone(parts);save()end
+        if not reapplying then
+            settings.body=nil;settings.bodyParts={}
+            for _,region in ipairs({"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"})do settings.bodyParts[region]=parts[region] or 0 end
+            save()
+        end
         return "Shared body applied (visible to you)."
     end
     function api.applyBody(value)
@@ -1419,7 +1423,12 @@ return function(player,onStatus,readAsset,managedRespawn)
             end
             if desired.scales then apply("proportions",operations.setScales,desired.scales) end
             if desired.body then apply("body",operations.applyBody,desired.body) end
-            for region,value in pairs(desired.bodyParts) do apply(region,operations.applyBodyPart,region,value) end
+            local complete=true
+            for _,region in ipairs({"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"})do
+                if type(desired.bodyParts[region])~="number" then complete=false;break end
+            end
+            if complete then apply("body",operations.applyBodyParts,desired.bodyParts,desired.scales)
+            else for region,value in pairs(desired.bodyParts) do apply(region,operations.applyBodyPart,region,value) end end
             if desired.face then apply("face",operations.applyFace,desired.face)end
             if desired.hideOriginals then apply("hidden accessories",operations.removeCurrentAccessories) end
             for _,id in ipairs(desired.accessories) do apply("accessory "..id,operations.equipAccessory,id,(desired.accessoryMeta or {})[tostring(id)]) end

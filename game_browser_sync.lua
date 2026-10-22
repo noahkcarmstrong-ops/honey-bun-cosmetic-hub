@@ -303,6 +303,29 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if loaded then currentBody={};browserBody={};originalBody={};resetBody=true
                 else loadErrors[#loadErrors+1]="Body: "..tostring(reason)end
             end
+            if avatar.applyBodyParts then
+                local changed=resetBody
+                local complete={}
+                for _,entry in ipairs(bodyRegions)do
+                    local region=entry[1]
+                    complete[region]=desiredBody[region] or 0
+                    if browserBody[region]==nil or (currentBody[region] or 0)~=complete[region] then changed=true end
+                end
+                for key,scale in pairs(value.definition.scales)do
+                    if (before.definition.scales or {})[key]~=scale then changed=true end
+                end
+                if changed then
+                    -- The native generated root and HipHeight must accompany
+                    -- the complete body; individual regions cannot supply them.
+                    local loaded,reason=pcall(avatar.applyBodyParts,complete,value.definition.scales)
+                    if loaded then
+                        for region,id in pairs(complete)do
+                            if originalBody[region]==nil then originalBody[region]=currentBody[region] end
+                            browserBody[region]=id
+                        end
+                    else loadErrors[#loadErrors+1]="Body: "..tostring(reason)end
+                end
+            else
             for _,entry in ipairs(bodyRegions)do
                 local region=entry[1];local wanted=desiredBody[region];local owned=browserBody[region] or (bodySettings.bodyParts or {})[region]
                 if wanted and currentBody[region]~=wanted then
@@ -313,6 +336,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                     local loaded,reason=pcall(avatar.applyBodyPart,region,0)
                     if loaded then browserBody[region]=0;originalBody[region]=nil else loadErrors[#loadErrors+1]=region..": "..tostring(reason)end
                 end
+            end
             end
             for _,entry in ipairs({{"Head","headColor"},{"Torso","torsoColor"},{"LeftArm","leftArmColor"},{"RightArm","rightArmColor"},{"LeftLeg","leftLegColor"},{"RightLeg","rightLegColor"}})do
                 local wanted=value.definition.bodyColors[entry[2]]:gsub("^#",""):lower()
