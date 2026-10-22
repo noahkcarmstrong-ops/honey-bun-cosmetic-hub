@@ -124,9 +124,12 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local browserFace=false
     local function definitionKey(definition)
         if type(definition)~="table" then return "" end
-        local ids,values={},{}
-        for _,asset in ipairs(definition.assets or {})do ids[#ids+1]=asset.id end
-        table.sort(ids);for _,id in ipairs(ids)do values[#values+1]=tostring(id)end
+        local ids,styles,values={}, {},{}
+        for _,asset in ipairs(definition.assets or {})do
+            ids[#ids+1]=asset.id
+            styles[asset.id]=asset.meta and asset.meta.smokestackStyle or ""
+        end
+        table.sort(ids);for _,id in ipairs(ids)do values[#values+1]=tostring(id);values[#values+1]=tostring(styles[id] or "")end
         for _,key in ipairs({"headColor","torsoColor","leftArmColor","rightArmColor","leftLegColor","rightLegColor"})do
             values[#values+1]=tostring((definition.bodyColors or {})[key] or ""):gsub("^#",""):lower()
         end
