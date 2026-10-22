@@ -73,7 +73,7 @@ local mm2GunLibraryAPI
 local nativeViewsAPI
 local localNamesAPI
 local playerCollisionsAPI
-local accessorySoundsAPI
+local accessoryRuntime={}
 local mm2Enabled=false
 local mm2EmotesShown=false
 local playerGui = localPlayer:WaitForChild("PlayerGui")
@@ -733,7 +733,10 @@ gameBrowserSync=function()
             elseif sharedLarpAPI then sharedLarpAPI.setEnabled(false)end
         end,
     }))
-    gameBrowserSyncAPI.onSnapshot(function()corpseController().refresh()end)
+    gameBrowserSyncAPI.onSnapshot(function()
+        corpseController().refresh()
+        if accessoryRuntime.turret then accessoryRuntime.turret.setEnabled(gameBrowserSyncAPI.isLarpEnabled()) end
+    end)
     corpseController().refresh()
     return gameBrowserSyncAPI
 end
@@ -797,12 +800,12 @@ local function reapplyAtmosphere()
     if saved.asset~=""then local ok,message=active.apply(saved.asset);assert(ok,message)end
 end
 local function hatSounds()
-    if accessorySoundsAPI then return accessorySoundsAPI end
+    if accessoryRuntime.sounds then return accessoryRuntime.sounds end
     api()
     local source=readSource("accessory_sounds.lua", moduleRevision)
     local chunk,message=loadstring(source);assert(chunk,message)
-    accessorySoundsAPI=chunk()(Players.LocalPlayer,playerGui)
-    return accessorySoundsAPI
+    accessoryRuntime.sounds=chunk()(Players.LocalPlayer,playerGui)
+    return accessoryRuntime.sounds
 end
 local function customCrosshair()
     assert(isMM2,"Custom sheriff crosshairs are available in MM2.")
@@ -1422,7 +1425,8 @@ gui.Destroying:Connect(function()
     if mm2NativeAPI then pcall(mm2NativeAPI.destroy) end
     if mm2API then pcall(mm2API.destroy) end
     if crosshairAPI then pcall(crosshairAPI.destroy) end
-    if accessorySoundsAPI then pcall(accessorySoundsAPI.destroy) end
+    if accessoryRuntime.sounds then pcall(accessoryRuntime.sounds.destroy) end
+    if accessoryRuntime.turret then pcall(accessoryRuntime.turret.destroy) end
     if corpseAPI then pcall(corpseAPI.destroy) end
     if sharedLarpAPI then pcall(sharedLarpAPI.destroy) end
     if gameBrowserSyncAPI then pcall(gameBrowserSyncAPI.destroy) end
@@ -1476,6 +1480,14 @@ action(function()
     local editor=api()
     trace("Restoring accessory sounds")
     local soundsLoaded=pcall(hatSounds)
+    local turretLoaded,turretError=pcall(function()
+        local chunk,reason=loadstring(readSource("teapot_turret.lua",moduleRevision));assert(chunk,reason)
+        accessoryRuntime.turret=chunk()(Players.LocalPlayer,function(message)
+            if alive then statusText=message;if view then view.setStatus(message)end end
+        end)
+        accessoryRuntime.turret.setEnabled(not gameBrowserSyncAPI or gameBrowserSyncAPI.isLarpEnabled())
+    end)
+    if not turretLoaded then warn("Larpblox: Teapot Turret could not load: "..tostring(turretError))end
     trace("Restoring saved cosmetics")
     local restored,message=pcall(reapplyAll,editor)
     if not restored then message="Could not prepare saved avatar: "..tostring(message)end
