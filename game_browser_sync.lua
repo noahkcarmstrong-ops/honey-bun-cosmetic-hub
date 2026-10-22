@@ -334,7 +334,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             local managed={};for _,entry in ipairs(avatar.listAccessories())do managed[entry.id]=true end
             local function needsManaged(id)
                 local meta=accessoryMetadata[id]
-                return not managed[id] and meta and (meta.scale or meta.position or meta.rotation)
+                return not managed[id] and meta and (meta.scale or meta.position or meta.rotation or meta.smokestackStyle)
             end
             local changed=false;for id in pairs(desired)do if not current[id] or needsManaged(id)then changed=true end end;for id in pairs(current)do if not desired[id]then changed=true end end
             if changed then

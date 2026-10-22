@@ -1,6 +1,59 @@
 -- Local appearance only. No character replacement, remotes, or game detection.
 local Players=game:GetService("Players")
 local Http=game:GetService("HttpService")
+local smokestackStates=setmetatable({}, {__mode="k"})
+local smokestackDates={normal={1,1},halloween={10,22},thanksgiving={11,20},christmas={12,18},birthday={8,27},stpatricks={3,12},valentines={2,9},aprilfools={4,1}}
+local function applySmokestackSeasonal(candidate,date,style)
+    local state=smokestackStates[candidate]
+    if not state then
+        local handle=candidate:FindFirstChild("Handle")
+        if not handle then return end
+        local mesh=handle:FindFirstChildOfClass("SpecialMesh")
+        local target=handle:IsA("MeshPart") and handle or mesh
+        local property=handle:IsA("MeshPart") and "TextureID" or "TextureId"
+        state={handle=handle,target=target,property=property,texture=target and target[property],transparency=handle.Transparency}
+        smokestackStates[candidate]=state
+        function state.cleanup()
+            if state.birthday then state.birthday:Destroy();state.birthday=nil end
+            if state.target then state.target[state.property]=state.texture end
+            state.handle.Transparency=state.transparency
+            for _,effect in ipairs(candidate:GetDescendants())do
+                if effect:IsA("ParticleEmitter") then effect.Enabled=false end
+            end
+            smokestackStates[candidate]=nil
+        end
+    end
+    -- Match the original hat: select the holiday when equipped, without date polling.
+    local now=date or os.date("*t")
+    if style and style~="auto" then
+        local selected=assert(smokestackDates[style],"Invalid Smokestack hat style.")
+        now={year=now.year,month=selected[1],day=selected[2]}
+    end
+    local month,day=now.month,now.day
+    local texture,names,birthday,april
+    if month==10 and day>=22 then texture="6991166143";names={Hallow=true}
+    elseif month==11 and day>=20 then texture="6991393806";names={ParticleEmitter=true,Leaf1=true,Leaf2=true}
+    elseif month==12 and day>=18 and day<=27 then names={Snowflake1=true,Snowflake2=true,Snowflake3=true}
+    elseif month==8 and day==27 then texture="2399316028";names={Confetti=true};birthday=true
+    elseif month==3 and day>=12 and day<=19 then texture="2399447918";names={ParticleEmitter=true,Clover1=true,Clover2=true}
+    elseif month==2 and day>=9 and day<=16 then texture="2399448372";names={Heart=true}
+    elseif month==4 and day==1 then names={Hats=true,Smokescreen=true};april=true
+    end
+    if state.target then state.target[state.property]=texture and "rbxassetid://"..texture or state.texture end
+    state.handle.Transparency=april and 1 or state.transparency
+    for _,effect in ipairs(candidate:GetDescendants())do
+        if effect:IsA("ParticleEmitter") then effect.Enabled=names and names[effect.Name]==true or not names and effect.Name=="ParticleEmitter" end
+    end
+    if state.birthday then state.birthday:Destroy();state.birthday=nil end
+    if birthday then
+        local surface=Instance.new("SurfaceGui");surface.Name="LarpbloxRobloxAge";surface.CanvasSize=Vector2.new(60,50)
+        surface.LightInfluence=1;surface.Parent=state.handle
+        local text=Instance.new("TextLabel");text.Name="Age";text.BackgroundTransparency=1
+        text.Size=UDim2.fromScale(1,1);text.TextScaled=true;text.TextColor3=Color3.fromRGB(210,45,32)
+        text.Text=tostring(now.year-2006);text.Parent=surface;state.birthday=surface
+    end
+    return state
+end
 local groups={
     Head={"Head"},Torso={"Torso","UpperTorso","LowerTorso"},
     LeftArm={"Left Arm","LeftUpperArm","LeftLowerArm","LeftHand"},
@@ -44,9 +97,14 @@ local function accessoryMeta(value)
         local n=value[field]
         if type(n)=="number" and n==n and math.abs(n)<=1000 then result[field]=n end
     end
+    if value.smokestackStyle~=nil then
+        assert(type(value.smokestackStyle)=="string" and (value.smokestackStyle=="auto" or smokestackDates[value.smokestackStyle]),"Invalid Smokestack hat style.")
+        result.smokestackStyle=value.smokestackStyle
+    end
     return next(result) and result or nil
 end
 local function sameMeta(a,b)
+    if (a and a.smokestackStyle or "auto")~=(b and b.smokestackStyle or "auto")then return false end
     for _,field in ipairs({"scale","position","rotation"})do
         for _,axis in ipairs({"X","Y","Z"})do
             if (a and a[field] and a[field][axis])~=(b and b[field] and b[field][axis])then return false end
@@ -611,6 +669,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         local ctx=context()
         local id=idFrom(value,"catalog")
         local meta=accessoryMeta(metadata)
+        assert(not (meta and meta.smokestackStyle) or id==169444515,"This hat does not support Smokestack styles.")
         local candidate=wearable(ctx,id,"Accessory")
         local function accessoryKind(object)
             local ok,kind=pcall(function()return object.AccessoryType.Name end)
@@ -640,8 +699,9 @@ return function(player,onStatus,readAsset,managedRespawn)
         if not fitted then candidate:Destroy();error(message) end
         capture(ctx)
         candidate.Parent=ctx.character
+        local seasonal=id==169444515 and applySmokestackSeasonal(candidate,nil,meta and meta.smokestackStyle) or nil
         nextKey=nextKey+1
-        local entry={key=nextKey,id=id,name=candidate.Name,object=candidate,meta=meta,kind=kind}
+        local entry={key=nextKey,id=id,name=candidate.Name,object=candidate,meta=meta,kind=kind,seasonal=seasonal}
         adjustAccessory(entry,meta)
         table.insert(added,entry)
         if id==1527622 then bunnyExplosion(ctx,candidate) end
@@ -656,8 +716,10 @@ return function(player,onStatus,readAsset,managedRespawn)
         local meta=accessoryMeta(metadata)
         for _,entry in ipairs(added)do
             if entry.key==key then
+                assert(not (meta and meta.smokestackStyle) or entry.id==169444515,"This hat does not support Smokestack styles.")
                 if sameMeta(entry.meta,meta)then return end
                 adjustAccessory(entry,meta);entry.meta=meta
+                if entry.id==169444515 then entry.seasonal=applySmokestackSeasonal(entry.object,nil,meta and meta.smokestackStyle) end
                 settings.accessoryMeta=settings.accessoryMeta or {};settings.accessoryMeta[tostring(entry.id)]=meta;save()
                 return
             end
@@ -719,6 +781,7 @@ return function(player,onStatus,readAsset,managedRespawn)
     function api.removeAccessory(key)
         for i,entry in ipairs(added) do
             if entry.key==key then
+                if entry.seasonal then entry.seasonal.cleanup() end
                 entry.object:Destroy();table.remove(added,i)
                 if not reapplying then
                     if settings.accessoryMeta then settings.accessoryMeta[tostring(entry.id)]=nil end
@@ -731,7 +794,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         error("That added accessory is no longer equipped.")
     end
     local function clearAdded()
-        for _,entry in ipairs(added) do entry.object:Destroy() end
+        for _,entry in ipairs(added) do if entry.seasonal then entry.seasonal.cleanup() end;entry.object:Destroy() end
         added={}
     end
     local function clearGear()

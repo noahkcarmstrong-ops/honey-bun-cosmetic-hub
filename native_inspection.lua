@@ -336,10 +336,16 @@ function M.create(player,getPreviews)
     end
     local function renderPreview(entry,parent,isCurrent)
         if (currentSnapshot or currentImage) then
+                    local waitingForPose=false
+                    if not currentImage then
+                        for _,item in ipairs(currentSnapshot and currentSnapshot.items or {})do
+                            if item.assetType==19 then waitingForPose=true;break end
+                        end
+                    end
                     local key=(currentSnapshot and game:GetService("HttpService"):JSONEncode(currentSnapshot) or "").."|"..tostring(currentImage or "")
                     local ok,err=pcall(function()
                         local previews=getPreviews and getPreviews() or nil
-                        if not currentImage and (key~=previewKey or not previewData) then
+                        if not currentImage and not waitingForPose and (key~=previewKey or not previewData) then
                             if previewBuild and previewBuild.key==key then return end
                             local ticket={key=key};previewBuild=ticket
                             local snapshot=currentSnapshot
@@ -356,7 +362,7 @@ function M.create(player,getPreviews)
                             previewData=data;previewKey=key
                         end
                         if not isCurrent() then return end
-                        local overlayClass=currentImage and "ImageLabel" or "ViewportFrame"
+                        local overlayClass=currentImage and "ImageLabel" or waitingForPose and "TextLabel" or "ViewportFrame"
                         if entry.overlay and not entry.overlay.Parent then entry.overlay=nil;entry.key=nil end
                         if entry.overlay and entry.overlay.ClassName~=overlayClass then
                             entry.overlay:Destroy();entry.overlay=nil;entry.key=nil
@@ -376,6 +382,11 @@ function M.create(player,getPreviews)
                         entry.overlay.Parent=parent
                         if entry.key~=key then
                             if currentImage then entry.overlay.Image=currentImage;entry.overlay.ScaleType=Enum.ScaleType.Fit
+                            elseif waitingForPose then
+                                entry.overlay.Text="Loading profile pose..."
+                                entry.overlay.TextSize=16
+                                entry.overlay.TextColor3=Color3.new(1,1,1)
+                                entry.overlay.TextWrapped=true
                             else
                                 assert(previews and previews.show(entry.overlay,previewData)~=false,"Local avatar preview could not render.")
                                 if previews.poseThumbnail then previews.poseThumbnail(entry.overlay) end
