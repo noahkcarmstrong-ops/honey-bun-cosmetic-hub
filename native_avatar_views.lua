@@ -294,10 +294,11 @@ function M.create(player, getPreviews, describeSnapshot)
             local index=rootIndexes[root]
             for object in pairs(index and index.objects or {}) do
                 local class=read(object,"ClassName")
-                local rosterText=plainText(read(object,"Text")):gsub("%s*%(You%)%s*$","")
-                if (class=="TextLabel" or class=="TextButton") and
+                local textObject=class=="TextLabel" or class=="TextButton"
+                local rosterText=textObject and plainText(read(object,"Text")):gsub("%s*%(You%)%s*$","") or ""
+                if textObject and
                     ((verificationText(object) and (hasOwnId(object,player) or uniquePeopleRow(object,player,{name=currentName})))
-                        or (verifiedRosterRow(object) and rosterText=="@"..currentName)) then
+                        or (rosterText=="@"..currentName and verifiedRosterRow(object))) then
                     seen[object]=true
                     if not verificationBadges[object] then
                         local badge=Instance.new("ImageLabel");badge.Name="LarpbloxVerifiedBadge";badge.BackgroundTransparency=1
@@ -341,7 +342,7 @@ function M.create(player, getPreviews, describeSnapshot)
         if object then
             local class=read(object,"ClassName")
             local rosterText=plainText(read(object,"Text")):gsub("%s*%(You%)%s*$","")
-            local rosterMatch=verifiedRosterRow(object) and rosterText=="@"..currentName
+            local rosterMatch=rosterText=="@"..currentName and verifiedRosterRow(object)
             if (class~="TextLabel" and class~="TextButton") or (not verificationText(object) and not rosterMatch) then return end
         end
         verificationQueued=true
@@ -866,7 +867,11 @@ function M.create(player, getPreviews, describeSnapshot)
             restoreAllImages();clearVerification()
             status = "Native avatar thumbnails are disabled."; return api.report()
         end
-        scan();renderVerification(); status = available and "Native avatar thumbnails active." or status; return api.report()
+        scan()
+        -- Appearance-only updates do not change badge ownership or placement.
+        -- UI additions/text/geometry changes already have their own listeners.
+        if not wasEnabled or previousName~=currentName or previousDisplayName~=currentDisplayName or previousVerified~=verified then renderVerification()end
+        status = available and "Native avatar thumbnails active." or status; return api.report()
     end
     function api.report() return status .. " Scans: " .. tostring(scanCount) .. "; rendered: " .. tostring(renderedCount) .. "." end
     function api.destroy()
