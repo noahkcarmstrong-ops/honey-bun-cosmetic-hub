@@ -371,18 +371,23 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             end
             -- Gear remains in the saved browser outfit, but is not rendered
             -- until equip/unequip state can be synchronized.
-            local currentClothes=clothes.getSettings();local clothingTypes={[2]={"ShirtGraphic","equipTShirt","removeTShirt"},[11]={"Shirt","equipShirt","removeShirt"},[12]={"Pants","equipPants","removePants"}}
-            local visibleClothes={};for _,item in ipairs(before.items)do if clothingTypes[item.assetType] then visibleClothes[item.assetType]=item.id end end
+            local clothingTypes={[2]={"ShirtGraphic","equipTShirt","removeTShirt"},[11]={"Shirt","equipShirt","removeShirt"},[12]={"Pants","equipPants","removePants"}}
             local wantedClothes={};local wantedAnimations={}
             for _,item in ipairs(value.items)do
                 local slot=clothingTypes[item.assetType]
                 if slot then
                     wantedClothes[item.assetType]=true
-                    if visibleClothes[item.assetType]~=item.id then clothes[slot[2]](item.id)end
+                    -- Saved settings can outlive the native Shirt/Pants instances.
+                    -- Reapply the selected item so Roblox's actual template matches.
+                    clothes[slot[2]](item.id)
                 elseif animationTypes[item.assetType] then wantedAnimations[#wantedAnimations+1]={id=item.id,assetType=item.assetType,name=item.name}
                 elseif item.assetType~=19 and not accessoryTypes[item.assetType] and item.assetType~=17 and item.assetType~=18 and item.assetType~=27 and item.assetType~=28 and item.assetType~=29 and item.assetType~=30 and item.assetType~=31 and item.assetType~=79 then failed[#failed+1]=item.name end
             end
-            for assetType,slot in pairs(clothingTypes)do if not wantedClothes[assetType] and currentClothes[slot[1]]~=0 and clothes[slot[3]] then clothes[slot[3]]()end end
+            for assetType,slot in pairs(clothingTypes)do
+                -- Saved settings may say a slot is already removed while Roblox
+                -- has recreated its native Shirt/Pants instance after a reset.
+                if not wantedClothes[assetType] and clothes[slot[3]] then clothes[slot[3]]()end
+            end
             if getAnimations then
                 local animationApi=getAnimations();local settings=animationApi.getSettings()
                 local currentAnimations={};for _,item in ipairs(before.items)do if animationTypes[item.assetType] then currentAnimations[item.assetType]=item.id end end
