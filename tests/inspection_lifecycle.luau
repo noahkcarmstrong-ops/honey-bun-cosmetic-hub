@@ -50,17 +50,17 @@ return function(source)
             local image=Instance.new("ImageLabel");image.Image="rbxthumb://type=Asset&id=999&w=150&h=150";image.Parent=card
             local label=Instance.new("TextLabel");label.Name="ItemCardFooterTitle";label.Text="Real Hat";label.Parent=card
             modernCard,modernLabel,modernImage=card,label,image
-            settle();return card,label,image
+            settle();task.wait(0.25);return card,label,image
         end
         function f.repairModernCard()
             assert(repairPending,"stale cards must request the custom description again")
             repairPending=false
-            modernLabel.Text="Custom Hat";modernImage.Image="rbxthumb://type=Asset&id=123&w=150&h=150";settle();settle()
+            modernLabel.Text="Custom Hat";modernImage.Image="rbxthumb://type=Asset&id=123&w=150&h=150";settle();task.wait(0.25)
             assert(modernCard.Visible,"matching custom cards must become visible")
         end
         function f.resetModernCard()
             local before=requests
-            modernLabel.Text="Real Hat";modernImage.Image="rbxthumb://type=Asset&id=999&w=150&h=150";settle();settle()
+            modernLabel.Text="Real Hat";modernImage.Image="rbxthumb://type=Asset&id=999&w=150&h=150";settle();task.wait(0.25)
             assert(not modernCard.Visible,"a replaced real outfit must be quarantined")
             assert(requests==before+1,"each stale reset must issue exactly one new description request")
             f.repairModernCard()
@@ -68,10 +68,30 @@ return function(source)
         function f.normalizedCard()
             local card=Instance.new("Frame");card.Name="Item2";card.Parent=modernCard.Parent
             local label=Instance.new("TextLabel");label.Name="ItemCardFooterTitle";label.Text="Normalized Dynamic Head";label.Parent=card
-            settle();settle()
+            settle();task.wait(0.25)
             local before=requests
             for _=1,5 do update("rbxasset://textures/whiteCircle.png");settle()end
+            task.wait(0.25)
             assert(requests==before,"a stable normalized catalog item must not cause an inspection loop")
+            card:Destroy();settle()
+        end
+        function f.progressiveModernCard()
+            local before=requests
+            local parent=f.overlay();local flickers=0
+            local listener=parent:GetPropertyChangedSignal("Enabled"):Connect(function()if not parent.Enabled then flickers=flickers+1 end end)
+            local card=Instance.new("Frame");card.Name="Item3";card.Parent=modernCard.Parent
+            local image=Instance.new("ImageLabel");image.Parent=card
+            local label=Instance.new("TextLabel");label.Name="ItemCardFooterTitle";label.Text="Loading item";label.Parent=card
+            for _,text in ipairs({"Loading item","Catalog item","Custom Hat"})do
+                label.Text=text;task.wait()
+            end
+            image.Image="rbxthumb://type=Asset&id=123&w=150&h=150";task.wait(0.3);settle()
+            listener:Disconnect()
+            assert(requests==before,"progressive modern card loading must not re-adopt before its matching catalog data arrives")
+            assert(flickers==0,"card loading must never hide an already-ready preview")
+            if repairPending then f.repairModernCard()end
+            local parent,overlay=f.overlay()
+            assert(parent and parent.Enabled and overlay.Visible,"progressive card loading must preserve the ready preview")
             card:Destroy();settle()
         end
         function f.hidden(message)
@@ -136,6 +156,7 @@ return function(source)
     local card,label,image=f.addModernCard()
     assert(not card.Visible,"a late modern native card with a stale outfit is quarantined")
     f.repairModernCard()
+    f.progressiveModernCard()
     f.normalizedCard()
     for _=1,5 do f.resetModernCard()end
     f.shell.Visible=false;settle();f.shell.Visible=true;settle();settle()

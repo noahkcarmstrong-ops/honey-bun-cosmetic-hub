@@ -64,7 +64,8 @@ function M.create(player,getPreviews)
         if activeDescription then activeDescription:Destroy();activeDescription=nil end
     end
     local lastSignature,lastLabel,adopting,lastName,status=nil,nil,false,nil,"Inspector is waiting."
-    local lastMismatchKey
+    local lastMismatchKey,itemStateKey,recoveryPending
+    local itemCheckRevision=0
     local function visible(object)
         local current=object
         while current do
@@ -258,19 +259,34 @@ function M.create(player,getPreviews)
         table.sort(mismatches)
         local mismatchKey=table.concat(mismatches,"\n")
         if show and matchedItems then adopting=false end
-        -- Roblox may normalize a head/animation into a different catalog item.
-        -- Retry a changed foreign outfit, but never reopen for the same result.
-        if show and active and not adopting and #mismatches>0 and mismatchKey~=lastMismatchKey then
-            lastMismatchKey=mismatchKey
-            local desc=description(currentSnapshot)
-            local ok,err=pcall(function()gui:InspectPlayerFromHumanoidDescription(desc,currentName)end)
-            if ok then
-                releaseDescription();activeDescription=desc;adopting=true;status="Refreshing local outfit inspection."
-            else
-                desc:Destroy();status="Roblox blocked the local avatar inspector: "..tostring(err)
-            end
-        elseif show and #mismatches==0 and matchedItems then
-            lastMismatchKey=nil
+        local stateKey=mismatchKey.."|"..tostring(matchedItems)
+        if show and active and stateKey~=itemStateKey then
+            itemStateKey=stateKey;itemCheckRevision=itemCheckRevision+1
+            local revision=itemCheckRevision
+            -- Catalog cards arrive in pieces. Wait for a quiet result before
+            -- deciding whether Roblox loaded the account outfit again.
+            task.delay(0.2,function()
+                if not alive or not modeEnabled or revision~=itemCheckRevision then return end
+                if not ownTitle(currentName,true) then itemStateKey=nil;recoveryPending=false;adopting=false;lastMismatchKey=nil;return end
+                if recoveryPending then
+                    if matchedItems then recoveryPending=false;lastMismatchKey=mismatchKey end
+                    return
+                end
+                if #mismatches==0 then
+                    if matchedItems then lastMismatchKey=nil end
+                    return
+                end
+                if adopting or mismatchKey==lastMismatchKey then return end
+                lastMismatchKey=mismatchKey;recoveryPending=true
+                local desc=description(currentSnapshot)
+                local ok,err=pcall(function()gui:InspectPlayerFromHumanoidDescription(desc,currentName)end)
+                if ok then
+                    releaseDescription();activeDescription=desc;adopting=true;status="Refreshing local outfit inspection."
+                    itemStateKey=nil;schedulePreview()
+                else
+                    recoveryPending=false;desc:Destroy();status="Roblox blocked the local avatar inspector: "..tostring(err)
+                end
+            end)
         end
     end
     local function restorePanels(root)
@@ -475,7 +491,7 @@ function M.create(player,getPreviews)
         refreshQueued=true
         local function refresh()
             refreshQueued=false
-            if alive and modeEnabled and currentSnapshot then maskPreview(true)end
+            if alive and modeEnabled and currentSnapshot then maskPreview(true,true)end
         end
         if task and task.defer then task.defer(refresh)else refreshQueued=false end
     end
@@ -527,9 +543,9 @@ function M.create(player,getPreviews)
                 if scoped and modeEnabled then quarantineUnknownPanels()end
                 local name=string.lower(object.Name or "")
                 local modernItem= name=="itemcardfootertitle" or name:match("^item%d+$")
-                if scoped and (nativeAvatarVisual(object) or (object:IsA("TextLabel") and object.Text:match("'s Avatar$")) or modernItem)then
-                    maskPreview(false);schedulePreview()
-                end
+                if scoped and (nativeAvatarVisual(object) or (object:IsA("TextLabel") and object.Text:match("'s Avatar$")))then
+                    maskPreview(false,true);schedulePreview()
+                elseif scoped and modernItem then schedulePreview()end
             end)
         end)
     end
@@ -559,16 +575,16 @@ function M.create(player,getPreviews)
             if active and label and not options.preserveNative then pcall(function()gui:InspectPlayerFromUserId(player.UserId)end)end
             restoreMasks()
             releaseDescription()
-            active=false;lastLabel=nil;lastSignature=nil;adopting=false;lastName=nil;lastMismatchKey=nil
+            active=false;lastLabel=nil;lastSignature=nil;adopting=false;lastName=nil;lastMismatchKey=nil;itemStateKey=nil;recoveryPending=false;itemCheckRevision=itemCheckRevision+1
             return
         end
         if not label then maskPreview(false);return end
-        maskPreview(false)
+        maskPreview(false,true)
         if not options.snapshot then status="Waiting for the local outfit.";return end
         local signature=game:GetService("HttpService"):JSONEncode(options.snapshot)..name
-        if lastSignature~=signature then lastMismatchKey=nil end
+        if lastSignature~=signature then lastMismatchKey=nil;itemStateKey=nil;recoveryPending=false;itemCheckRevision=itemCheckRevision+1 end
         if active and lastSignature==signature then
-            if title==name.."'s Avatar" then lastLabel=label;adopting=false;maskPreview(true);return end
+            if title==name.."'s Avatar" then lastLabel=label;adopting=false;maskPreview(true,true);return end
             if adopting then maskPreview(false);return end
         end
         local desc=description(options.snapshot)
