@@ -45,13 +45,13 @@ Wear **Doombringer's Doombringer** (4640898) with Larp mode enabled. Its origina
 
 | Chat command | Effect |
 | --- | --- |
-| `smite Username` | Fire a satellite beam at a player. |
+| `smite Username` / `smite me` | Fire a satellite beam with a visible impact at a player. |
 | `target X Y Z` | Fire at coordinates. |
 | `movesat X Y Z` | Move the satellite. |
 | `location` | Show your coordinates in Larpblox's status. |
 | `giveweapon me` | Add a local targeting tool; equip it and click to fire. |
 | `kill Username` / `kill all` | Play cosmetic strikes without changing player health. |
-| `armageddon` | Fire 25 strikes across the original satellite target area. |
+| `armageddon` | Fire 25 visible strikes around your character. |
 | `stop` / `...` | Cancel ongoing strikes. |
 
 Effects and the targeting tool are removed when the hat is unequipped, Larp mode is disabled, or your character respawns. These effects do not damage players or grant tools to other players.

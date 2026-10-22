@@ -68,33 +68,33 @@ return function(player,onStatus)
         satellitePosition=position
         if ensureSatellite() then satellite.CFrame=CFrame.new(position) end
     end
-    local function distance(a,b)
-        local ax,ay,az=a.X or a.x,a.Y or a.y,a.Z or a.z
-        local bx,by,bz=b.X or b.x,b.Y or b.y,b.Z or b.z
-        if ax and bx then return math.sqrt((ax-bx)^2+(ay-by)^2+(az-bz)^2) end
-        return 1
-    end
     local function beamAt(position,label,batch)
         if not active() or not position then return false end
         if not batch and os.clock()-lastBeamAt<0.08 then return false end
         local count=0;for _ in pairs(effects)do count=count+1 end;if count>=40 then return false end
         local sat=ensureSatellite();if not sat then return false end
         lastBeamAt=os.clock()
-        local beam=makePart(label or "DoombringerSatelliteExplosionBeam",Vector3.new(2,2,2),Color3.new(1,0.08,0.02),position)
-        beam.Material=Enum.Material.Neon
-        local length=distance(satellitePosition,position)
-        beam.Size=Vector3.new(3,math.max(3,length),3)
-        local midpoint=Vector3.new(((satellitePosition.X or satellitePosition.x)+(position.X or position.x))/2,((satellitePosition.Y or satellitePosition.y)+(position.Y or position.y))/2,((satellitePosition.Z or satellitePosition.z)+(position.Z or position.z))/2)
-        beam.CFrame=CFrame.lookAt and CFrame.lookAt(midpoint,position) or CFrame.new(midpoint)
-        if CFrame.Angles then pcall(function()beam.CFrame=beam.CFrame*CFrame.Angles(math.pi/2,0,0)end) end
-        task.delay(0.45,function()if effects[beam]then effects[beam]=nil;destroy(beam)end end)
+        -- Beam endpoints avoid Roblox's 2048-stud Part size limit.
+        local source=makePart(label or "DoombringerSatelliteExplosionBeam",Vector3.new(0.2,0.2,0.2),nil,satellitePosition)
+        source.Transparency=1
+        local impact=makePart("DoombringerImpact",Vector3.new(10,10,10),Color3.new(1,0.35,0.02),position)
+        impact.Shape=Enum.PartType.Ball;impact.Material=Enum.Material.Neon;impact.Transparency=0.3
+        local a=Instance.new("Attachment");a.Parent=source
+        local b=Instance.new("Attachment");b.Parent=impact
+        local beam=Instance.new("Beam");beam.Attachment0=a;beam.Attachment1=b
+        beam.Width0=3;beam.Width1=3;beam.FaceCamera=true;beam.LightEmission=1
+        beam.Color=ColorSequence.new(Color3.new(1,0.12,0.02));beam.Parent=source
+        task.delay(0.6,function()
+            for _,o in ipairs({source,impact})do if effects[o]then effects[o]=nil;destroy(o)end end
+        end)
         return true
     end
     local function findTarget(query)
         query=tostring(query or ""):gsub("^%s+",""):gsub("%s+$","");if query==""then return nil end
+        if query:lower()=="me"then return player end
         local exactName,exactDisplay,partial,count
         for _,p in ipairs(Players:GetPlayers())do
-            if p~=player then
+            if p then
                 local n,d=tostring(p.Name or ""),tostring(p.DisplayName or "")
                 if n:lower()==query:lower()then exactName=p end
                 if d:lower()==query:lower()then exactDisplay=p end
@@ -131,7 +131,7 @@ return function(player,onStatus)
             if not active()then return end
             local mouse=read(player,"GetMouse") and player:GetMouse()
             local hit=mouse and read(mouse,"Hit");local position=hit and (read(hit,"Position")or hit)
-            if position then smitePosition(position,"Doombringer targeting tool fired.")end
+            if position then smitePosition(position,"Doombringer targeting tool fired.")else status("Equip the Doombringer tool and point at the world to fire.")end
         end,toolConnections)
         status("Doombringer targeting tool created locally.");return true
     end
@@ -146,8 +146,9 @@ return function(player,onStatus)
         local n=0
         local function strike()
             if token~=effectToken or not active()or n>=25 then return end
-            n=n+1;local x=math.random(-256,256);local z=math.random(-256,256)
-            beamAt(Vector3.new(x,0,z),"DoombringerArmageddonStrike",true)
+            n=n+1;local origin=posOf(rootFor(player))or Vector3.new(0,0,0)
+            local x=(origin.X or origin.x)+math.random(-40,40);local z=(origin.Z or origin.z)+math.random(-40,40)
+            beamAt(Vector3.new(x,(origin.Y or origin.y)-3,z),"DoombringerArmageddonStrike",true)
             if n<25 then task.delay(0.12,strike)end
         end
         strike();return true
