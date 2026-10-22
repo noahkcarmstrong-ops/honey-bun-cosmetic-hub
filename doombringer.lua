@@ -1,0 +1,214 @@
+-- Local-only recreation of Doombringer (SourceAssetId 4640898).
+-- It deliberately does not execute the original downloaded scripts or write to a server.
+return function(player,onStatus)
+    local Players=game:GetService("Players")
+    local alive,enabled=true,true
+    local character,hat,folder,satellite
+    local connections,characterConnections,appearanceConnections,toolConnections={},{},{},{}
+    local watchedHandle,watchedHumanoid
+    local effects,tools={},{}
+    local effectToken=0
+    local lastMessage,lastMessageAt=nil,-math.huge
+    local lastBeamAt=-math.huge
+    local satellitePosition=Vector3.new(100,3000,0)
+
+    local function read(o,k)local ok,v=pcall(function()return o[k]end);return ok and v or nil end
+    local function is(o,c)return o and read(o,"IsA") and o:IsA(c)end
+    local function connect(signal,fn,list)
+        if signal and signal.Connect then local c=signal:Connect(fn);(list or connections)[#(list or connections)+1]=c;return c end
+    end
+    local function status(message)if onStatus then pcall(onStatus,message)end end
+    local function disconnectAll(list)
+        list=list or connections
+        for _,c in ipairs(list)do pcall(function()c:Disconnect()end)end
+        for i in ipairs(list)do list[i]=nil end
+    end
+    local function destroy(o)if o then pcall(function()o:Destroy()end)end end
+    local function clearEffects()
+        effectToken=effectToken+1
+        for o in pairs(effects)do destroy(o);if o==satellite then satellite=nil end;effects[o]=nil end
+    end
+    local function ownsAccessory(a)
+        return (is(a,"Accessory")or is(a,"Hat")) and
+            (a.Name=="Doombringer"or tonumber(read(a,"SourceAssetId"))==4640898)
+    end
+    local function findHat()
+        if not character then return nil end
+        for _,a in ipairs(character:GetChildren())do if ownsAccessory(a)then return a end end
+    end
+    local function active()
+        local handle=hat and hat:FindFirstChild("Handle")
+        local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+        return alive and enabled and character and player.Character==character and hat and hat.Parent==character
+            and (not handle or (tonumber(handle.Transparency)or 0)<1)
+            and (not humanoid or (tonumber(humanoid.Health)or 1)>0)
+    end
+    local function rootFor(p)
+        return p and p.Character and (p.Character:FindFirstChild("HumanoidRootPart")or p.Character:FindFirstChild("Head"))
+    end
+    local function posOf(o)
+        local p=read(o,"Position");if p then return p end
+        local cf=read(o,"CFrame");return cf and cf.Position
+    end
+    local function makePart(name,size,color,position)
+        local p=Instance.new("Part");p.Name=name;p.Size=size;p.Anchored=true
+        p.CanCollide=false;p.CanTouch=false;p.CanQuery=false;p.Transparency=0.25
+        if color then p.Color=color end
+        p.CFrame=CFrame.new(position);p.Parent=folder or character;effects[p]=true
+        return p
+    end
+    local function ensureSatellite()
+        if not active() then return nil end
+        if satellite and satellite.Parent then return satellite end
+        satellite=makePart("DoombringerSatellite",Vector3.new(5,16.8,5),Color3.new(0.12,0.12,0.12),satellitePosition)
+        satellite.Transparency=0.05
+        return satellite
+    end
+    local function setSatellite(position)
+        satellitePosition=position
+        if ensureSatellite() then satellite.CFrame=CFrame.new(position) end
+    end
+    local function distance(a,b)
+        local ax,ay,az=a.X or a.x,a.Y or a.y,a.Z or a.z
+        local bx,by,bz=b.X or b.x,b.Y or b.y,b.Z or b.z
+        if ax and bx then return math.sqrt((ax-bx)^2+(ay-by)^2+(az-bz)^2) end
+        return 1
+    end
+    local function beamAt(position,label,batch)
+        if not active() or not position then return false end
+        if not batch and os.clock()-lastBeamAt<0.08 then return false end
+        local count=0;for _ in pairs(effects)do count=count+1 end;if count>=40 then return false end
+        local sat=ensureSatellite();if not sat then return false end
+        lastBeamAt=os.clock()
+        local beam=makePart(label or "DoombringerSatelliteExplosionBeam",Vector3.new(2,2,2),Color3.new(1,0.08,0.02),position)
+        beam.Material=Enum.Material.Neon
+        local length=distance(satellitePosition,position)
+        beam.Size=Vector3.new(3,math.max(3,length),3)
+        local midpoint=Vector3.new(((satellitePosition.X or satellitePosition.x)+(position.X or position.x))/2,((satellitePosition.Y or satellitePosition.y)+(position.Y or position.y))/2,((satellitePosition.Z or satellitePosition.z)+(position.Z or position.z))/2)
+        beam.CFrame=CFrame.lookAt and CFrame.lookAt(midpoint,position) or CFrame.new(midpoint)
+        if CFrame.Angles then pcall(function()beam.CFrame=beam.CFrame*CFrame.Angles(math.pi/2,0,0)end) end
+        task.delay(0.45,function()if effects[beam]then effects[beam]=nil;destroy(beam)end end)
+        return true
+    end
+    local function findTarget(query)
+        query=tostring(query or ""):gsub("^%s+",""):gsub("%s+$","");if query==""then return nil end
+        local exactName,exactDisplay,partial,count
+        for _,p in ipairs(Players:GetPlayers())do
+            if p~=player then
+                local n,d=tostring(p.Name or ""),tostring(p.DisplayName or "")
+                if n:lower()==query:lower()then exactName=p end
+                if d:lower()==query:lower()then exactDisplay=p end
+                if n:lower():sub(1,#query)==query:lower()or d:lower():sub(1,#query)==query:lower()then count=(count or 0)+1;partial=p end
+            end
+        end
+        return exactName or exactDisplay or ((count==1)and partial)
+    end
+    local function coordinates(words,start)
+        local x,y,z=tonumber(words[start]),tonumber(words[start+1]),tonumber(words[start+2])
+        if not (x and y and z) or x~=x or y~=y or z~=z or math.abs(x)>100000 or math.abs(y)>100000 or math.abs(z)>100000 then return nil end
+        return Vector3.new(x,y,z)
+    end
+    local function smitePosition(position,message)
+        if beamAt(position,"DoombringerSatelliteExplosionBeam")then status(message or "Doombringer satellite beam fired.");return true end
+        return false
+    end
+    local function vanishAt(position)
+        if not active() or not position then return false end
+        local count=0;for _ in pairs(effects)do count=count+1 end;if count>=40 then return false end
+        local vanish=makePart("DoombringerVanishEffect",Vector3.new(5,7,5),Color3.new(0.05,0.05,0.05),position)
+        vanish.Transparency=0.35
+        task.delay(0.6,function()if effects[vanish]then effects[vanish]=nil;destroy(vanish)end end)
+        return true
+    end
+    local function giveWeapon()
+        if not active() then return false end
+        for tool in pairs(tools)do if tool.Parent then status("Doombringer targeting tool is already equipped locally.");return true end end
+        disconnectAll(toolConnections);for tool in pairs(tools)do tools[tool]=nil end
+        local backpack=read(player,"Backpack") or character
+        local tool=Instance.new("Tool");tool.Name="Doombringer Targeting Tool";tool.RequiresHandle=false;tool.CanBeDropped=false
+        tool.Parent=backpack;tools[tool]=true
+        connect(tool.Activated,function()
+            if not active()then return end
+            local mouse=read(player,"GetMouse") and player:GetMouse()
+            local hit=mouse and read(mouse,"Hit");local position=hit and (read(hit,"Position")or hit)
+            if position then smitePosition(position,"Doombringer targeting tool fired.")end
+        end,toolConnections)
+        status("Doombringer targeting tool created locally.");return true
+    end
+    local function clearTools()
+        disconnectAll(toolConnections)
+        for tool in pairs(tools)do tools[tool]=nil;destroy(tool)end
+    end
+    local function armageddon()
+        if not active()then return false end
+        clearEffects();local token=effectToken
+        status("Doombringer armageddon started (25 local strikes).")
+        local n=0
+        local function strike()
+            if token~=effectToken or not active()or n>=25 then return end
+            n=n+1;local x=math.random(-256,256);local z=math.random(-256,256)
+            beamAt(Vector3.new(x,0,z),"DoombringerArmageddonStrike",true)
+            if n<25 then task.delay(0.12,strike)end
+        end
+        strike();return true
+    end
+    local function command(message)
+        if type(message)~="string"or not active()then return false end
+        local now=os.clock();if message==lastMessage and now-lastMessageAt<0.5 then return false end
+        lastMessage,lastMessageAt=message,now
+        local words={};for word in message:gmatch("%S+")do words[#words+1]=word end
+        local verb=(words[1]or ""):lower()
+        if verb=="stop"or message=="..."or verb=="cancel"then clearEffects();status("Doombringer effects stopped.");return true end
+        if verb=="location"then local localRoot=rootFor(player);local p=posOf(localRoot)or satellitePosition;status(string.format("Doombringer location %.1f, %.1f, %.1f.",p.X or p.x,p.Y or p.y,p.Z or p.z));return true end
+        if verb=="movesat"then local p=coordinates(words,2);if p and #words==4 then setSatellite(p);status("Doombringer satellite moved.");return true end end
+        if verb=="target"then local p=coordinates(words,2);if p and #words==4 then return smitePosition(p)end end
+        if verb=="smite"then local t=findTarget(message:sub(6));local r=rootFor(t);return r and smitePosition(posOf(r),"Doombringer smote "..tostring(t.DisplayName or t.Name)..".")or false end
+        if verb=="giveweapon"then
+            if #words~=2 then return false end
+            local who=words[2]:lower();local own=tostring(player.Name or ""):lower();local display=tostring(player.DisplayName or ""):lower()
+            if who~="me"and who~=own and who~=display then status("Doombringer targeting tool is local-only; it cannot be given to another player's Backpack.");return false end
+            return giveWeapon()
+        end
+        if verb=="kill"then
+            if words[2]and words[2]:lower()=="all"then
+                local fired=false
+                for _,p in ipairs(Players:GetPlayers())do local r=rootFor(p);if p~=player and r then fired=beamAt(posOf(r),"DoombringerSatelliteExplosionBeam",true)or fired;vanishAt(posOf(r))end end
+                if fired then status("Doombringer visual kill-all fired locally.")end
+                return fired
+            end
+            local t=findTarget(message:sub(6));local r=rootFor(t);if r then local p=posOf(r);return smitePosition(p,"Doombringer visual kill fired.")and vanishAt(p) end;return false
+        end
+        if verb=="armageddon"then return armageddon()end
+        return false
+    end
+    local function refresh()
+        if not alive then return false end
+        local nextHat=findHat();if nextHat~=hat then clearEffects();clearTools();hat=nextHat end
+        local handle=hat and hat:FindFirstChild("Handle")
+        local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+        if handle~=watchedHandle or humanoid~=watchedHumanoid then
+            disconnectAll(appearanceConnections);watchedHandle=handle;watchedHumanoid=humanoid
+            if handle and read(handle,"GetPropertyChangedSignal")then connect(handle:GetPropertyChangedSignal("Transparency"),refresh,appearanceConnections)end
+            if humanoid then connect(humanoid.Died,function()clearEffects();clearTools()end,appearanceConnections)end
+        end
+        if not active()then clearEffects();clearTools();satellite=nil end
+        if active()then ensureSatellite()end
+        return active()
+    end
+    local function bind(c)
+        disconnectAll(characterConnections);disconnectAll(appearanceConnections);watchedHandle=nil;watchedHumanoid=nil;clearEffects();clearTools();if folder then destroy(folder)end;character=c;hat=nil;satellite=nil;folder=nil
+        if not c then return end
+        folder=Instance.new("Folder");folder.Name="LarpbloxDoombringer";folder.Parent=c
+        connect(c.DescendantAdded,function(o)if ownsAccessory(o)or is(o,"Humanoid")or (o and o.Name=="Handle")then refresh()end end,characterConnections)
+        connect(c.DescendantRemoving,function(o)if ownsAccessory(o)or is(o,"Humanoid")or (o and o.Name=="Handle")then task.defer(refresh)end end,characterConnections)
+        refresh()
+    end
+    connect(player.Chatted,command,connections);connect(player.CharacterAdded,function(c)bind(c)end,connections)
+    local textService=game:GetService("TextChatService");connect(textService and textService.SendingMessage,function(m)command(read(m,"Text"))end,connections)
+    bind(player.Character)
+    local api={refresh=refresh,command=command}
+    function api.setEnabled(value)enabled=value==true;if not enabled then clearEffects();clearTools()end;refresh();return enabled end
+    function api.destroy()if not alive then return end;alive=false;disconnectAll();disconnectAll(characterConnections);disconnectAll(appearanceConnections);clearEffects();clearTools();if folder then destroy(folder)end;folder=nil;hat=nil;character=nil;satellite=nil end
+    function api.diagnostics()local n=0;for _ in pairs(effects)do n=n+1 end;return{active=active(),effects=n,satellite=satellite~=nil,tools=(function()local x=0;for _ in pairs(tools)do x=x+1 end;return x end)()}end
+    return api
+end

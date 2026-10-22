@@ -736,6 +736,7 @@ gameBrowserSync=function()
     gameBrowserSyncAPI.onSnapshot(function()
         corpseController().refresh()
         if accessoryRuntime.turret then accessoryRuntime.turret.setEnabled(gameBrowserSyncAPI.isLarpEnabled()) end
+        if accessoryRuntime.doombringer then accessoryRuntime.doombringer.setEnabled(gameBrowserSyncAPI.isLarpEnabled()) end
     end)
     corpseController().refresh()
     return gameBrowserSyncAPI
@@ -1427,6 +1428,7 @@ gui.Destroying:Connect(function()
     if crosshairAPI then pcall(crosshairAPI.destroy) end
     if accessoryRuntime.sounds then pcall(accessoryRuntime.sounds.destroy) end
     if accessoryRuntime.turret then pcall(accessoryRuntime.turret.destroy) end
+    if accessoryRuntime.doombringer then pcall(accessoryRuntime.doombringer.destroy) end
     if corpseAPI then pcall(corpseAPI.destroy) end
     if sharedLarpAPI then pcall(sharedLarpAPI.destroy) end
     if gameBrowserSyncAPI then pcall(gameBrowserSyncAPI.destroy) end
@@ -1480,14 +1482,16 @@ action(function()
     local editor=api()
     trace("Restoring accessory sounds")
     local soundsLoaded=pcall(hatSounds)
-    local turretLoaded,turretError=pcall(function()
-        local chunk,reason=loadstring(readSource("teapot_turret.lua",moduleRevision));assert(chunk,reason)
-        accessoryRuntime.turret=chunk()(Players.LocalPlayer,function(message)
-            if alive then statusText=message;if view then view.setStatus(message)end end
+    for _,entry in ipairs({{"turret","teapot_turret.lua","Teapot Turret"},{"doombringer","doombringer.lua","Doombringer"}})do
+        local loaded,err=pcall(function()
+            local chunk,reason=loadstring(readSource(entry[2],moduleRevision));assert(chunk,reason)
+            accessoryRuntime[entry[1]]=chunk()(Players.LocalPlayer,function(message)
+                if alive then statusText=message;if view then view.setStatus(message)end end
+            end)
+            accessoryRuntime[entry[1]].setEnabled(not gameBrowserSyncAPI or gameBrowserSyncAPI.isLarpEnabled())
         end)
-        accessoryRuntime.turret.setEnabled(not gameBrowserSyncAPI or gameBrowserSyncAPI.isLarpEnabled())
-    end)
-    if not turretLoaded then warn("Larpblox: Teapot Turret could not load: "..tostring(turretError))end
+        if not loaded then warn("Larpblox: "..entry[3].." could not load: "..tostring(err))end
+    end
     trace("Restoring saved cosmetics")
     local restored,message=pcall(reapplyAll,editor)
     if not restored then message="Could not prepare saved avatar: "..tostring(message)end

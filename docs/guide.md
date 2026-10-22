@@ -39,6 +39,23 @@ Supports compatible rigid accessories, including hats, masks, and hair. Added ac
 
 **Remove current Roblox accessories** hides the accessories your avatar is already wearing, including your account's hats. Accessories added by the hub stay equipped. **Restore original appearance** brings the original accessories back. Refresh re-applies your saved choice. This does not remove anything from your Roblox inventory.
 
+### Doombringer satellite
+
+Wear **Doombringer's Doombringer** (4640898) with Larp mode enabled. Its original satellite behavior is recreated as local visual effects:
+
+| Chat command | Effect |
+| --- | --- |
+| `smite Username` | Fire a satellite beam at a player. |
+| `target X Y Z` | Fire at coordinates. |
+| `movesat X Y Z` | Move the satellite. |
+| `location` | Show your coordinates in Larpblox's status. |
+| `giveweapon me` | Add a local targeting tool; equip it and click to fire. |
+| `kill Username` / `kill all` | Play cosmetic strikes without changing player health. |
+| `armageddon` | Fire 25 strikes across the original satellite target area. |
+| `stop` / `...` | Cancel ongoing strikes. |
+
+Effects and the targeting tool are removed when the hat is unequipped, Larp mode is disabled, or your character respawns. These effects do not damage players or grant tools to other players.
+
 ### Hat sounds
 
 Equipped accessories can play their embedded original sounds locally. Brighteyes' Witches Brew Hat uses its original three laughs and randomly plays one every 5–15 seconds while worn, matching its original SoundPlayer behavior. Hidden or removed hats stop hub-started playback. Roblox audio permissions still apply; arbitrary accessory scripts are not executed.
