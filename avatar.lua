@@ -331,7 +331,7 @@ return function(player,onStatus,readAsset,managedRespawn)
             end
         end
     end
-    local function attach(accessory,c)
+    local function attach(accessory,c,refit)
         local handle=accessory:FindFirstChild("Handle")
         assert(handle and handle:IsA("BasePart"),"This accessory has no wearable Handle.")
         if accessory:FindFirstChildWhichIsA("WrapLayer",true) then
@@ -343,7 +343,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         end
         -- Let Roblox apply its accessory fitting/scaling rules before using
         -- the client-side weld fallback. A raw catalog handle is not fitted.
-        if accessory:IsA("Accessory") then
+        if accessory:IsA("Accessory") and not refit then
             local humanoid=c:FindFirstChildOfClass("Humanoid")
             if humanoid then
                 local ok=pcall(humanoid.AddAccessory,humanoid,accessory)
@@ -433,6 +433,14 @@ return function(player,onStatus,readAsset,managedRespawn)
             end
         end
         if source.Transparency~=nil then target.Transparency=source.Transparency end
+        -- Layered clothing deforms against the body's WrapTarget cage. Body
+        -- part visual updates must carry that cage along with the mesh.
+        for _,child in ipairs(target:GetChildren()) do
+            if child:IsA("WrapTarget") then child:Destroy() end
+        end
+        for _,child in ipairs(source:GetChildren()) do
+            if child:IsA("WrapTarget") then child:Clone().Parent=target end
+        end
         for _,attachment in ipairs(source:GetChildren()) do
             if attachment:IsA("Attachment") then
                 local existing=target:FindFirstChild(attachment.Name)
@@ -503,8 +511,20 @@ return function(player,onStatus,readAsset,managedRespawn)
         for _,part in pairs(backups) do part:Destroy() end
         assert(ok,err)
     end
+    local function refitAccessories(ctx)
+        -- Body replacements keep live limbs, so Roblox does not rerun its
+        -- accessory fitting pass. Rebuild classic welds against new frames;
+        -- layered clothing remains owned by Roblox.
+        for _,entry in ipairs(added) do
+            local accessory=entry.object
+            if accessory.Parent==ctx.character and not accessory:FindFirstChildWhichIsA("WrapLayer",true) then
+                attach(accessory,ctx.character,true)
+            end
+        end
+    end
     local function restoreBodyParts(ctx)
         replaceParts(ctx,snapshot.parts)
+        refitAccessories(ctx)
         for joint,offset in pairs(snapshot.joints or {}) do
             if joint.Parent then joint.C0,joint.C1=offset.C0,offset.C1 end
         end
@@ -1011,6 +1031,7 @@ return function(player,onStatus,readAsset,managedRespawn)
                 local generated={}
                 for _,name in ipairs(r15)do generated[name]=template:FindFirstChild(name)end
                 replaceParts(ctx,generated)
+                refitAccessories(ctx)
                 local humanoid=template:FindFirstChildOfClass("Humanoid")
                 if humanoid then ctx.humanoid.HipHeight=humanoid.HipHeight end
             end
@@ -1055,6 +1076,7 @@ return function(player,onStatus,readAsset,managedRespawn)
                 end
                 capture(ctx,true)
                 replaceParts(ctx,parts)
+                refitAccessories(ctx)
                 local generatedHumanoid=template:FindFirstChildOfClass("Humanoid")
                 if generatedHumanoid and generatedHumanoid.HipHeight~=nil then ctx.humanoid.HipHeight=generatedHumanoid.HipHeight end
             end
@@ -1167,7 +1189,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         end
         local parts={}
         for _,name in ipairs(names) do local part=template:FindFirstChild(name);if part and part:IsA("BasePart") then parts[name]=part end end
-        local applied,message=pcall(function() capture(ctx,true);replaceParts(ctx,parts,names) end)
+        local applied,message=pcall(function() capture(ctx,true);replaceParts(ctx,parts,names);refitAccessories(ctx) end)
         template:Destroy()
         assert(applied,message)
         snapshot.bodyChanged=true
