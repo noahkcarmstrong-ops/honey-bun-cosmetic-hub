@@ -384,7 +384,8 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local function applyNameState(value)
         if value then lastModeValue=value end
         local state="disabled"
-        local name=""
+        local username=""
+        local displayName=""
         local verified=false
         if value then
             -- Older relays may return an outfit-shaped payload for unknown paths.
@@ -393,12 +394,15 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             verified=value.verified==true
             if value.enabled then
                 assert(value.name=="" or (value.name:match("^[A-Za-z0-9_]+$") and #value.name>=3 and #value.name<=20),"Browser name is invalid.")
-                state="enabled:"..value.name..(verified and ":verified" or "");name=value.name
+                username=value.name
+                displayName=type(value.displayName)=="string" and value.displayName or username
+                assert(#displayName>=1 and #displayName<=50 and not displayName:find("[%c]"),"Browser display name is invalid.")
+                state="enabled:"..username..":"..displayName..(verified and ":verified" or "")
             end
         end
         local firstModeState=value~=nil and not browserModeKnown
         local reenabled=browserModeKnown and not larpEnabled and state~="disabled"
-        larpEnabled=state~="disabled";larpName=name;larpVerified=larpEnabled and verified or false
+        larpEnabled=state~="disabled";larpName=displayName;larpVerified=larpEnabled and verified or false
         if reenabled then
             -- Turning off restores the real avatar without deleting the saved
             -- Larp command. A mode-only toggle does not create a new revision.
@@ -432,8 +436,8 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         if getNames then
             local names=getNames()
             if state=="disabled" then names.setEnabled(false)
-            elseif name=="" then names.restore()
-            else names.set(name,name)end
+            elseif username=="" then names.restore()
+            else names.set(username,displayName)end
             if names.setVerified then names.setVerified(larpVerified) end
         end
         if getViews then getViews().update({enabled=larpEnabled,name=larpName,verified=larpVerified,image=currentImage()})end
