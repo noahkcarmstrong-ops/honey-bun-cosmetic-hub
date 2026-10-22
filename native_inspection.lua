@@ -569,9 +569,9 @@ function M.create(player,getPreviews)
                 task.spawn(function()pcall(function()game:GetService("ContentProvider"):PreloadAsync(thumbs)end)end)
             end
         end
-        -- InspectAndBuy renders a model without a profile background. Published
-        -- browser PNGs can bake that background in, so use the outfit viewport.
-        currentImage=nil
+        -- The browser publishes Roblox's original posed render without a
+        -- background. Keep its held-gear pose; the model is only a fallback.
+        currentImage=type(options.image)=="string" and options.image~="" and options.image or nil
         if not currentSnapshot then previewData=nil;previewKey=nil end
         local alias=tostring(options.name or "")
         local name=alias~="" and alias or player.Name

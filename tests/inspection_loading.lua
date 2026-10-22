@@ -170,10 +170,6 @@ assert(viewport.ImageTransparency==1,"opening an existing inspector masks the na
 -- The focused regression below verifies the snapshot route directly.
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
 assert(viewport.ImageTransparency==1,"the native account model remains hidden")
-api.update({enabled=true,name="LarpAlias",snapshot=snapshot,image="rbxassetid://custom-avatar"})
-assert(liveOverlay().ClassName=="ViewportFrame" and liveOverlay().Visible and shows==1,"a supplied image still uses the outfit viewport renderer")
-api.update({enabled=true,name="LarpAlias",snapshot=snapshot,image="rbxassetid://another-avatar"})
-assert(liveOverlay().ClassName=="ViewportFrame" and liveOverlay().Visible and captures==1 and shows==1,"image changes do not bypass or rebuild the cached viewport snapshot")
 -- A ready item card must remain mounted while Roblox replaces its metadata.
 assert(itemContent.Visible, 'matching item content begins visible')
 local requestsBeforeLoading=#inspectCalls

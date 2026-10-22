@@ -34,7 +34,7 @@ Instance={new=function(class)
     function x:Destroy()self.destroyed=true;self.Parent=nil end
     return x
 end}
-Enum={AccessoryType={Hat="Hat",Hair="Hair",Back="Back",Jacket="Jacket",Face="Face"},HumanoidRigType={R6="R6",R15="R15"}}
+Enum={ScaleType={Fit="Fit"},AccessoryType={Hat="Hat",Hair="Hair",Back="Back",Jacket="Jacket",Face="Face"},HumanoidRigType={R6="R6",R15="R15"}}
 Color3={fromRGB=function(r,g,b)return {R=r/255,G=g/255,B=b/255}end}
 local http={JSONEncode=function(_,v)return v.version..":"..(v.items[1] and v.items[1].id or "")end}
 local gui={InspectPlayerFromHumanoidDescription=function(_,desc,name)
@@ -170,17 +170,19 @@ assert(viewport.ImageTransparency==1,"opening an existing inspector masks the na
 -- The focused regression below verifies the snapshot route directly.
 api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
 assert(viewport.ImageTransparency==1,"the native account model remains hidden")
-api.update({enabled=true,name="LarpAlias",snapshot=snapshot,image="rbxassetid://custom-avatar"})
-assert(liveOverlay().ClassName=="ViewportFrame" and liveOverlay().Visible and shows==1,"a supplied image still uses the outfit viewport renderer")
-api.update({enabled=true,name="LarpAlias",snapshot=snapshot,image="rbxassetid://another-avatar"})
-assert(liveOverlay().ClassName=="ViewportFrame" and liveOverlay().Visible and captures==1 and shows==1,"image changes do not bypass or rebuild the cached viewport snapshot")
+api.update({enabled=true,name="LarpAlias",snapshot=snapshot,image="rbxassetid://transparent-posed-avatar"})
+assert(liveOverlay().ClassName=="ImageLabel" and liveOverlay().Image=="rbxassetid://transparent-posed-avatar" and liveOverlay().Visible,"inspection must preserve the original transparent posed gear image")
+api.update({enabled=true,name="LarpAlias",snapshot=snapshot,image="rbxassetid://transparent-posed-avatar"})
+assert(liveOverlay().ClassName=="ImageLabel" and liveOverlay().Visible and captures==1 and shows==1,"unchanged posed image does not rebuild or switch to the neutral model")
+api.update({enabled=true,name="LarpAlias",snapshot=snapshot})
+assert(liveOverlay().ClassName=="ViewportFrame" and liveOverlay().Visible,"missing posed image retains the model fallback")
 local changed={version=2,definition=snapshot.definition,items={{id=100,assetType=11,name="Larp Shirt"},{id=201,assetType=67}}}
 local capturesBeforeOutfit=captures
-api.update({enabled=true,name="LarpAlias",snapshot=changed,image="rbxassetid://stale-avatar"})
+api.update({enabled=true,name="LarpAlias",snapshot=changed})
 flushDeferred()
-assert(captures==capturesBeforeOutfit+1 and liveOverlay().ClassName=="ViewportFrame","an outfit change rebuilds the viewport snapshot even when image is supplied")
+assert(captures==capturesBeforeOutfit+1 and liveOverlay().ClassName=="ViewportFrame","an outfit change rebuilds the viewport snapshot when no image is available")
 local capturesBeforeDisabled=captures
 api.update({enabled=false,name="LarpAlias",image="rbxassetid://disabled-avatar"})
 assert(captures==capturesBeforeDisabled and not previewGui(),"disabling Larp mode does not render a supplied image")
 api.destroy()
-print("Native inspection image, outfit-change and disabled viewport regression passed.")
+print("PASS: posed inspection image preserved; model fallback, outfit changes and disabling still work.")
