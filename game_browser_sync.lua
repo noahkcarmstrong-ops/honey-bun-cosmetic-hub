@@ -289,13 +289,33 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         local ok,msg=pcall(function()
             local before=snapshot()
             for _,item in ipairs(before.items)do if accessoryTypes[item.assetType] then current[item.id]=true end end
-            if next(value.definition.scales)~=nil and avatar.setScales then
-                local loaded,reason=pcall(avatar.setScales,value.definition.scales)
-                if not loaded then loadErrors[#loadErrors+1]="Proportions: "..tostring(reason)end
+            local preparationFailures={}
+            if avatar.prepareAccessories then
+                local ids={}
+                for _,item in ipairs(value.items)do
+                    if accessoryTypes[item.assetType] and not current[item.id]then ids[#ids+1]=item.id end
+                end
+                preparationFailures=avatar.prepareAccessories(ids)
+                if not readyForAppearance()then return end
             end
             local currentBody,desiredBody={},{ }
             for _,item in ipairs(before.items)do local region=bodyTypeRegions[item.assetType];if region then currentBody[region]=item.id end end
             for _,item in ipairs(value.items)do local region=bodyTypeRegions[item.assetType];if region then desiredBody[region]=item.id end end
+            if avatar.prepareBodyParts then
+                local changed=false
+                for _,entry in ipairs(bodyRegions)do
+                    local region=entry[1]
+                    if browserBody[region]==nil or (currentBody[region] or 0)~=(desiredBody[region] or 0)then changed=true end
+                end
+                for key,scale in pairs(value.definition.scales)do
+                    if (before.definition.scales or {})[key]~=scale then changed=true end
+                end
+                if changed then avatar.prepareBodyParts(desiredBody,value.definition.scales)end
+            end
+            if next(value.definition.scales)~=nil and avatar.setScales then
+                local loaded,reason=pcall(avatar.setScales,value.definition.scales)
+                if not loaded then loadErrors[#loadErrors+1]="Proportions: "..tostring(reason)end
+            end
             local bodySettings=avatar.getSettings()
             local resetBody=false
             if bodySettings.body and avatar.restoreBody then
@@ -380,7 +400,9 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 end
                 for _,item in ipairs(value.items)do
                     if accessoryTypes[item.assetType] and not present[item.id] then
-                        local loaded,reason=pcall(avatar.equipAccessory,item.id,accessoryMetadata[item.id],item.assetType)
+                        local loaded,reason
+                        if preparationFailures[item.id]then loaded,reason=false,preparationFailures[item.id]
+                        else loaded,reason=pcall(avatar.equipAccessory,item.id,accessoryMetadata[item.id],item.assetType)end
                         if loaded then present[item.id]=true else loadErrors[#loadErrors+1]=item.name..": "..tostring(reason) end
                     end
                 end

@@ -327,6 +327,18 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         if entry.stopObserving then entry.stopObserving();entry.stopObserving=nil end
         local accessoryFailures={}
         local ok,err=pcall(function()
+            -- Resolve cold catalog assets before any visible body changes.
+            -- Cached preparation does not clone or attach an accessory.
+            local preparationFailures={}
+            if entry.avatar.prepareAccessories then
+                local ids,existing={},{}
+                for _,item in ipairs(entry.avatar.listAccessories())do existing[item.id]=true end
+                for _,item in ipairs(snapshot.items)do
+                    if ACCESSORY_TYPES[tonumber(item.assetType)] and not existing[item.id]then ids[#ids+1]=item.id end
+                end
+                preparationFailures=entry.avatar.prepareAccessories(ids)
+                if not current()then return end
+            end
             -- Keep the live overlay and its caches when only part of the outfit changes.
             local previous=entry.snapshot or {}
             local oldItems,oldSlots,slots={},{},{}
@@ -416,7 +428,9 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             for _,asset in ipairs(snapshot.definition.assets)do accessoryMetadata[asset.id]=asset.meta end
             -- Load additions first so existing accessories remain visible while assets load.
             for id in pairs(wanted)do
-                if not equipped[id]then
+                if preparationFailures[id]then
+                    accessoryFailures[#accessoryFailures+1]=tostring(id)..": "..preparationFailures[id]
+                elseif not equipped[id]then
                     local loaded,reason=pcall(entry.avatar.equipAccessory,id,accessoryMetadata[id])
                     if not loaded then accessoryFailures[#accessoryFailures+1]=tostring(id)..": "..tostring(reason)end
                 elseif entry.avatar.setAccessoryMetadata then

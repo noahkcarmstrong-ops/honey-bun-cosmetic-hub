@@ -594,10 +594,10 @@ return function(player,onStatus,readAsset,managedRespawn)
         for _,mesh in ipairs(r6MeshesFor(region,snapshot and snapshot.meshes)) do mesh:Clone().Parent=ctx.character end
     end
     local wearableTemplates,wearableOrder={},{}
-    local function wearable(ctx,id,kind)
+    local function wearable(ctx,id,kind,prepareOnly)
         local key=kind..":"..string.format("%.0f",id)
         local cached=wearableTemplates[key]
-        if cached then return cached:Clone() end
+        if cached then return prepareOnly and cached or cached:Clone() end
         local ok,objects=pcall(function()
             if kind=="Accessory" and id==azurelightAccessoryId then
                 assert(type(readAsset)=="function","Dominus Azurelight's visual effects need local asset loading support in this executor.")
@@ -658,7 +658,7 @@ return function(player,onStatus,readAsset,managedRespawn)
             local oldest=table.remove(wearableOrder,1)
             wearableTemplates[oldest]:Destroy();wearableTemplates[oldest]=nil
         end
-        return template:Clone()
+        return prepareOnly and template or template:Clone()
     end
     local function bunnyExplosion(ctx,candidate)
         -- Recreate the old BootScript's explosion visually; never run asset scripts.
@@ -677,6 +677,23 @@ return function(player,onStatus,readAsset,managedRespawn)
         end)
     end
     local api={}
+    local preparedWearables=setmetatable({}, {__mode="k"})
+    function api.prepareAccessories(ids)
+        local ctx=context()
+        local failures,preload={},{}
+        for _,id in ipairs(ids)do
+            local ok,reason=pcall(wearable,ctx,idFrom(id,"catalog"),"Accessory",true)
+            check(ctx)
+            if not ok then failures[id]=tostring(reason)
+            elseif not preparedWearables[reason]then preload[#preload+1]=reason end
+        end
+        if #preload>0 then
+            game:GetService("ContentProvider"):PreloadAsync(preload)
+            check(ctx)
+            for _,template in ipairs(preload)do preparedWearables[template]=true end
+        end
+        return failures
+    end
     local function adjustAccessory(entry,meta)
         local handle=entry.object:FindFirstChild("Handle")
         assert(handle and handle:IsA("BasePart"),"This accessory has no Handle.")
@@ -1034,10 +1051,9 @@ return function(player,onStatus,readAsset,managedRespawn)
     end
     -- Complete shared outfits already include validated region IDs. Generate
     -- their body once instead of generating a full rig separately for each limb.
-    function api.applyBodyParts(parts,scales)
+    local function prepareBodyParts(ctx,parts,scales)
         assert(type(parts)=="table","Body parts are required.")
         assert(scales==nil or validScales(scales),"Invalid body scales.")
-        local ctx=context()
         local description=Instance.new("HumanoidDescription")
         local key={"shared",tostring(ctx.humanoid.RigType)}
         for _,region in ipairs({"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"})do
@@ -1058,7 +1074,23 @@ return function(player,onStatus,readAsset,managedRespawn)
         description:Destroy()
         if not valid(ctx) then if ok and template and not cached then template:Destroy()end;check(ctx)end
         assert(ok and template,"Roblox blocked generating the shared body.")
-        if not cached then strip(template)end
+        if not cached then
+            strip(template)
+            local loaded,reason=pcall(function()game:GetService("ContentProvider"):PreloadAsync({template})end)
+            if not loaded or not valid(ctx)then template:Destroy();check(ctx);error(reason)end
+        end
+        if not cached then
+            for oldKey,old in pairs(fullBodyTemplates)do old:Destroy();fullBodyTemplates[oldKey]=nil end
+            fullBodyTemplates[cacheKey]=template
+        end
+        return template
+    end
+    function api.prepareBodyParts(parts,scales)
+        prepareBodyParts(context(),parts,scales)
+    end
+    function api.applyBodyParts(parts,scales)
+        local ctx=context()
+        local template=prepareBodyParts(ctx,parts,scales)
         local applied,message=pcall(function()
             capture(ctx,true)
             if ctx.humanoid.RigType==Enum.HumanoidRigType.R6 then
@@ -1076,14 +1108,6 @@ return function(player,onStatus,readAsset,managedRespawn)
             end
             snapshot.bodyChanged=true
         end)
-        if applied and not cached then
-            for oldKey,old in pairs(fullBodyTemplates)do old:Destroy();fullBodyTemplates[oldKey]=nil end
-            -- Application reads the source and copies only visual children.
-            -- Retain the source directly instead of cloning an entire rig
-            -- for every respawn and immediately destroying the temporary copy.
-            fullBodyTemplates[cacheKey]=template
-        end
-        if not cached and not applied then template:Destroy()end
         assert(applied,message)
         if not reapplying then
             settings.body=nil;settings.bodyParts={}
@@ -1393,10 +1417,16 @@ return function(player,onStatus,readAsset,managedRespawn)
         if settings.body and not(settings.body=="Blocky" and ctx.humanoid.RigType==Enum.HumanoidRigType.R6)then
             local template=bodySource(ctx,settings.body);template:Destroy()
         end
-        for region,value in pairs(settings.bodyParts)do
-            local template,remember=bodyPartSource(ctx,region,value);remember();template:Destroy()
+        local complete=true
+        for _,region in ipairs({"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"})do
+            if type(settings.bodyParts[region])~="number" then complete=false;break end
         end
-        for _,id in ipairs(settings.accessories)do local template=wearable(ctx,id,"Accessory");template:Destroy()end
+        if complete then prepareBodyParts(ctx,settings.bodyParts,settings.scales)
+        else for region,value in pairs(settings.bodyParts)do
+            local template,remember=bodyPartSource(ctx,region,value);remember();template:Destroy()
+        end end
+        local failures=api.prepareAccessories(settings.accessories)
+        for _,reason in pairs(failures)do error(reason)end
         if settings.face then
             faceSource(ctx,settings.face)
         end
