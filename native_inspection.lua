@@ -147,6 +147,7 @@ function M.create(player,getPreviews)
         return false
     end
     local function panelVisibility(root,show)
+        local outfitKey=currentSnapshot and game:GetService("HttpService"):JSONEncode(currentSnapshot) or ""
         local targets={}
         local itemNames,itemIds={},{}
         local function normalized(value)return tostring(value or ""):match("^%s*(.-)%s*$"):lower()end
@@ -174,7 +175,7 @@ function M.create(player,getPreviews)
                 if label:IsA("TextLabel") and itemLabel(label) then
                     found=true
                     if not itemNames[normalized(label.Text)] then
-                        local matched=false
+                        local matched,hasAssetIdentity=false,false
                         local card=label.Parent
                         for depth=1,4 do
                             if not card then break end
@@ -189,13 +190,14 @@ function M.create(player,getPreviews)
                             end
                             if labels>1 then break end
                             if #images>0 then
+                                hasAssetIdentity=true
                                 matched=true;for _,id in ipairs(images)do if not itemIds[id] then matched=false end end
                                 break
                             end
                             if card==object then break end
                             card=card.Parent
                         end
-                        if not matched then return false end
+                        if not matched then return false,hasAssetIdentity end
                     end
                 end
             end
@@ -232,8 +234,13 @@ function M.create(player,getPreviews)
         local mismatches,matchedItems={},false
         for _,target in ipairs(targets)do
             local object=target.object
-            local reveal=show and (not target.itemContent or larpItems(object))
-            if show and target.itemContent and not reveal then
+            local entry=panels[object]
+            local matches,foreignAsset
+            if target.itemContent then matches,foreignAsset=larpItems(object) end
+            -- Roblox updates card names/thumbnails in separate steps. A card
+            -- already accepted for this outfit stays mounted during that gap.
+            local reveal=show and (not target.itemContent or matches or (entry and entry.ready and entry.outfitKey==outfitKey and not foreignAsset))
+            if show and target.itemContent and not reveal and foreignAsset then
                 local identities={}
                 local descendants=object:GetDescendants();descendants[#descendants+1]=object
                 for _,child in ipairs(descendants)do
@@ -243,7 +250,6 @@ function M.create(player,getPreviews)
                 table.sort(identities);mismatches[#mismatches+1]=table.concat(identities,"|")
             end
             if show and target.itemContent and reveal then matchedItems=true end
-            local entry=panels[object]
             if not entry then
                 entry={original=object.Visible,root=root,ready=false};panels[object]=entry
                 pcall(function()entry.connection=object:GetPropertyChangedSignal("Visible"):Connect(function()
@@ -253,7 +259,7 @@ function M.create(player,getPreviews)
                     end
                 end)end)
             end
-            entry.ready=reveal
+            entry.ready=reveal;entry.outfitKey=outfitKey
             mutatingPanel=true;object.Visible=reveal and entry.original or false;mutatingPanel=false
         end
         table.sort(mismatches)
