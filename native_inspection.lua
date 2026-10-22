@@ -64,6 +64,7 @@ function M.create(player,getPreviews)
         if activeDescription then activeDescription:Destroy();activeDescription=nil end
     end
     local lastSignature,lastLabel,adopting,lastName,status=nil,nil,false,nil,"Inspector is waiting."
+    local lastMismatchKey
     local function visible(object)
         local current=object
         while current do
@@ -148,6 +149,18 @@ function M.create(player,getPreviews)
         local targets={}
         local itemNames,itemIds={},{}
         local function normalized(value)return tostring(value or ""):match("^%s*(.-)%s*$"):lower()end
+        local function itemLabel(object)
+            local name=string.lower(object.Name or "")
+            return name=="itemname" or name=="itemcardfootertitle"
+        end
+        local function modernCard(object)
+            local name=string.lower(object.Name or "")
+            if not name:match("^item%d+$") then return false end
+            for _,child in ipairs(object:GetDescendants())do
+                if child:IsA("TextLabel") and itemLabel(child) then return true end
+            end
+            return false
+        end
         for _,item in ipairs(currentSnapshot and currentSnapshot.items or {})do
             if type(item.name)=="string" then itemNames[normalized(item.name)]=true end
             itemIds[tostring(item.id)]=true
@@ -157,7 +170,7 @@ function M.create(player,getPreviews)
             for _,child in ipairs(object:GetDescendants())do labels[#labels+1]=child end
             local found=false
             for _,label in ipairs(labels)do
-                if label:IsA("TextLabel") and string.lower(label.Name or "")=="itemname" then
+                if label:IsA("TextLabel") and itemLabel(label) then
                     found=true
                     if not itemNames[normalized(label.Text)] then
                         local matched=false
@@ -166,7 +179,7 @@ function M.create(player,getPreviews)
                             if not card then break end
                             local images,labels={},0
                             for _,child in ipairs(card:GetDescendants())do
-                                if child:IsA("TextLabel") and child.Name:lower()=="itemname" then labels=labels+1 end
+                                if child:IsA("TextLabel") and itemLabel(child) then labels=labels+1 end
                                 if child:IsA("ImageLabel") or child:IsA("ImageButton") then
                                     local image=tostring(child.Image or "")
                                     local id=image:match("^rbxthumb://type=Asset&id=(%d+)[&]")
@@ -192,14 +205,14 @@ function M.create(player,getPreviews)
         for _,object in ipairs(root:GetDescendants())do
             if object:IsA("GuiObject")then
                 local name=string.lower(object.Name or "")
-                local itemContent=name=="itemdetails" or name=="itemcontent" or name=="itemname"
+                local itemContent=name=="itemdetails" or name=="itemcontent" or name=="itemname" or name=="itemcardfootertitle" or modernCard(object)
                 if itemContent and not object:IsA("TextLabel") then
                     -- A layout may reuse an item-related name for the whole page.
                     -- Never hide a container that also owns the avatar or navigation.
                     local hasItem=false
                     for _,child in ipairs(object:GetDescendants())do
                         local childName=string.lower(child.Name or "")
-                        if childName=="itemname" then hasItem=true end
+                        if childName=="itemname" or childName=="itemcardfootertitle" then hasItem=true end
                         if child:IsA("ViewportFrame") or (child:IsA("TextLabel") and child.Text:match("'s Avatar$")) or childName=="close" or childName=="closebutton" or childName=="back" or childName=="backbutton" then itemContent=false;break end
                     end
                     itemContent=itemContent and hasItem
@@ -215,9 +228,20 @@ function M.create(player,getPreviews)
                 end
             end
         end
+        local mismatches,matchedItems={},false
         for _,target in ipairs(targets)do
             local object=target.object
             local reveal=show and (not target.itemContent or larpItems(object))
+            if show and target.itemContent and not reveal then
+                local identities={}
+                local descendants=object:GetDescendants();descendants[#descendants+1]=object
+                for _,child in ipairs(descendants)do
+                    if child:IsA("TextLabel") and itemLabel(child) then identities[#identities+1]=child.Text
+                    elseif child:IsA("ImageLabel") or child:IsA("ImageButton") then identities[#identities+1]=child.Image end
+                end
+                table.sort(identities);mismatches[#mismatches+1]=table.concat(identities,"|")
+            end
+            if show and target.itemContent and reveal then matchedItems=true end
             local entry=panels[object]
             if not entry then
                 entry={original=object.Visible,root=root,ready=false};panels[object]=entry
@@ -230,6 +254,23 @@ function M.create(player,getPreviews)
             end
             entry.ready=reveal
             mutatingPanel=true;object.Visible=reveal and entry.original or false;mutatingPanel=false
+        end
+        table.sort(mismatches)
+        local mismatchKey=table.concat(mismatches,"\n")
+        if show and matchedItems then adopting=false end
+        -- Roblox may normalize a head/animation into a different catalog item.
+        -- Retry a changed foreign outfit, but never reopen for the same result.
+        if show and active and not adopting and #mismatches>0 and mismatchKey~=lastMismatchKey then
+            lastMismatchKey=mismatchKey
+            local desc=description(currentSnapshot)
+            local ok,err=pcall(function()gui:InspectPlayerFromHumanoidDescription(desc,currentName)end)
+            if ok then
+                releaseDescription();activeDescription=desc;adopting=true;status="Refreshing local outfit inspection."
+            else
+                desc:Destroy();status="Roblox blocked the local avatar inspector: "..tostring(err)
+            end
+        elseif show and #mismatches==0 and matchedItems then
+            lastMismatchKey=nil
         end
     end
     local function restorePanels(root)
@@ -468,9 +509,13 @@ function M.create(player,getPreviews)
             local wasTitle=object.Text:match("'s Avatar$")~=nil
             pcall(function()connections[#connections+1]=object:GetPropertyChangedSignal("Text"):Connect(function()
                 local isTitle=object.Text:match("'s Avatar$")~=nil
-                if wasTitle or isTitle then maskPreview(false);schedulePreview()end
+                if wasTitle or isTitle then maskPreview(false);schedulePreview()
+                elseif object.Name:lower()=="itemname" or object.Name:lower()=="itemcardfootertitle" then schedulePreview()end
                 wasTitle=isTitle
             end)end)
+        end
+        if scoped and (object:IsA("ImageLabel") or object:IsA("ImageButton")) then
+            connections[#connections+1]=object:GetPropertyChangedSignal("Image"):Connect(schedulePreview)
         end
         return scoped
     end
@@ -480,7 +525,11 @@ function M.create(player,getPreviews)
             connections[#connections+1]=core.DescendantAdded:Connect(function(object)
                 local scoped=watchTitle(object)
                 if scoped and modeEnabled then quarantineUnknownPanels()end
-                if scoped and (nativeAvatarVisual(object) or (object:IsA("TextLabel") and object.Text:match("'s Avatar$")))then maskPreview(false)end
+                local name=string.lower(object.Name or "")
+                local modernItem= name=="itemcardfootertitle" or name:match("^item%d+$")
+                if scoped and (nativeAvatarVisual(object) or (object:IsA("TextLabel") and object.Text:match("'s Avatar$")) or modernItem)then
+                    maskPreview(false);schedulePreview()
+                end
             end)
         end)
     end
@@ -510,13 +559,14 @@ function M.create(player,getPreviews)
             if active and label and not options.preserveNative then pcall(function()gui:InspectPlayerFromUserId(player.UserId)end)end
             restoreMasks()
             releaseDescription()
-            active=false;lastLabel=nil;lastSignature=nil;adopting=false;lastName=nil
+            active=false;lastLabel=nil;lastSignature=nil;adopting=false;lastName=nil;lastMismatchKey=nil
             return
         end
         if not label then maskPreview(false);return end
         maskPreview(false)
         if not options.snapshot then status="Waiting for the local outfit.";return end
         local signature=game:GetService("HttpService"):JSONEncode(options.snapshot)..name
+        if lastSignature~=signature then lastMismatchKey=nil end
         if active and lastSignature==signature then
             if title==name.."'s Avatar" then lastLabel=label;adopting=false;maskPreview(true);return end
             if adopting then maskPreview(false);return end
