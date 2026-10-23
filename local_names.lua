@@ -109,7 +109,10 @@ local function resolve(entry)
         ancestor=ancestor.Parent
     end
     entry.semanticField=semanticField
-    local name=text:match("^@(.+)$") or text:match("^(.-)'s%s") or text
+    -- Composite identity labels keep their native statistics/formatting. Resolve
+    -- only the explicit name field, never arbitrary mentions in other text.
+    local labeled=text:match("^Name:%s*(.-)%s+|") or text:match("^Name:%s*(.-)%s*$")
+    local name=labeled or text:match("^@(.+)$") or text:match("^(.-)'s%s") or text
     local ranked=text:match("^#%d+%s*%-%s*(.+)$")
     if ranked and semanticField then name=ranked end
     local id
