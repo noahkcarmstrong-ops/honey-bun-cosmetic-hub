@@ -58,6 +58,8 @@ Effects and the targeting tool are removed when the hat is unequipped, Larp mode
 
 ### Hat sounds
 
+Black Iron Crown of Pwnage (1078202) reproduces its original `Hello John` console greeting once when worn with Larp mode enabled. Its obsolete `RenderHooksService:EnableAdorns(false)` call is omitted to preserve Roblox's native controls. This script has no visual effects or chat commands.
+
 Equipped accessories can play their embedded original sounds locally. Brighteyes' Witches Brew Hat uses its original three laughs and randomly plays one every 5–15 seconds while worn, matching its original SoundPlayer behavior. Hidden or removed hats stop hub-started playback. Roblox audio permissions still apply; arbitrary accessory scripts are not executed.
 
 Original asset inspected: https://assetdelivery.roblox.com/v1/asset/?id=305888394 (WitchesBrewHat; Laugh 62777535, Laugh2 88108663, Laugh3 88108686).
