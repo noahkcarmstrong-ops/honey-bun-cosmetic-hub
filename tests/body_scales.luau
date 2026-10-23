@@ -28,6 +28,22 @@ local ok,err=pcall(function()
  api.restoreBody()
  for name,original in pairs(originals)do assert((model[name].Size-original.size).Magnitude<0.001,'Restore failed: '..name)end
 end)
-api.destroy();event:Destroy();model:Destroy()
+local r6Description=Instance.new('HumanoidDescription')
+local r6Model=Players:CreateHumanoidModelFromDescriptionAsync(r6Description,Enum.HumanoidRigType.R6)
+r6Description:Destroy()
+local r6Originals={}
+for _,part in ipairs(r6Model:GetChildren())do if part:IsA('BasePart') then r6Originals[part.Name]={part=part,size=part.Size} end end
+local r6Player={Character=r6Model,CharacterAdded=event.Event,FindFirstChildOfClass=function()end}
+local r6Api=create(r6Player,nil,nil,true)
+assert(r6Api.setScales({height=1.2})=='Avatar proportions require R15.','R6 scales remain explicitly unsupported')
+assert(pcall(r6Api.applyBodyParts,{}, {height=1.2,width=0.8,depth=0.9,head=1.1,bodyType=0.7,proportion=0.4}),'R6 body application ignores inapplicable R15 scale fields')
+for name,original in pairs(r6Originals)do
+ local part=r6Model:FindFirstChild(name)
+ assert(part==original.part,'R6 body update replaced '..name)
+ assert((part.Size-original.size).Magnitude<0.001,'R6 body shape changed from native dimensions: '..name)
+end
+r6Api.restoreBody()
+for name,original in pairs(r6Originals)do assert((r6Model[name].Size-original.size).Magnitude<0.001,'R6 restore failed: '..name)end
+r6Api.destroy();api.destroy();event:Destroy();model:Destroy();r6Model:Destroy()
 assert(ok,err)
-return {passed=count,message='Repeated scale changes match native Roblox geometry; all six inspect values and live part identities preserved.'}
+return {passed=count+1,message='R15 scale changes match native Roblox geometry; R6 body shape and restore remain native while R15 scale fields are ignored.'}
