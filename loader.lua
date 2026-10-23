@@ -441,6 +441,67 @@ local function module(file)
     local chunk,message=loadstring(readSource(file,moduleRevision),"="..file);assert(chunk,message)
     return chunk()
 end
+function accessoryRuntime.factory(file)
+    accessoryRuntime.factories=accessoryRuntime.factories or {}
+    if not accessoryRuntime.factories[file]then accessoryRuntime.factories[file]=module(file)end
+    return accessoryRuntime.factories[file]
+end
+function accessoryRuntime.channel()
+    if not accessoryRuntime.sharing then
+        accessoryRuntime.sharing=module("hat_sharing.lua")({session=game:GetService("HttpService"):GenerateGUID(false),delay=task.delay})
+        accessoryRuntime.sharing.attach(accessoryRuntime)
+    end
+    return accessoryRuntime.sharing
+end
+function accessoryRuntime.forPeer(player)
+    local options={remote=true,viewerGui=playerGui}
+    local runtimes,lastSnapshot={},nil
+    local scripts={turret={1055299,"teapot_turret.lua"},doombringer={4640898,"doombringer.lua"},
+        contest={92719239,"contest_award.lua"},crown={1078202,"black_iron_crown.lua"}}
+    local receive=accessoryRuntime.channel().receiver(runtimes,function(event)
+        local own=Players.LocalPlayer.Character
+        local source=player.Character
+        local ownRoot=own and own:FindFirstChild("HumanoidRootPart")
+        local sourceRoot=source and source:FindFirstChild("HumanoidRootPart")
+        if not ownRoot or not sourceRoot then return false end
+        if (ownRoot.Position-sourceRoot.Position).Magnitude>250 then return false end
+        -- One budget for all peers; crowded servers cannot multiply particle work.
+        local now=os.clock()
+        local budget=accessoryRuntime.effectBudget or {at=now,tokens=32}
+        accessoryRuntime.effectBudget=budget
+        budget.tokens=math.min(32,budget.tokens+(now-budget.at)*24);budget.at=now
+        if budget.tokens<1 then return false end
+        budget.tokens=budget.tokens-1;return true
+    end)
+    return {
+        update=function(state,snapshot)
+            if snapshot and snapshot~=lastSnapshot then
+                lastSnapshot=snapshot
+                local assets={}
+                for _,item in ipairs(snapshot.items)do assets[item.id]=true end
+                -- Most peers need no scripted-hat controllers at all.
+                for key,entry in pairs(scripts)do
+                    if assets[entry[1]]then
+                        if not runtimes[key]then runtimes[key]=accessoryRuntime.factory(entry[2])(player,nil,options)end
+                    elseif runtimes[key]then runtimes[key].destroy();runtimes[key]=nil end
+                end
+                local hasSounds=false
+                for _,item in ipairs(player.Character and player.Character:GetChildren()or {})do
+                    if (item:IsA("Accessory")or item:IsA("Hat"))and item:FindFirstChildWhichIsA("Sound",true)then hasSounds=true;break end
+                end
+                if hasSounds and not runtimes.sounds then runtimes.sounds=accessoryRuntime.factory("accessory_sounds.lua")(player,playerGui,options)
+                elseif not hasSounds and runtimes.sounds then runtimes.sounds.destroy();runtimes.sounds=nil end
+            end
+            local enabled=state~=nil
+            for _,runtime in pairs(runtimes)do runtime.setEnabled(enabled)end
+            if enabled then receive(state)else
+                if runtimes.contest then runtimes.contest.setHeld(false)end
+                if runtimes.doombringer then runtimes.doombringer.setHeld(false)end
+            end
+        end,
+        destroy=function()for _,runtime in pairs(runtimes)do pcall(runtime.destroy)end end,
+    }
+end
 local lightingSchema=module("lighting_schema.lua")
 local function playerCollisions()
     if not playerCollisionsAPI then playerCollisionsAPI=module("player_collisions.lua")(Players,workspace) end
@@ -651,6 +712,9 @@ local function sharedLarp()
             statusText=message
             if view then view.setStatus(message) end
         end,{onAppearanceApplied=function(userId)corpseController().refresh(tonumber(userId))end,log=logDiagnostic,getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews,transport=gameBrowserSync(),
+            createHatScripts=accessoryRuntime.forPeer,getHatScripts=function()return accessoryRuntime.channel().snapshot()end,
+            validHatScripts=function(value)return accessoryRuntime.channel().valid(value)end,
+            onHatScriptsChanged=accessoryRuntime.channel().onChanged,
             fetchProfiles=function(ids)
                 if not fetchSharedProfiles then
                     local chunk,message=loadstring(readSource("shared_profiles.lua",moduleRevision));assert(chunk,message)
@@ -1433,6 +1497,7 @@ gui.Destroying:Connect(function()
     if accessoryRuntime.doombringer then pcall(accessoryRuntime.doombringer.destroy) end
     if accessoryRuntime.crown then pcall(accessoryRuntime.crown.destroy) end
     if accessoryRuntime.contest then pcall(accessoryRuntime.contest.destroy) end
+    if accessoryRuntime.sharing then pcall(accessoryRuntime.sharing.destroy)end
     if corpseAPI then pcall(corpseAPI.destroy) end
     if sharedLarpAPI then pcall(sharedLarpAPI.destroy) end
     if gameBrowserSyncAPI then pcall(gameBrowserSyncAPI.destroy) end
@@ -1488,10 +1553,9 @@ action(function()
     local soundsLoaded=pcall(hatSounds)
     for _,entry in ipairs({{"turret","teapot_turret.lua","Teapot Turret"},{"doombringer","doombringer.lua","Doombringer"},{"crown","black_iron_crown.lua","Black Iron Crown"},{"contest","contest_award.lua","Contest Winner Award"}})do
         local loaded,err=pcall(function()
-            local chunk,reason=loadstring(readSource(entry[2],moduleRevision));assert(chunk,reason)
-            accessoryRuntime[entry[1]]=chunk()(Players.LocalPlayer,function(message)
+            accessoryRuntime[entry[1]]=accessoryRuntime.factory(entry[2])(Players.LocalPlayer,function(message)
                 if alive then statusText=message;if view then view.setStatus(message)end end
-            end)
+            end,{emit=accessoryRuntime.channel().emit,changed=accessoryRuntime.channel().changed,viewerGui=playerGui})
             accessoryRuntime[entry[1]].setEnabled(not gameBrowserSyncAPI or gameBrowserSyncAPI.isLarpEnabled())
         end)
         if not loaded then warn("Larpblox: "..entry[3].." could not load: "..tostring(err))end

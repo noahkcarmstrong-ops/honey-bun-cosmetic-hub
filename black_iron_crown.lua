@@ -1,5 +1,7 @@
 -- Recreates the crown's original greeting without its obsolete RenderHooksService call.
-return function(player)
+return function(player,onStatus,sharing)
+    sharing=sharing or {}
+    local remote=sharing.remote==true
     local alive,enabled,announced=true,false,false
     local character,hat,visibilityConnection
     local connections,characterConnections={},{}

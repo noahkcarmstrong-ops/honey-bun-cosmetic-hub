@@ -1,6 +1,6 @@
--- Local-only recreation of Doombringer (SourceAssetId 4640898).
+-- Cosmetic recreation of Doombringer (SourceAssetId 4640898), with shared playback.
 -- It deliberately does not execute the original downloaded scripts or write to a server.
-return function(player,onStatus)
+return function(player,onStatus,sharing)
     local Players=game:GetService("Players")
     local alive,enabled=true,true
     local character,hat,folder,satellite
@@ -11,6 +11,12 @@ return function(player,onStatus)
     local lastMessage,lastMessageAt=nil,-math.huge
     local lastBeamAt=-math.huge
     local satellitePosition=Vector3.new(100,3000,0)
+    sharing=sharing or {}
+    local remote=sharing.remote==true
+    enabled=not remote
+    local held=false
+    local function emit(kind,payload)if not remote and type(sharing.emit)=="function"then pcall(sharing.emit,kind,payload or {})end end
+    local function point(v)return {v.X or v.x,v.Y or v.y,v.Z or v.z}end
 
     local function read(o,k)local ok,v=pcall(function()return o[k]end);return ok and v or nil end
     local function is(o,c)return o and read(o,"IsA") and o:IsA(c)end
@@ -67,6 +73,7 @@ return function(player,onStatus)
     local function setSatellite(position)
         satellitePosition=position
         if ensureSatellite() then satellite.CFrame=CFrame.new(position) end
+        emit("doom-satellite",{position=point(position)})
     end
     local function beamAt(position,label,batch)
         if not active() or not position then return false end
@@ -84,6 +91,7 @@ return function(player,onStatus)
         local beam=Instance.new("Beam");beam.Attachment0=a;beam.Attachment1=b
         beam.Width0=3;beam.Width1=3;beam.FaceCamera=true;beam.LightEmission=1
         beam.Color=ColorSequence.new(Color3.new(1,0.12,0.02));beam.Parent=source
+        emit("doom-beam",{position=point(position)})
         task.delay(0.6,function()
             for _,o in ipairs({source,impact})do if effects[o]then effects[o]=nil;destroy(o)end end
         end)
@@ -117,6 +125,7 @@ return function(player,onStatus)
         local count=0;for _ in pairs(effects)do count=count+1 end;if count>=40 then return false end
         local vanish=makePart("DoombringerVanishEffect",Vector3.new(5,7,5),Color3.new(0.05,0.05,0.05),position)
         vanish.Transparency=0.35
+        emit("doom-vanish",{position=point(position)})
         task.delay(0.6,function()if effects[vanish]then effects[vanish]=nil;destroy(vanish)end end)
         return true
     end
@@ -127,6 +136,8 @@ return function(player,onStatus)
         local backpack=read(player,"Backpack") or character
         local tool=Instance.new("Tool");tool.Name="Doombringer Targeting Tool";tool.RequiresHandle=false;tool.CanBeDropped=false
         tool.Parent=backpack;tools[tool]=true
+        connect(tool.Equipped,function()held=true;if sharing.changed then pcall(sharing.changed)end end,toolConnections)
+        connect(tool.Unequipped,function()held=false;if sharing.changed then pcall(sharing.changed)end end,toolConnections)
         connect(tool.Activated,function()
             if not active()then return end
             local mouse=read(player,"GetMouse") and player:GetMouse()
@@ -137,12 +148,14 @@ return function(player,onStatus)
     end
     local function clearTools()
         disconnectAll(toolConnections)
+        local wasHeld=held;held=false
         for tool in pairs(tools)do tools[tool]=nil;destroy(tool)end
+        if wasHeld and sharing.changed then pcall(sharing.changed)end
     end
     local function armageddon()
         if not active()then return false end
         clearEffects();local token=effectToken
-        status("Doombringer armageddon started (25 local strikes).")
+        status("Doombringer armageddon started (25 cosmetic strikes).")
         local n=0
         local function strike()
             if token~=effectToken or not active()or n>=25 then return end
@@ -159,7 +172,7 @@ return function(player,onStatus)
         lastMessage,lastMessageAt=message,now
         local words={};for word in message:gmatch("%S+")do words[#words+1]=word end
         local verb=(words[1]or ""):lower()
-        if verb=="stop"or message=="..."or verb=="cancel"then clearEffects();status("Doombringer effects stopped.");return true end
+        if verb=="stop"or message=="..."or verb=="cancel"then clearEffects();emit("doom-stop");status("Doombringer effects stopped.");return true end
         if verb=="location"then local localRoot=rootFor(player);local p=posOf(localRoot)or satellitePosition;status(string.format("Doombringer location %.1f, %.1f, %.1f.",p.X or p.x,p.Y or p.y,p.Z or p.z));return true end
         if verb=="movesat"then local p=coordinates(words,2);if p and #words==4 then setSatellite(p);status("Doombringer satellite moved.");return true end end
         if verb=="target"then local p=coordinates(words,2);if p and #words==4 then return smitePosition(p)end end
@@ -174,7 +187,7 @@ return function(player,onStatus)
             if words[2]and words[2]:lower()=="all"then
                 local fired=false
                 for _,p in ipairs(Players:GetPlayers())do local r=rootFor(p);if p~=player and r then fired=beamAt(posOf(r),"DoombringerSatelliteExplosionBeam",true)or fired;vanishAt(posOf(r))end end
-                if fired then status("Doombringer visual kill-all fired locally.")end
+                if fired then status("Doombringer cosmetic kill-all fired.")end
                 return fired
             end
             local t=findTarget(message:sub(6));local r=rootFor(t);if r then local p=posOf(r);return smitePosition(p,"Doombringer visual kill fired.")and vanishAt(p) end;return false
@@ -204,10 +217,24 @@ return function(player,onStatus)
         connect(c.DescendantRemoving,function(o)if ownsAccessory(o)or is(o,"Humanoid")or (o and o.Name=="Handle")then task.defer(refresh)end end,characterConnections)
         refresh()
     end
-    connect(player.Chatted,command,connections);connect(player.CharacterAdded,function(c)bind(c)end,connections)
-    local textService=game:GetService("TextChatService");connect(textService and textService.SendingMessage,function(m)command(read(m,"Text"))end,connections)
+    if not remote then connect(player.Chatted,command,connections)end;connect(player.CharacterAdded,function(c)bind(c)end,connections)
+    local textService=game:GetService("TextChatService");if not remote then connect(textService and textService.SendingMessage,function(m)command(read(m,"Text"))end,connections)end
     bind(player.Character)
     local api={refresh=refresh,command=command}
+    function api.replay(kind,payload)
+        if not remote or type(payload)~="table" then return false end
+        if kind=="doom-stop" then clearEffects();return true end
+        local p=payload.position
+        if type(p)=="table" and tonumber(p[1] or p.X or p.x) and tonumber(p[2] or p.Y or p.y) and tonumber(p[3] or p.Z or p.z) then
+            local position=Vector3.new(tonumber(p[1] or p.X or p.x),tonumber(p[2] or p.Y or p.y),tonumber(p[3] or p.Z or p.z))
+            if kind=="doom-satellite" then setSatellite(position);return true end
+            if kind=="doom-beam" then return beamAt(position,"DoombringerSatelliteExplosionBeam")end
+            if kind=="doom-vanish" then return vanishAt(position)end
+        end
+        return false
+    end
+    function api.isHeld()return held end
+    function api.setHeld(value)value=value==true;if held==value then return held end;held=value;if not held then clearTools()end;if sharing.changed then pcall(sharing.changed)end;return held end
     function api.setEnabled(value)enabled=value==true;if not enabled then clearEffects();clearTools()end;refresh();return enabled end
     function api.destroy()if not alive then return end;alive=false;disconnectAll();disconnectAll(characterConnections);disconnectAll(appearanceConnections);clearEffects();clearTools();if folder then destroy(folder)end;folder=nil;hat=nil;character=nil;satellite=nil end
     function api.diagnostics()local n=0;for _ in pairs(effects)do n=n+1 end;return{active=active(),effects=n,satellite=satellite~=nil,tools=(function()local x=0;for _ in pairs(tools)do x=x+1 end;return x end)()}end

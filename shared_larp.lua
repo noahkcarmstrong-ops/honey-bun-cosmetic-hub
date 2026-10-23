@@ -73,6 +73,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         for value,original in pairs(entry.originalScales or {})do
             pcall(function()if value.Parent then value.Value=original end end)
         end
+        if entry.hatScripts then pcall(entry.hatScripts.destroy)end
         for _,api in ipairs({entry.names,entry.animations,entry.clothes,entry.avatar,entry.views})do
             if api and api.destroy then pcall(api.destroy)end
         end
@@ -103,6 +104,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         if not safeId(record.userId) or type(snapshot.definition)~="table" or type(snapshot.definition.assets)~="table" or #snapshot.definition.assets>512 or type(snapshot.items)~="table" or #snapshot.items>512 then return false end
         if record.imageUrl~=nil and not safeImageUrl(record.imageUrl) then return false end
         if record.verified~=nil and type(record.verified)~="boolean" then return false end
+        if record.hatScripts~=nil and presentation.validHatScripts and not presentation.validHatScripts(record.hatScripts)then return false end
         if record.name~=nil then
             local name=record.name
             if type(name)~="table" or type(name.enabled)~="boolean" or type(name.username)~="string" or #name.username>20 or not name.username:match("^[A-Za-z0-9_]*$") or type(name.displayName)~="string" or #name.displayName>50 or name.displayName:find("[%c]") then return false end
@@ -111,7 +113,9 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         return true
     end
     local function presentRecord(entry,record)
-        if sameValue(entry.presented,record)then return end
+        local previous=entry.presented
+        if previous and sameValue(previous.snapshot,record.snapshot) and sameValue(previous.name,record.name)
+            and previous.verified==record.verified and previous.imageUrl==record.imageUrl then return end
         local name=record.name
         if not sameValue(entry.name,name)then
             if type(name)=="table" and name.enabled then pcall(entry.names.set,name.username,name.displayName)
@@ -308,7 +312,10 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             and entry.accessoriesComplete~=false
             and sameValue(entry.snapshot,snapshot) and sameValue(entry.name,record.name)
             and entry.verified==(record.verified==true)
-            and entry.imageUrl==record.imageUrl then return end
+            and entry.imageUrl==record.imageUrl then
+            if entry.hatScripts then entry.hatScripts.update(record.hatScripts,record.snapshot)end
+            return
+        end
         if entry and entry.player~=target then cleanupPeer(record.userId);entry=nil end
         if entry then refreshCharacter(entry,target)end
         local fresh=not entry or not entry.appearanceStarted
@@ -467,6 +474,10 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             entry.accessoriesComplete=#accessoryFailures==0
             diagnose(record.userId,#accessoryFailures==0 and "applied" or "partial",table.concat(accessoryFailures,"; "),math.floor((os.clock()-applyStarted)*1000))
             entry.name=record.name;entry.imageUrl=record.imageUrl
+            if presentation.createHatScripts then
+                if not entry.hatScripts then entry.hatScripts=presentation.createHatScripts(target)end
+                entry.hatScripts.update(record.hatScripts,record.snapshot)
+            end
             observeAppearance(entry,record.userId)
             if presentation.onAppearanceApplied then presentation.onAppearanceApplied(record.userId)end
             if #accessoryFailures>0 then
@@ -489,6 +500,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             name={enabled=true,username=username,displayName=displayName}
         end
         local record={version=1,userId=tostring(localPlayer.UserId),snapshot=snapshot,name=name,verified=snapshot.verified==true}
+        if presentation.getHatScripts then record.hatScripts=presentation.getHatScripts()end
         if presentation.getImageUrl then
             local url=presentation.getImageUrl()
             if safeImageUrl(url) then record.imageUrl=url end
@@ -560,6 +572,17 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     local function receive(event)
         if not sharing or not isAlive()or type(event)~="table"then return end
         if event.type=="status"then status(tostring(event.message));return end
+        if event.type=="hat-scripts"then
+            local id=event.userId
+            if type(id)~="string" or id==tostring(localPlayer.UserId) or not liveRecords[id]
+                or not presentation.validHatScripts or not presentation.validHatScripts(event.hatScripts)then return end
+            -- This path never reloads bodies, thumbnails, or accessory models.
+            liveRecords[id].hatScripts=event.hatScripts
+            if latestRecords[id]then latestRecords[id].hatScripts=event.hatScripts end
+            local entry=peers[id]
+            if entry and entry.hatScripts and entry.character==entry.player.Character then entry.hatScripts.update(event.hatScripts)end
+            return
+        end
         if event.type=="snapshot"and type(event.players)=="table"then
             local seen={}
             for _,record in ipairs(event.players)do
@@ -572,6 +595,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             local record=event.record
             if record.userId~=tostring(localPlayer.UserId)then liveRecords[record.userId]=record;queueRecord(record)end
         elseif event.type=="remove"and type(event.userId)=="string"then
+            local entry=peers[event.userId];if entry and entry.hatScripts then entry.hatScripts.update(nil)end
             liveRecords[event.userId]=nil;chooseRecord(event.userId);requestProfiles(event.userId)
         end
         processPending()
@@ -582,6 +606,14 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             if sharing and isAlive()then
                 local ok,reason=pcall(publish,snapshot)
                 if not ok then status("Shared appearance: "..tostring(reason))end
+            end
+        end)
+    end
+    if presentation.onHatScriptsChanged then
+        connections[#connections+1]=presentation.onHatScriptsChanged(function()
+            if sharing and isAlive()then
+                local ok,reason=pcall(publish)
+                if not ok then status("Shared hat effects: "..tostring(reason))end
             end
         end)
     end

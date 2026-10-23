@@ -1,5 +1,5 @@
--- Local-only recreation of TeapotTurret1055299; the original scripts are never run.
-return function(player,onStatus)
+-- Cosmetic recreation of TeapotTurret1055299 with optional shared playback.
+return function(player,onStatus,sharing)
     local Players=game:GetService("Players")
     local TweenService=game:GetService("TweenService")
     local alive,enabled,doom=true,true,false
@@ -7,6 +7,10 @@ return function(player,onStatus)
     local character,hat,folder
     local connections,characterConnections,rockets={}, {},{}
     local lastMessage,lastMessageAt,lastFireAt= nil,nil,-math.huge
+    sharing=sharing or {}
+    local remote=sharing.remote==true
+    enabled=not remote
+    local function emit(kind,payload)if not remote and type(sharing.emit)=="function"then pcall(sharing.emit,kind,payload or {})end end
     local function read(o,k)local ok,v=pcall(function()return o[k]end);return ok and v or nil end
     local function is(o,c)return o and read(o,"IsA") and o:IsA(c)end
     local function connect(signal,fn,list)
@@ -14,7 +18,7 @@ return function(player,onStatus)
     end
     local function status(message)if onStatus then pcall(onStatus,message)end end
     local function soundEnabled()
-        local gui=read(player,"PlayerGui")
+        local gui=sharing.viewerGui or read(player,"PlayerGui")
         return not gui or gui:GetAttribute("HoneyBunCosmeticUI_HatSounds")~=false
     end
     local function disconnectAll(list)list=list or connections;for _,c in ipairs(list)do pcall(function()c:Disconnect()end)end;for i in ipairs(list)do list[i]=nil end end
@@ -94,8 +98,11 @@ return function(player,onStatus)
         if exactDisplay then return exactDisplay end
         return count==1 and partial
     end
-    local function volley(target)
-        if fire(target)then status("Teapot rocket launched at "..tostring(target.DisplayName or target.Name)..".")return true end
+    local function volley(target,announce)
+        if fire(target)then
+            if announce~=false then emit("turret-fire",{target=tostring(target.UserId)})end
+            status("Teapot rocket launched at "..tostring(target.DisplayName or target.Name)..".")return true
+        end
         return false
     end
     local function chooseOther()
@@ -112,7 +119,7 @@ return function(player,onStatus)
         if type(message)~="string"or not active()then return false end
         local now=os.clock();if message==lastMessage and now-lastMessageAt<0.2 then return false end
         lastMessage,lastMessageAt=message,now
-        if message=="..."then doom=false;doomToken=doomToken+1;status("Teapot doom stopped.");return true end
+        if message=="..."then doom=false;doomToken=doomToken+1;clearRockets();emit("doom-stop");status("Teapot doom stopped.");return true end
         if message=="CLOCKWORK INVOKES TEAPOT DOOM!"then
             doom=true;doomToken=doomToken+1;local token=doomToken;status("CLOCKWORK INVOKES TEAPOT DOOM!");task.spawn(function()doomLoop(token)end);return true
         end
@@ -130,17 +137,27 @@ return function(player,onStatus)
         disconnectAll(characterConnections);clearRockets();if folder then folder:Destroy()end;character=c;hat=nil;doom=false;folder=nil
         if not c then return end
         folder=Instance.new("Folder");folder.Name="LarpbloxTeapotTurret";folder.Parent=c
-        connect(c.DescendantAdded,function()refresh()end,characterConnections);connect(c.DescendantRemoving,function()task.defer(refresh)end,characterConnections)
+        connect(c.DescendantAdded,function(o)if ownsAccessory(o)or is(o,"Humanoid")or (o and o.Name=="Handle" and o.Parent==hat)then refresh()end end,characterConnections)
+        connect(c.DescendantRemoving,function(o)if ownsAccessory(o)or is(o,"Humanoid")or o==hat then task.defer(refresh)end end,characterConnections)
         connect(read(c,"ChildAdded"),refresh,characterConnections);connect(read(c,"ChildRemoved"),refresh,characterConnections)
         local humanoid=c:FindFirstChildOfClass("Humanoid");if humanoid then connect(humanoid.Died,function()clearRockets();doom=false end,characterConnections)end
         refresh()
     end
-    connect(player.Chatted,command,connections)
+    if not remote then connect(player.Chatted,command,connections)end
     connect(player.CharacterAdded,function(c)bind(c)end,connections)
     local textService=game:GetService("TextChatService")
-    connect(textService and textService.SendingMessage,function(message)command(read(message,"Text"))end,connections)
+    if not remote then connect(textService and textService.SendingMessage,function(message)command(read(message,"Text"))end,connections)end
     bind(player.Character)
     local api={refresh=refresh,command=command}
+    function api.replay(kind,payload)
+        if not remote or type(payload)~="table" then return false end
+        if kind=="turret-fire" then
+            local id=tonumber(payload.target);local target=id and Players:GetPlayerByUserId(id)
+            return target and volley(target,false) or false
+        elseif kind=="doom-stop" then doom=false;doomToken=doomToken+1;clearRockets();return true
+        end
+        return false
+    end
     function api.setEnabled(value)
         enabled=value==true
         if not enabled then doom=false;clearRockets() end

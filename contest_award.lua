@@ -1,11 +1,16 @@
 -- Local recreation of the contest prize's historical Minifigure tool.
-return function(player,onStatus)
+return function(player,onStatus,sharing)
     local alive,enabled=true,false
-    local character,hat,humanoid,watchedHandle,tool,mouse,oldCursor,sparkles,sound
+    local character,hat,humanoid,watchedHandle,tool,mouse,oldCursor,sparkles,sound,remoteGrip
     local activeBurst=false
     local generation=0
     local connections,characterConnections,appearanceConnections,toolConnections={},{},{},{}
     local gilded={}
+    sharing=sharing or {}
+    local remote=sharing.remote==true
+    local held=false
+    local function emit(kind,payload)if not remote and type(sharing.emit)=="function"then pcall(sharing.emit,kind,payload or {})end end
+    local function point(v)return {v.X or v.x,v.Y or v.y,v.Z or v.z}end
     local gold=Color3.fromRGB(255,215,0)
     local idleCursor="rbxasset://textures/GunCursor.png"
     local waitCursor="rbxasset://textures/GunWaitCursor.png"
@@ -36,13 +41,16 @@ return function(player,onStatus)
             end)
         end
         table.clear(gilded)
-        if tool then tool.Enabled=true end
+        if tool and not remote then tool.Enabled=true end
         cursor(idleCursor)
     end
     local function clearTool()
+        local wasHeld=held;held=false
         finish();restoreCursor();disconnect(toolConnections)
+        if remoteGrip then remoteGrip:Destroy();remoteGrip=nil end
         local previous=tool;tool=nil;sound=nil
         if previous then previous:Destroy()end
+        if wasHeld and sharing.changed then pcall(sharing.changed)end
     end
     local function gild(part)
         if not activeBurst or not active()or not tool or tool.Parent~=character or not part:IsA("BasePart")or part:IsDescendantOf(character)then return end
@@ -56,6 +64,21 @@ return function(player,onStatus)
         local count=0;for _ in pairs(gilded)do count=count+1 end;if count>=32 then return end
         gilded[part]={color=part.Color,material=part.Material}
         part.Color=gold;part.Material=Enum.Material.Ice
+        if not remote and type(sharing.emit)=="function" and part.Position then
+            emit("award-gild",{position=point(part.Position)})
+        end
+    end
+    local function activateBurst()
+        if not active()or activeBurst or not tool or tool.Parent~=character then return false end
+        activeBurst=true;if not remote then tool.Enabled=false end;generation=generation+1;local token=generation
+        cursor(waitCursor)
+        sparkles=Instance.new("Sparkles");sparkles.Name="ContestAwardSparkles";sparkles.SparkleColor=gold;sparkles.Parent=tool:FindFirstChild("Handle")
+        local gui=sharing.viewerGui or player:FindFirstChildOfClass("PlayerGui")
+        if not gui or gui:GetAttribute("HoneyBunCosmeticUI_HatSounds")~=false then sound:Play()end
+        emit("award-burst")
+        status("Contest award: golden touch active for five seconds.")
+        task.delay(5,function()if alive and token==generation then finish()end end)
+        return true
     end
     local function createTool()
         if tool and tool.Parent then return end
@@ -69,28 +92,39 @@ return function(player,onStatus)
             else child:Destroy()end
         end
         handle.Name="Handle";handle.Anchored=false;handle.CanCollide=false;handle.CanTouch=true;handle.Massless=true;handle.Transparency=0
-        tool=Instance.new("Tool");tool.Name="Contest Winner Award";tool.ToolTip="Click for applause, gold sparkles, and five seconds of golden touch."
-        -- The hat mesh stands on Y; cancel the native hand's quarter turn.
-        tool.Grip=CFrame.Angles(math.pi/2,0,0)
-        tool.CanBeDropped=false;tool.RequiresHandle=true;handle.Parent=tool
+        tool=Instance.new(remote and "Model" or "Tool");tool.Name="Contest Winner Award"
+        if not remote then
+            tool.ToolTip="Click for applause, gold sparkles, and five seconds of golden touch."
+            -- The hat mesh stands on Y; cancel the native hand's quarter turn.
+            tool.Grip=CFrame.Angles(math.pi/2,0,0)
+            tool.CanBeDropped=false;tool.RequiresHandle=true
+        end
+        handle.Parent=tool
         sound=Instance.new("Sound");sound.Name="ClapSound";sound.SoundId="rbxassetid://57908388";sound.Volume=1;sound.Parent=handle
-        connect(tool.Equipped,function(equippedMouse)
-            restoreCursor();mouse=equippedMouse or player:GetMouse();oldCursor=mouse and mouse.Icon
-            cursor(activeBurst and waitCursor or idleCursor)
-        end,toolConnections)
-        connect(tool.Unequipped,function()finish();restoreCursor()end,toolConnections)
-        connect(tool.Activated,function()
-            if not active()or activeBurst or tool.Parent~=character then return end
-            activeBurst=true;tool.Enabled=false;generation=generation+1;local token=generation
-            cursor(waitCursor)
-            sparkles=Instance.new("Sparkles");sparkles.Name="ContestAwardSparkles";sparkles.SparkleColor=gold;sparkles.Parent=handle
-            local gui=player:FindFirstChildOfClass("PlayerGui")
-            if not gui or gui:GetAttribute("HoneyBunCosmeticUI_HatSounds")~=false then sound:Play()end
-            status("Contest award: golden touch active for five seconds.")
-            task.delay(5,function()if alive and token==generation then finish()end end)
-        end,toolConnections)
-        connect(handle.Touched,gild,toolConnections)
-        tool.Parent=player:FindFirstChildOfClass("Backpack")or character
+        if not remote then
+            connect(tool.Equipped,function(equippedMouse)
+                held=true
+                restoreCursor();mouse=equippedMouse or player:GetMouse();oldCursor=mouse and mouse.Icon
+                cursor(activeBurst and waitCursor or idleCursor)
+                if sharing.changed then pcall(sharing.changed)end
+            end,toolConnections)
+            connect(tool.Unequipped,function()held=false;finish();restoreCursor();if sharing.changed then pcall(sharing.changed)end end,toolConnections)
+            connect(tool.Activated,function()activateBurst()end,toolConnections)
+            connect(handle.Touched,gild,toolConnections)
+            tool.Parent=player:FindFirstChildOfClass("Backpack")or character
+        else
+            tool.Parent=character
+            held=true
+            local hand=character:FindFirstChild("RightHand")or character:FindFirstChild("Right Arm")
+            if hand then
+                remoteGrip=Instance.new("Motor6D");remoteGrip.Name="LarpbloxContestAwardGrip";remoteGrip.Part0=hand;remoteGrip.Part1=handle
+                local attachment=hand:FindFirstChild("RightGripAttachment")
+                if attachment then remoteGrip.C0=attachment.CFrame;remoteGrip.C1=CFrame.Angles(math.pi/2,0,0)
+                else remoteGrip.C0=CFrame.new and CFrame.new(0,-1,0)*CFrame.Angles(math.pi/2,0,0) or CFrame.Angles(math.pi/2,0,0);remoteGrip.C1=CFrame.Angles(math.pi/2,0,0)end
+                pcall(function()handle.CFrame=hand.CFrame*remoteGrip.C0*remoteGrip.C1:Inverse()end)
+                remoteGrip.Parent=hand
+            end
+        end
     end
     local refresh
     refresh=function()
@@ -107,7 +141,7 @@ return function(player,onStatus)
             if handle then connect(handle:GetPropertyChangedSignal("Transparency"),refresh,appearanceConnections)end
             if humanoid then connect(humanoid.Died,clearTool,appearanceConnections)end
         end
-        if active()then createTool()else clearTool()end
+        if active()and (not remote or held)then createTool()else clearTool()end
     end
     local function bind(nextCharacter)
         clearTool();disconnect(characterConnections);disconnect(appearanceConnections)
@@ -119,9 +153,27 @@ return function(player,onStatus)
         refresh()
     end
     connect(player.CharacterAdded,bind,connections);bind(player.Character)
-    return {
+    local api={
         refresh=refresh,
         setEnabled=function(value)enabled=value==true;refresh()end,
+        replay=function(kind,payload)
+            if not remote or type(payload)~="table" then return false end
+            if kind=="award-burst" then return activateBurst() end
+            if kind=="award-gild" and activeBurst and type(payload.position)=="table" then
+                local p=payload.position;local pos=Vector3.new(tonumber(p[1] or p.X or p.x),tonumber(p[2] or p.Y or p.y),tonumber(p[3] or p.Z or p.z))
+                local parts=workspace.GetPartBoundsInBox and workspace:GetPartBoundsInBox(CFrame.new(pos),Vector3.new(2,2,2)) or {}
+                for _,part in ipairs(parts)do gild(part)end
+                return true
+            end
+            return false
+        end,
+        isHeld=function()return held end,
+        setHeld=function(value)
+            value=value==true;if held==value then return held end;held=value
+            if not held then finish();clearTool()else refresh()end
+            if sharing.changed then pcall(sharing.changed)end;return held
+        end,
         destroy=function()alive=false;clearTool();disconnect(connections);disconnect(characterConnections);disconnect(appearanceConnections);character=nil;hat=nil end,
     }
+    return api
 end
