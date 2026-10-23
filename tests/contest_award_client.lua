@@ -51,7 +51,7 @@ return function(factory)
         local tool = tools[1]
         assert(tool:IsA("Tool") and tool.Name == "Contest Winner Award", "Award tool name must match")
         assert(tool.RequiresHandle and not tool.CanBeDropped, "Award must require a handle and be non-droppable")
-        local held = CFrame.Angles(-math.pi/2,0,0) * tool.Grip:Inverse()
+        local held = CFrame.Angles(math.pi/2,0,0) * tool.Grip:Inverse()
         assert(held.UpVector:Dot(Vector3.yAxis)>0.999, "Native hand grip must hold the trophy upright instead of sideways")
         local handle = tool:FindFirstChild("Handle")
         assert(handle and handle:IsA("BasePart"), "Award must contain its cloned handle")
