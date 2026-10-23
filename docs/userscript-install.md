@@ -1,54 +1,41 @@
-# Larpblox userscript
+# Install Larpblox
 
-<img src="images/larpblox-logo.png" alt="Larpblox" width="180">
+You only need to do this once. Your script manager handles future updates.
 
-The Larpblox userscript adds the browser-side Larp mode menu to Roblox. It saves your browser settings in the same profile you already use, and it leaves Roblox's built-in menu icons, keyboard hints, separators, and voice-chat indicators alone.
+## 1. Install a script manager
 
-[![Install userscript](https://img.shields.io/badge/Install-userscript-335fff?logo=tampermonkey&logoColor=white)](https://github.com/3xjn/larpblox-extension/releases/download/main-latest/larpblox.user.js)
+Install **[Tampermonkey](https://www.tampermonkey.net/)** for your browser and follow its setup instructions. It runs Larpblox on the Roblox website.
 
-## Install in four small steps
+[Violentmonkey](https://violentmonkey.github.io/get-it/) also works. Choose one manager. Greasemonkey is not supported yet.
 
-1. Disable the old Larpblox extension if installed, then install [Tampermonkey](https://www.tampermonkey.net/) (recommended) or [Violentmonkey](https://violentmonkey.github.io/get-it/).
-2. Click the **Install userscript** button above.
-3. Approve the script in your manager, then reload your Roblox tab.
-4. Open the userscript manager menu and choose **Open Larpblox**.
+## 2. Turn off the old extension
 
-The manager checks for updates automatically, but an update may take a little time to appear. You can open the install link again when you want to check immediately.
+If you already installed the Larpblox extension, open your browser's **Extensions** page and turn it off. Skip this step if you never installed it.
 
-This setup has been tested with Tampermonkey 5.5.1 and Violentmonkey 2.49.0 in separate Chrome for Testing 156 profiles. In the test fixture, the manager menu opened the popup, the native Roblox hooks initialized, and the localhost WebSocket authenticated and sent a Desktop message. This verifies the browser and fixture path; it does not verify every browser or a live game.
+## 3. Install Larpblox
 
-<p><img src="images/userscript-light.png" alt="Larpblox userscript settings in light mode" width="300"> <img src="images/userscript-dark.png" alt="Larpblox userscript settings in dark mode" width="300"></p>
+Click **[Install Larpblox](https://github.com/3xjn/larpblox-extension/releases/download/main-latest/larpblox.user.js)**, then click **Install** in the script manager window.
 
-The settings panel follows Roblox’s light or dark mode.
+## 4. Open it on Roblox
 
-## Browser managers
+1. Open or refresh [Roblox](https://www.roblox.com/).
+2. Click the Tampermonkey or Violentmonkey icon beside your browser's address bar. If it is hidden, look under the puzzle-piece **Extensions** button.
+3. Click **Open Larpblox**.
 
-| Browser | Recommended manager |
-| --- | --- |
-| Chrome, Edge, Opera | [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/get-it/) |
-| Firefox | [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/get-it/) |
-| Safari | Manager support is not documented for this release |
-| Greasemonkey | Not supported yet; use Tampermonkey or Violentmonkey on Firefox |
+<img src="images/userscript-dark.png" alt="Larpblox settings after opening the menu" width="300">
 
-If the old Larpblox extension is installed, disable it once before using the userscript so both versions do not add the same browser features. Your saved settings are reused when the userscript runs in the same browser profile.
+The menu follows your Roblox light or dark theme. Existing Larpblox settings are reused in the same browser.
 
-The [Larpblox Desktop helper](https://github.com/3xjn/larpblox-desktop/releases) is still required for in-game outfit and name synchronization. The userscript handles the Roblox website menu; Desktop handles the local game connection. Desktop uses a hidden localhost frame and manager-private storage messaging, so you do not need to open a manual localhost tab or upgrade Desktop for this setup.
+## Want to use your look in games?
 
-### Chrome Local network permission
+Install and open **[Larpblox Desktop](https://github.com/3xjn/larpblox-desktop/releases)**, then follow the [in-game loading instructions](../README.md#load-larpblox-in-roblox).
 
-New Chrome 156 profiles may ask for Local network access when Roblox uses Desktop. Click **Allow**. If the request was blocked, open Roblox's address-bar site controls, choose **Site settings**, set **Local network access** to **Allow**, and refresh Roblox.
+If Roblox asks for **Local network access**, click **Allow** so it can connect to Desktop.
 
-## If the link downloads code instead of opening your manager
+## Having trouble?
 
-1. Check that Tampermonkey or Violentmonkey is enabled in your browser.
-2. Open the manager's setup page once, then click the install link again.
+**The install link shows code or downloads a file:** make sure your script manager is enabled and finish its setup prompts, then click the install link again. You can also paste the install link into your manager's **Install from URL** option.
 
-You can also use the [raw userscript link](https://github.com/3xjn/larpblox-extension/releases/download/main-latest/larpblox.user.js) from the manager's **Install from URL** option.
+**Desktop will not connect:** open Roblox's address-bar site controls, click **Site settings**, set **Local network access** to **Allow**, then refresh Roblox.
 
-## More examples
-
-These public projects use clear manager links, browser tables, screenshots, or raw-script fallbacks that inspired this guide:
-
-- [XIU2/UserScript README](https://github.com/XIU2/UserScript/blob/master/README.md)
-- [Undiscord README](https://github.com/victornpb/undiscord/blob/master/README.md)
-- [Telegram Media Downloader README](https://github.com/Neet-Nestor/Telegram-Media-Downloader/blob/main/README.md)
+**Waiting for an update:** your manager checks automatically. Open the install link again to check sooner.
