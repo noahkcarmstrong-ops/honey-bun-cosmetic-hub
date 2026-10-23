@@ -908,6 +908,10 @@ gameBrowserSync=function()
 end
 local function reapplyAll(editor,expectedCharacter)
     assert(not expectedCharacter or Players.LocalPlayer.Character==expectedCharacter,"Your character changed while preparing the avatar.")
+    if gameBrowserSyncAPI and gameBrowserSyncAPI.prepareSavedAppearance then
+        local warmed,reason=pcall(gameBrowserSyncAPI.prepareSavedAppearance)
+        if not warmed then logDiagnostic("local_native_source_failed",{detail=tostring(reason)})end
+    end
     local failures={}
     for _,step in ipairs({
         {"avatar",function() if editor.prepareSaved then editor.prepareSaved()end;return editor.reapplySaved() end},

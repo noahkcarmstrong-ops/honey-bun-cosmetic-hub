@@ -66,6 +66,25 @@ local r15={"Head","UpperTorso","LowerTorso","LeftUpperArm","LeftLowerArm","LeftH
     "RightUpperLeg","RightLowerLeg","RightFoot"}
 local scaleFields={height="BodyHeightScale",width="BodyWidthScale",depth="BodyDepthScale",head="HeadScale",bodyType="BodyTypeScale",proportion="BodyProportionScale"}
 local descriptionScales={height="HeightScale",width="WidthScale",depth="DepthScale",head="HeadScale",bodyType="BodyTypeScale",proportion="ProportionScale"}
+local function nativeSourceSignature(outfit)
+    -- Arrays keep this key stable across JSON decode/table insertion order.
+    -- Include the data consumed by the native descriptor, not UI labels or
+    -- body colors (painted separately on the live mapped parts).
+    local metadata,key={},{}
+    for _,asset in ipairs(outfit.definition.assets or {})do metadata[asset.id]=asset.meta end
+    for _,item in ipairs(outfit.items)do
+        local meta=metadata[item.id]
+        key[#key+1]={item.id,item.assetType,meta and meta.order or "",meta and meta.puffiness or ""}
+    end
+    local scales={}
+    for _,name in ipairs({"height","width","depth","head","bodyType","proportion"})do
+        local value=outfit.definition.scales and outfit.definition.scales[name]
+        if value==nil then value=(name=="bodyType" or name=="proportion") and 0 or 1 end
+        scales[#scales+1]=value
+    end
+    key[#key+1]=scales
+    return Http:JSONEncode(key)
+end
 local function validScales(values)
     if type(values)~="table" then return false end
     for key,value in pairs(values)do
@@ -720,7 +739,10 @@ return function(player,onStatus,readAsset,managedRespawn,diagnostics)
             nativePreparation.Event:Wait();check(ctx)
             return api.prepareAppearance(outfit,describe,isCurrent)
         end
-        local key=Http:JSONEncode({items=outfit.items,definition=outfit.definition})
+        -- This source supplies meshes, fitting metadata and accessories only.
+        -- Live body colors are mapped by setSkin; rebuilding/preloading the
+        -- source for a color-only edit does not contribute to that mapping.
+        local key=nativeSourceSignature(outfit)
         if nativeSourceKey==key and nativeSourceRig==ctx.humanoid.RigType then return end
         if nativeSource and nativeSourceRig~=ctx.humanoid.RigType then clearNativeSource()end
         nativeSourceKey=nil;nativeAccessories={}

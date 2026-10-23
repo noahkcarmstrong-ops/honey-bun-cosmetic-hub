@@ -907,6 +907,21 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         assert(readyForAppearance(),"Waiting for the saved browser outfit.")
         return snapshot()
     end
+    function api.prepareSavedAppearance()
+        -- The bridge already retains commands before startup readiness. Warming
+        -- their native source is read-only; visible application still waits for
+        -- the existing restore/readiness lifecycle.
+        local command=lastBrowserCommand
+        if not larpEnabled or not command or not sharing or not sharing.describeSnapshot then return end
+        local avatar=getAvatar()
+        if not avatar.prepareAppearance then return end
+        local character=player.Character
+        local function current()
+            return isAlive() and larpEnabled and lastBrowserCommand==command and player.Character==character
+        end
+        local ok,err=pcall(avatar.prepareAppearance,command,sharing.describeSnapshot,current)
+        if not ok and current() and sharing.log then sharing.log("local_native_source_failed",{detail=tostring(err)})end
+    end
     function api.resumeAppearance(characterChanged)
         if not readyForAppearance()then return end
         -- A revision belongs to an applied character, not just a received outfit.
