@@ -6,6 +6,23 @@
 
 ![Without Larpblox and with Larpblox comparison](assets/larpblox-before-after.png)
 
+## Browser menu
+
+Install the Larpblox userscript to add the browser-side Larp mode menu to Roblox:
+
+[![Install userscript](https://img.shields.io/badge/Install-userscript-335fff?logo=tampermonkey&logoColor=white)](https://github.com/3xjn/larpblox-extension/releases/download/main-latest/larpblox.user.js)
+
+1. Disable the old Larpblox extension if installed, then install [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/get-it/).
+2. Click the install button.
+3. Approve the script and reload Roblox.
+4. Open your userscript manager and choose **Open Larpblox**.
+
+<img src="docs/images/userscript-dark.png" alt="Larpblox userscript settings" width="300">
+
+See the complete [userscript installation guide](docs/userscript-install.md) for browser notes and troubleshooting. The userscript reuses settings saved in the same browser profile. Keep [Larpblox Desktop](https://github.com/3xjn/larpblox-desktop/releases) installed and connected when you want in-game outfit or name synchronization.
+
+The browser setup is verified with Tampermonkey 5.5.1 and Violentmonkey 2.49.0 in separate Chrome for Testing 156 profiles. Greasemonkey is not supported yet.
+
 ## Features
 
 - Edit accessories, clothes, skin, body parts, emotes, and movement animations.
