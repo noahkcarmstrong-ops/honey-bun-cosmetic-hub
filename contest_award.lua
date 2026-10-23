@@ -70,6 +70,8 @@ return function(player,onStatus)
         end
         handle.Name="Handle";handle.Anchored=false;handle.CanCollide=false;handle.CanTouch=true;handle.Massless=true;handle.Transparency=0
         tool=Instance.new("Tool");tool.Name="Contest Winner Award";tool.ToolTip="Click for applause, gold sparkles, and five seconds of golden touch."
+        -- The hat mesh stands on Y; cancel the native hand's quarter turn.
+        tool.Grip=CFrame.Angles(-math.pi/2,0,0)
         tool.CanBeDropped=false;tool.RequiresHandle=true;handle.Parent=tool
         sound=Instance.new("Sound");sound.Name="ClapSound";sound.SoundId="rbxassetid://57908388";sound.Volume=1;sound.Parent=handle
         connect(tool.Equipped,function(equippedMouse)
