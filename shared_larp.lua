@@ -42,12 +42,12 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
     local nextStatus=0
     local lastDiagnostic={}
     local diagnosticGui=localPlayer:FindFirstChildOfClass("PlayerGui")
-    local function diagnose(userId,phase,detail,ms)
+    local function diagnose(userId,phase,detail,ms,checkpoint)
         local key=tostring(userId)
         local signature=phase..":"..tostring(detail or "")
         if ms==nil and lastDiagnostic[key]==signature then return end
         lastDiagnostic[key]=signature
-        if presentation.log then presentation.log("shared_"..phase,{peerId=key,detail=detail or "",ms=ms})end
+        if presentation.log then presentation.log("shared_"..phase,{peerId=key,detail=detail or "",ms=ms},checkpoint)end
         if not diagnosticGui then return end
         -- Event-written, bounded metadata for support; never include tokens.
         diagnosticGui:SetAttribute("LarpbloxShared_"..tostring(userId),HttpService:JSONEncode({
@@ -358,6 +358,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                 for _,item in ipairs(snapshot.items)do
                     if ACCESSORY_TYPES[tonumber(item.assetType)] and not existing[item.id]then ids[#ids+1]=item.id end
                 end
+                if fresh then diagnose(record.userId,"preparing_accessories",tostring(#ids).." assets",nil,true)end
                 preparationFailures=entry.avatar.prepareAccessories(ids,current)
                 if not current()then return end
             end
@@ -390,15 +391,19 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             -- original Roblox package. Apply on first render and after respawn too.
             local humanoid=target.Character and target.Character:FindFirstChildOfClass("Humanoid")
             local blocky,bodyChanged=true,fresh
+            local headOnly=not fresh and not sameValue(body.Head or 0,oldBody.Head or 0)
+                and sameValue(snapshot.definition.scales,previous.definition and previous.definition.scales)
             for _,region in ipairs(BODY_REGIONS)do
                 if region~="Head" and (body[region] or 0)~=0 then blocky=false end
+                if region~="Head" and (body[region] or 0)~=(oldBody[region] or 0)then headOnly=false end
                 if (body[region] or 0)~=(oldBody[region] or 0)then bodyChanged=true end
             end
             local previousScales=previous.definition and previous.definition.scales or {}
             local scalesChanged=not sameValue(snapshot.definition.scales or {},previousScales)
             local batched=(bodyChanged or scalesChanged) and type(entry.avatar.applyBodyParts)=="function"
             local bulk=not batched and blocky and bodyChanged and type(entry.avatar.applyBody)=="function"
-            if batched then entry.avatar.applyBodyParts(body,snapshot.definition.scales)
+            if fresh then diagnose(record.userId,"preparing_body",nil,nil,true)end
+            if batched then entry.avatar.applyBodyParts(body,snapshot.definition.scales,headOnly)
             elseif bulk then entry.avatar.applyBody("Blocky")end
             if not current()then return end
             for _,region in ipairs(batched and {} or BODY_REGIONS)do
@@ -445,6 +450,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                     end
                 end
             end
+            if fresh then diagnose(record.userId,"equipping_accessories",nil,nil,true)end
             if fresh or entry.refreshAccessories then entry.avatar.removeCurrentAccessories();entry.appearanceStarted=true end
             local equipped={}
             for _,item in ipairs(entry.avatar.listAccessories())do equipped[item.id]=item.key end

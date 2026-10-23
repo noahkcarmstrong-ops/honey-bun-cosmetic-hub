@@ -30,7 +30,7 @@ local function dispose(roots)
     for _,root in ipairs(roots or {}) do if root then root:Destroy() end end
 end
 
-return function(player,onStatus,managedRespawn)
+return function(player,onStatus,managedRespawn,readAsset)
     local gui=player:FindFirstChildOfClass("PlayerGui")
     local attribute="HoneyBunCosmeticClothes"
     local settings={}
@@ -71,7 +71,10 @@ return function(player,onStatus,managedRespawn)
         local property=({Shirt="ShirtTemplate",Pants="PantsTemplate",ShirtGraphic="Graphic"})[kind]
         local id=parse(value);local assetId=string.format("%.0f",id);local key=kind..":"..assetId;local template=templates[key]
         if not template then
-            local ok,roots=pcall(function() return game:GetObjects("rbxassetid://"..assetId) end)
+            local ok,roots=pcall(function()
+                if readAsset then return readAsset(id)end
+                return game:GetObjects("rbxassetid://"..assetId)
+            end)
             assert(ok and type(roots)=="table" and #roots>0,"Roblox could not load that catalog item. It may be private or unavailable.")
             if not valid(ctx) then dispose(roots);check(ctx) end
             local source

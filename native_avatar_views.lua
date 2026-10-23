@@ -541,7 +541,42 @@ function M.create(player, getPreviews, describeSnapshot)
         return overlay
     end
     local render
+    local visibilityConnections={}
+    local function releaseVisibility(image)
+        local group=visibilityConnections[image]
+        if not group then return end
+        visibilityConnections[image]=nil
+        for _,connection in ipairs(group)do connection:Disconnect()end
+    end
+    local function watchVisibility(image)
+        if visibilityConnections[image]then return end
+        local group={};visibilityConnections[image]=group
+        local function changed()
+            if alive and enabled and read(image,"Parent")then render(image)end
+        end
+        local ancestor=image
+        while ancestor do
+            local property=ancestor:IsA("GuiObject") and "Visible" or ancestor:IsA("ScreenGui") and "Enabled"
+            if property then group[#group+1]=ancestor:GetPropertyChangedSignal(property):Connect(changed)end
+            ancestor=ancestor.Parent
+        end
+        group[#group+1]=image.AncestryChanged:Connect(function()
+            releaseVisibility(image)
+            if alive and enabled and read(image,"Parent")then watchVisibility(image);changed()end
+        end)
+    end
+    local function visibleImage(image)
+        local ancestor=image
+        while ancestor do
+            if ancestor:IsA("GuiObject") and not ancestor.Visible then return false end
+            if ancestor:IsA("ScreenGui") and not ancestor.Enabled then return false end
+            ancestor=ancestor.Parent
+        end
+        return true
+    end
     render=function(image)
+        watchVisibility(image)
+        if not visibleImage(image)then return end
         if not previewSnapshot and not currentImage then ensurePreview();return end
         if directImages[image] and overlayKeys[image]==effectiveKey then return end
         local existing=overlays[image]
@@ -794,6 +829,7 @@ function M.create(player, getPreviews, describeSnapshot)
         for index,root in ipairs(roots)do
             pcall(function()connections["removed"..index]=root.DescendantRemoving:Connect(function(object)
                 imageCandidates[object]=nil
+                releaseVisibility(object)
                 if overlays[object] or directImages[object] or hiddenImages[object] or pending[object] then destroyOverlay(object)end
                 if geometryConnections[object] then
                     for _,connection in ipairs(geometryConnections[object]) do connection:Disconnect() end
@@ -860,6 +896,7 @@ function M.create(player, getPreviews, describeSnapshot)
         end
         effectiveKey = nextKey
         if not enabled then
+            for image in pairs(visibilityConnections)do releaseVisibility(image)end
             previewSnapshot = nil;previewKey=nil;previewBuild=nil
             for image in pairs(directImages) do destroyOverlay(image) end
             for image in pairs(overlays) do destroyOverlay(image) end
@@ -877,6 +914,7 @@ function M.create(player, getPreviews, describeSnapshot)
     function api.destroy()
         if not alive then return end
         alive = false;previewBuild=nil
+        for image in pairs(visibilityConnections)do releaseVisibility(image)end
         for _,root in ipairs(roots)do releaseRoot(root)end
         if rendererOwners[ownerKey]==api then rendererOwners[ownerKey]=nil end
         for _, connection in pairs(connections) do pcall(function() connection:Disconnect() end) end

@@ -1111,7 +1111,7 @@ return function(player,onStatus,readAsset,managedRespawn)
     function api.prepareBodyParts(parts,scales)
         prepareBodyParts(context(),parts,scales)
     end
-    function api.applyBodyParts(parts,scales)
+    function api.applyBodyParts(parts,scales,headOnly)
         local ctx=context()
         local template=prepareBodyParts(ctx,parts,scales)
         local applied,message=pcall(function()
@@ -1124,7 +1124,9 @@ return function(player,onStatus,readAsset,managedRespawn)
                 local generated={}
                 for _,name in ipairs(r15)do generated[name]=template:FindFirstChild(name)end
                 generated.HumanoidRootPart=template:FindFirstChild("HumanoidRootPart")
-                replaceParts(ctx,generated)
+                -- A head-only mapping leaves limb assets and proportions
+                -- unchanged. Still carry the native root/hip-height pair.
+                replaceParts(ctx,generated,headOnly and {"Head","HumanoidRootPart"} or nil)
                 refitAccessories(ctx)
                 local humanoid=template:FindFirstChildOfClass("Humanoid")
                 if humanoid then ctx.humanoid.HipHeight=humanoid.HipHeight end

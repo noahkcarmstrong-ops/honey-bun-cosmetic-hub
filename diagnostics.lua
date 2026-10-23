@@ -80,5 +80,5 @@ return function(context)
         elseif not queued then queued=true;task.defer(flush)end
     end
     log("session_start")
-    return {log=log,close=function()if closed then return end;log("session_end");flush();closed=true end,path=latest}
+    return {log=log,flush=flush,close=function()if closed then return end;log("session_end");flush();closed=true end,path=latest}
 end

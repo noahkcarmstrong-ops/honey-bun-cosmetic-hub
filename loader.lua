@@ -86,8 +86,11 @@ local diagnosticOk,diagnosticResult=pcall(function()
     return factory()({revision=moduleRevision,playerId=localPlayer.UserId,placeId=game.PlaceId})
 end)
 if diagnosticOk then diagnostics=diagnosticResult end
-local function logDiagnostic(event,fields)
-    if diagnostics then diagnostics.log(event,fields)end
+local function logDiagnostic(event,fields,checkpoint)
+    if diagnostics then
+        diagnostics.log(event,fields)
+        if checkpoint and diagnostics.flush then diagnostics.flush()end
+    end
 end
 local prismChunk, prismError = loadstring(readSource("prism.lua", moduleRevision))
 assert(prismChunk, prismError)
@@ -282,6 +285,7 @@ layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
 local avatarAPI,motionAPI,animationAPI,clothesAPI,previewsAPI,gameBrowserSyncAPI,sharedLarpAPI
 local avatarFactory,animationFactory,clothesFactory,nameFactory
+local avatarAssetReader
 local previewFactory,portraitFactory,inspectionRouter
 local corpseAPI
 local fetchSharedProfiles
@@ -571,7 +575,15 @@ local function api()
     local function readAsset(path)
         local catalog=type(path)=="number"
         assert(catalog and path>0 and path%1==0 and path<9007199254740992 or path=="assets/dominus-azurelight.rbxm","Unsupported avatar asset.")
-        local native=function()return game:GetObjects("rbxassetid://"..string.format("%.0f",path))end
+        local function checkpoint(phase)
+            logDiagnostic("avatar_asset_load",{asset=tostring(path),phase=phase},true)
+        end
+        local native=function()
+            checkpoint("native_decode")
+            local objects=game:GetObjects("rbxassetid://"..string.format("%.0f",path))
+            checkpoint("ready")
+            return objects
+        end
         local requestAsset=request or http_request or (syn and syn.request)
         if catalog and (type(requestAsset)~="function" or type(writefile)~="function" or type(customAsset)~="function")then
             return native()
@@ -583,6 +595,7 @@ local function api()
             local localOk,localObjects=pcall(function()
                 -- Remote GetObjects blocks rendering on some executors. Download
                 -- with the yielding request API, then let Roblox decode locally.
+                checkpoint("download")
                 local response=requestAsset({Url="https://assetdelivery.roblox.com/v1/asset/?id="..string.format("%.0f",path),Method="GET",Timeout=15})
                 assert(response and tonumber(response.StatusCode or response.Status)==200,"Catalog asset download failed.")
                 bytes=response.Body
@@ -594,13 +607,16 @@ local function api()
                 local loaded,objects=false,nil
                 if wrote then
                     assetOk,assetUri=pcall(customAsset,file)
-                    if assetOk and assetUri then loaded,objects=pcall(function()return game:GetObjects(assetUri)end)end
+                    if assetOk and assetUri then
+                        checkpoint("local_decode")
+                        loaded,objects=pcall(function()return game:GetObjects(assetUri)end)
+                    end
                 end
                 if type(delfile)=="function"then pcall(delfile,file)end
                 assert(wrote and assetOk and assetUri and loaded and type(objects)=="table" and #objects>0,writeError or "Local catalog asset decoding failed.")
                 return objects
             end)
-            if localOk then return localObjects end
+            if localOk then checkpoint("ready");return localObjects end
             return native()
         else
             bytes=readSource(path,sha)
@@ -618,6 +634,7 @@ local function api()
         assert(loaded and type(objects)=="table" and #objects>0,"This executor could not load the avatar asset.")
         return objects
     end
+    avatarAssetReader=readAsset
     local function createAvatar(player,onStatus,assetReader,managedRespawn)
         return create(player,onStatus,assetReader or readAsset,managedRespawn)
     end
@@ -660,7 +677,7 @@ local function animations()
         if not alive then return end
         statusText=message
         if view then view.setStatus(message) end
-    end,true)
+    end,true,avatarAssetReader)
     return animationAPI
 end
 local function clothes()
@@ -674,7 +691,7 @@ local function clothes()
         trace("Clothing: "..message)
         statusText=message
         if view then view.setStatus(message) end
-    end,true)
+    end,true,avatarAssetReader)
     return clothesAPI
 end
 local function localNames()
@@ -741,8 +758,8 @@ local function sharedLarp()
     local create=chunk();assert(type(create)=="function","Shared Larp sync failed to load.")
     sharedLarpAPI=create(Players.LocalPlayer,function()return gameBrowserSync().snapshotForSharing()end,function()return localNames().getSettings()end,
         function(player,onStatus)return avatarFactory(player,onStatus,nil,true)end,
-        function(player,onStatus)return clothesFactory(player,onStatus,true)end,
-        function(player,onStatus)return animationFactory(player,onStatus,true)end,
+        function(player,onStatus)return clothesFactory(player,onStatus,true,avatarAssetReader)end,
+        function(player,onStatus)return animationFactory(player,onStatus,true,avatarAssetReader)end,
         function(player,gui)return nameFactory(player,gui)end,
         function()return alive end,function(message)
             if not alive then return end
