@@ -578,6 +578,12 @@ local function api()
         local function checkpoint(phase)
             logDiagnostic("avatar_asset_load",{asset=tostring(path),phase=phase},true)
         end
+        local function assetCall(operation,callback)
+            if diagnostics and diagnostics.run then
+                return diagnostics.run(operation,{asset=tostring(path),generation=loadGeneration},callback)
+            end
+            return callback()
+        end
         local native=function()
             checkpoint("native_decode")
             local objects=game:GetObjects("rbxassetid://"..string.format("%.0f",path))
@@ -596,17 +602,21 @@ local function api()
                 -- Remote GetObjects blocks rendering on some executors. Download
                 -- with the yielding request API, then let Roblox decode locally.
                 checkpoint("download")
-                local response=requestAsset({Url="https://assetdelivery.roblox.com/v1/asset/?id="..string.format("%.0f",path),Method="GET",Timeout=15})
+                local response=assetCall("asset.httpRequest",function()
+                    return requestAsset({Url="https://assetdelivery.roblox.com/v1/asset/?id="..string.format("%.0f",path),Method="GET",Timeout=15})
+                end)
+                logDiagnostic("asset_http_response",{asset=tostring(path),status=response and tonumber(response.StatusCode or response.Status),bytes=response and type(response.Body)=="string" and #response.Body or 0},true)
+                assert(alive,"Menu was closed during asset download.")
                 assert(response and tonumber(response.StatusCode or response.Status)==200,"Catalog asset download failed.")
                 bytes=response.Body
                 assert(type(bytes)=="string" and #bytes<=64*1024*1024,"Invalid catalog asset response.")
                 assetSerial=assetSerial+1
                 local file="larpblox-avatar-asset-"..assetSession.."-"..assetSerial..".rbxm"
-                local wrote,writeError=pcall(writefile,file,bytes)
+                local wrote,writeError=pcall(function()return assetCall("asset.writeFile",function()return writefile(file,bytes)end)end)
                 local assetOk,assetUri=false,nil
                 local loaded,objects=false,nil
                 if wrote then
-                    assetOk,assetUri=pcall(customAsset,file)
+                    assetOk,assetUri=pcall(function()return assetCall("asset.registerFile",function()return customAsset(file)end)end)
                     if assetOk and assetUri then
                         checkpoint("local_decode")
                         loaded,objects=pcall(function()return game:GetObjects(assetUri)end)
@@ -617,6 +627,8 @@ local function api()
                 return objects
             end)
             if localOk then checkpoint("ready");return localObjects end
+            logDiagnostic("asset_local_load_failed",{asset=tostring(path),error=tostring(localObjects)},true)
+            assert(alive,"Menu was closed during asset preparation.")
             return native()
         else
             bytes=readSource(path,sha)
@@ -624,9 +636,9 @@ local function api()
         end
         assetSerial=assetSerial+1
         local file="larpblox-avatar-asset-"..assetSession.."-"..assetSerial..".rbxm"
-        local wrote,writeError=pcall(writefile,file,bytes)
+        local wrote,writeError=pcall(function()return assetCall("asset.writeFile",function()return writefile(file,bytes)end)end)
         assert(wrote,writeError)
-        local assetOk,assetUri=pcall(customAsset,file)
+        local assetOk,assetUri=pcall(function()return assetCall("asset.registerFile",function()return customAsset(file)end)end)
         local loaded,objects=false,nil
         if assetOk and assetUri then loaded,objects=pcall(function()return game:GetObjects(assetUri)end)end
         if type(delfile)=="function"then pcall(delfile,file)end
