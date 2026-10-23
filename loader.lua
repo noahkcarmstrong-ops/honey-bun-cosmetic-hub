@@ -738,6 +738,7 @@ gameBrowserSync=function()
         if accessoryRuntime.turret then accessoryRuntime.turret.setEnabled(gameBrowserSyncAPI.isLarpEnabled()) end
         if accessoryRuntime.doombringer then accessoryRuntime.doombringer.setEnabled(gameBrowserSyncAPI.isLarpEnabled()) end
         if accessoryRuntime.crown then accessoryRuntime.crown.setEnabled(gameBrowserSyncAPI.isLarpEnabled()) end
+        if accessoryRuntime.contest then accessoryRuntime.contest.setEnabled(gameBrowserSyncAPI.isLarpEnabled()) end
     end)
     corpseController().refresh()
     return gameBrowserSyncAPI
@@ -1431,6 +1432,7 @@ gui.Destroying:Connect(function()
     if accessoryRuntime.turret then pcall(accessoryRuntime.turret.destroy) end
     if accessoryRuntime.doombringer then pcall(accessoryRuntime.doombringer.destroy) end
     if accessoryRuntime.crown then pcall(accessoryRuntime.crown.destroy) end
+    if accessoryRuntime.contest then pcall(accessoryRuntime.contest.destroy) end
     if corpseAPI then pcall(corpseAPI.destroy) end
     if sharedLarpAPI then pcall(sharedLarpAPI.destroy) end
     if gameBrowserSyncAPI then pcall(gameBrowserSyncAPI.destroy) end
@@ -1484,7 +1486,7 @@ action(function()
     local editor=api()
     trace("Restoring accessory sounds")
     local soundsLoaded=pcall(hatSounds)
-    for _,entry in ipairs({{"turret","teapot_turret.lua","Teapot Turret"},{"doombringer","doombringer.lua","Doombringer"},{"crown","black_iron_crown.lua","Black Iron Crown"}})do
+    for _,entry in ipairs({{"turret","teapot_turret.lua","Teapot Turret"},{"doombringer","doombringer.lua","Doombringer"},{"crown","black_iron_crown.lua","Black Iron Crown"},{"contest","contest_award.lua","Contest Winner Award"}})do
         local loaded,err=pcall(function()
             local chunk,reason=loadstring(readSource(entry[2],moduleRevision));assert(chunk,reason)
             accessoryRuntime[entry[1]]=chunk()(Players.LocalPlayer,function(message)
