@@ -572,7 +572,7 @@ local function api()
     assert(alive,"Menu was closed.")
     local assetSerial=0
     local assetSession=game:GetService("HttpService"):GenerateGUID(false)
-    local function readAsset(path)
+    local function readAssetInner(path)
         local catalog=type(path)=="number"
         assert(catalog and path>0 and path%1==0 and path<9007199254740992 or path=="assets/dominus-azurelight.rbxm","Unsupported avatar asset.")
         local function checkpoint(phase)
@@ -634,9 +634,16 @@ local function api()
         assert(loaded and type(objects)=="table" and #objects>0,"This executor could not load the avatar asset.")
         return objects
     end
+    local function readAsset(path)
+        assert(alive,"Menu was closed before loading asset.")
+        if diagnostics and diagnostics.run then
+            return diagnostics.run("avatar.readAsset",{asset=tostring(path),generation=loadGeneration},readAssetInner,path)
+        end
+        return readAssetInner(path)
+    end
     avatarAssetReader=readAsset
     local function createAvatar(player,onStatus,assetReader,managedRespawn)
-        return create(player,onStatus,assetReader or readAsset,managedRespawn)
+        return create(player,onStatus,assetReader or readAsset,managedRespawn,diagnostics)
     end
     avatarFactory=createAvatar
     avatarAPI=create(Players.LocalPlayer,function(message,working)
@@ -1530,6 +1537,7 @@ end)
 
 gui.Destroying:Connect(function()
     alive=false
+    logDiagnostic("interface_destroying",{generation=loadGeneration},true)
     if diagnostics then diagnostics.close()end
     pcall(view.destroy)
     connection:Disconnect()

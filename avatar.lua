@@ -151,7 +151,13 @@ local function bodyClone(part)
     for _,item in ipairs(clone:GetDescendants()) do if item:IsA("JointInstance") then item:Destroy() end end
     return clone
 end
-return function(player,onStatus,readAsset,managedRespawn)
+return function(player,onStatus,readAsset,managedRespawn,diagnostics)
+    local function nativeCall(operation,callback,...)
+        if diagnostics and diagnostics.run then
+            return diagnostics.run(operation,{peerId=player.UserId},callback,...)
+        end
+        return callback(...)
+    end
     local alive,generation=true,0
     local snapshot,added,skin,hidden=nil,{},{},{}
     local gear=nil
@@ -340,7 +346,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         if accessory:FindFirstChildWhichIsA("WrapLayer",true) then
             local humanoid=c:FindFirstChildOfClass("Humanoid")
             assert(humanoid and humanoid.RigType==Enum.HumanoidRigType.R15,"Layered clothing needs an R15 avatar.")
-            humanoid:AddAccessory(accessory)
+            nativeCall("Humanoid.AddAccessory",function()humanoid:AddAccessory(accessory)end)
             assert(accessory.Parent==c,"Roblox could not attach this layered accessory.")
             return
         end
@@ -349,7 +355,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         if accessory:IsA("Accessory") and not refit then
             local humanoid=c:FindFirstChildOfClass("Humanoid")
             if humanoid then
-                local ok=pcall(humanoid.AddAccessory,humanoid,accessory)
+                local ok=pcall(function()nativeCall("Humanoid.AddAccessory",humanoid.AddAccessory,humanoid,accessory)end)
                 if ok then
                     for _,joint in ipairs(handle:GetChildren())do
                         if joint:IsA("JointInstance") and
@@ -394,7 +400,7 @@ return function(player,onStatus,readAsset,managedRespawn)
     end
     local function applyPartAppearance(target,source)
         if target:IsA("MeshPart") and source:IsA("MeshPart") then
-            target:ApplyMesh(source)
+            nativeCall("MeshPart.ApplyMesh",function()target:ApplyMesh(source)end)
             if source.Size then target.Size=source.Size end
         elseif target:IsA("Part") and (source:IsA("Part") or source:IsA("MeshPart")) then
             local prepared={}
@@ -639,7 +645,7 @@ return function(player,onStatus,readAsset,managedRespawn)
             and not template:FindFirstChildWhichIsA("WrapLayer",true)then
             local converted,native=pcall(function()
                 local content=Content and Content.fromUri and Content.fromUri(mesh.MeshId) or mesh.MeshId
-                return game:GetService("AssetService"):CreateMeshPartAsync(content,{})
+                return nativeCall("AssetService.CreateMeshPartAsync",function()return game:GetService("AssetService"):CreateMeshPartAsync(content,{})end)
             end)
             if not valid(ctx)then
                 if converted and native then native:Destroy()end
@@ -701,7 +707,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         end
         if #preload>0 then
             if isCurrent and not isCurrent()then return failures end
-            game:GetService("ContentProvider"):PreloadAsync(preload)
+            nativeCall("ContentProvider.PreloadAsync",function()return game:GetService("ContentProvider"):PreloadAsync(preload)end)
             check(ctx)
             for _,template in ipairs(preload)do preparedWearables[template]=true end
         end
@@ -1063,12 +1069,12 @@ return function(player,onStatus,readAsset,managedRespawn)
             for _,name in ipairs({"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg","BodyTypeScale","ProportionScale"}) do description[name]=source[name] end
             source:Destroy()
         end
-        local ok,template=pcall(function() return Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType) end)
+        local ok,template=pcall(function() return nativeCall("Players.CreateHumanoidModelFromDescriptionAsync",function()return Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType)end) end)
         description:Destroy()
         if not valid(ctx) then if ok and template then template:Destroy() end;check(ctx) end
         assert(ok and template,"Roblox blocked generating this body package in this client.")
         strip(template)
-        game:GetService("ContentProvider"):PreloadAsync({template})
+        nativeCall("ContentProvider.PreloadAsync",function()return game:GetService("ContentProvider"):PreloadAsync({template})end)
         check(ctx)
         cacheBody(cacheKey,template:Clone())
         return template
@@ -1093,14 +1099,14 @@ return function(player,onStatus,readAsset,managedRespawn)
         local cacheKey=table.concat(key,":")
         local cached=fullBodyTemplates[cacheKey]
         local ok,template=pcall(function()
-            return cached or Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType)
+            return cached or nativeCall("Players.CreateHumanoidModelFromDescriptionAsync",function()return Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType)end)
         end)
         description:Destroy()
         if not valid(ctx) then if ok and template and not cached then template:Destroy()end;check(ctx)end
         assert(ok and template,"Roblox blocked generating the shared body.")
         if not cached then
             strip(template)
-            local loaded,reason=pcall(function()game:GetService("ContentProvider"):PreloadAsync({template})end)
+            local loaded,reason=pcall(function()nativeCall("ContentProvider.PreloadAsync",function()return game:GetService("ContentProvider"):PreloadAsync({template})end)end)
             if not loaded or not valid(ctx)then template:Destroy();check(ctx);error(reason)end
         end
         if not cached then
@@ -1231,7 +1237,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         else
             local description=Instance.new("HumanoidDescription");description[field]=id
             for key,value in pairs(settings.scales or {})do description[descriptionScales[key]]=value end
-            ok,template=pcall(function()return Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType)end)
+            ok,template=pcall(function()return nativeCall("Players.CreateHumanoidModelFromDescriptionAsync",function()return Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType)end)end)
             description:Destroy()
         end
         if not valid(ctx) then if ok and template then template:Destroy() end;check(ctx) end
@@ -1239,7 +1245,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         strip(template)
         local function remember()
             if cached then return end
-            game:GetService("ContentProvider"):PreloadAsync({template})
+            nativeCall("ContentProvider.PreloadAsync",function()return game:GetService("ContentProvider"):PreloadAsync({template})end)
             check(ctx)
             bodyPartTemplates[cacheKey]={id=id,model=template:Clone()}
             bodyPartOrder[#bodyPartOrder+1]=cacheKey
@@ -1319,7 +1325,7 @@ return function(player,onStatus,readAsset,managedRespawn)
             end
             dispose(objects)
             assert(type(texture)=="string" and texture~="","That catalog item is not a classic face.")
-            game:GetService("ContentProvider"):PreloadAsync({texture})
+            nativeCall("ContentProvider.PreloadAsync",function()return game:GetService("ContentProvider"):PreloadAsync({texture})end)
             check(ctx)
             faceTemplates[id]=texture
         end

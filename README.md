@@ -42,3 +42,20 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/l
 ## Documentation
 
 - [User guide](docs/guide.md)
+
+
+### Avatar diagnostics
+
+Executor logs are written to `logs/larp/latest.log`; the previous session is archived when a new session starts. Native avatar operations have paired `operation_start` / `operation_finish` records with unique operation IDs, parent IDs for nested calls, player/asset context, elapsed milliseconds, and errors. Starts and finishes are flushed immediately. An unfinished operation identifies a call that was in progress when logging stopped, not proof that it caused a crash. Interface teardown records unfinished operations as cancelled.
+
+For deeper captures, configure the shared options table before loading the interface:
+
+```lua
+getgenv().larpblox = {
+    diagnostics = {
+        verbose = true,
+    },
+}
+```
+
+During a session, change `getgenv().larpblox.diagnostics.verbose` directly; initialization preserves existing options. Verbose mode adds Lua memory, total client memory, instance counts, and individual mesh-application checkpoints. Set it to `false` to return to normal logging. Stats are sampled at operation boundaries only; there is no recurring sampler. Verbose logging adds disk writes and should be used for diagnosis rather than performance benchmarking.
