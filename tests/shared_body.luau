@@ -20,12 +20,13 @@ return function(source)
     local players={CreateHumanoidModelFromDescriptionAsync=function(_,description)
         generated=generated+1
         assert(description.Head==1 and description.Torso==2 and description.LeftArm==3 and description.RightArm==4
-            and description.LeftLeg==5 and description.RightLeg==6,"all six regions must share one request")
-        return rig(2)
+            and description.LeftLeg==5 and (description.RightLeg==6 or description.RightLeg==0),"all six regions must share one request")
+        return rig(description.RightLeg==0 and 1 or 2)
     end}
     local environment=setmetatable({game={GetService=function(_,name)
         if name=="Players"then return players end
         if name=="HttpService"then return game:GetService(name)end
+        if name=="ContentProvider"then return {PreloadAsync=function()end}end
         error("batch body must not issue extra metadata/preload requests: "..name)
     end}},{__index=getfenv()})
     local chunk=assert(loadstring(source));setfenv(chunk,environment)
@@ -36,8 +37,18 @@ return function(source)
     assert(generated==1 and character.Head==head and head.Size==Vector3.new(2,2,2),"one generation applies without replacing live parts")
     api.applyBodyParts(body,{height=1})
     assert(generated==1,"identical body reuses its cached template")
+    body.RightLeg=0
+    api.applyBodyParts(body,{height=1})
+    assert(generated==2 and character.RightUpperLeg.Size==Vector3.new(1,1,1),"unequip restores the default leg")
+    body.RightLeg=6
+    api.applyBodyParts(body,{height=1})
+    assert(generated==2 and character.RightUpperLeg.Size==Vector3.new(2,2,2),"re-equip reuses the loaded body")
+    body.RightLeg=0
+    api.applyBodyParts(body,{height=1})
+    assert(generated==2 and character.RightUpperLeg.Size==Vector3.new(1,1,1),"second unequip avoids Roblox loading")
+    body.RightLeg=6
     api.applyBodyParts(body,{height=1.1})
-    assert(generated==2,"changed scales invalidate the body cache")
+    assert(generated==3,"changed scales invalidate the body cache")
     api.destroy()
     assert(head.Size==Vector3.new(1,1,1),"destroy restores original appearance")
     character:Destroy();event:Destroy()

@@ -58,6 +58,10 @@ Effects and the targeting tool are removed when the hat is unequipped, Larp mode
 
 ### Hat sounds
 
+Wear Game Trailer Video Contest Winner (92719239) with Larp mode enabled to receive **Contest Winner Award** in your backpack. Equip it and click for the original applause sound and five seconds of gold sparkles. During those five seconds, touching small objects with the held award gives them a temporary local gold/ice appearance. Character parts are excluded; objects restore when the effect ends or the tool is unequipped. The original ready/busy cursor is restored while equipped, and your previous cursor returns afterward. Hat sounds settings and Roblox audio permissions apply.
+
+Black Iron Crown of Pwnage (1078202) reproduces its original `Hello John` console greeting once when worn with Larp mode enabled. Its obsolete `RenderHooksService:EnableAdorns(false)` call is omitted to preserve Roblox's native controls. This script has no visual effects or chat commands.
+
 Equipped accessories can play their embedded original sounds locally. Brighteyes' Witches Brew Hat uses its original three laughs and randomly plays one every 5–15 seconds while worn, matching its original SoundPlayer behavior. Hidden or removed hats stop hub-started playback. Roblox audio permissions still apply; arbitrary accessory scripts are not executed.
 
 Original asset inspected: https://assetdelivery.roblox.com/v1/asset/?id=305888394 (WitchesBrewHat; Laugh 62777535, Laugh2 88108663, Laugh3 88108686).
