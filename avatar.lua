@@ -1015,6 +1015,16 @@ return function(player,onStatus,readAsset,managedRespawn)
         return "Skin color applied (visible to you)."
     end
     local fullBodyTemplates={}
+    local fullBodyOrder={}
+    local function cacheBodyTemplate(key,template)
+        -- Keep recent bodies so unequipping a limb can return immediately.
+        if #fullBodyOrder>=4 then
+            local oldest=table.remove(fullBodyOrder,1)
+            fullBodyTemplates[oldest]:Destroy();fullBodyTemplates[oldest]=nil
+        end
+        fullBodyOrder[#fullBodyOrder+1]=key
+        fullBodyTemplates[key]=template
+    end
     local function bodySource(ctx,value)
         local isR6=ctx.humanoid.RigType==Enum.HumanoidRigType.R6
         local cacheKey=tostring(ctx.humanoid.RigType)..":"..tostring(value)
@@ -1045,8 +1055,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         strip(template)
         game:GetService("ContentProvider"):PreloadAsync({template})
         check(ctx)
-        for key,old in pairs(fullBodyTemplates)do old:Destroy();fullBodyTemplates[key]=nil end
-        fullBodyTemplates[cacheKey]=template:Clone()
+        cacheBodyTemplate(cacheKey,template:Clone())
         return template
     end
     -- Complete shared outfits already include validated region IDs. Generate
@@ -1080,8 +1089,7 @@ return function(player,onStatus,readAsset,managedRespawn)
             if not loaded or not valid(ctx)then template:Destroy();check(ctx);error(reason)end
         end
         if not cached then
-            for oldKey,old in pairs(fullBodyTemplates)do old:Destroy();fullBodyTemplates[oldKey]=nil end
-            fullBodyTemplates[cacheKey]=template
+            cacheBodyTemplate(cacheKey,template)
         end
         return template
     end
