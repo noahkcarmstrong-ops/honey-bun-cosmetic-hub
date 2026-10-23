@@ -394,7 +394,9 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                 if region~="Head" and (body[region] or 0)~=0 then blocky=false end
                 if (body[region] or 0)~=(oldBody[region] or 0)then bodyChanged=true end
             end
-            local batched=bodyChanged and type(entry.avatar.applyBodyParts)=="function"
+            local previousScales=previous.definition and previous.definition.scales or {}
+            local scalesChanged=not sameValue(snapshot.definition.scales or {},previousScales)
+            local batched=(bodyChanged or scalesChanged) and type(entry.avatar.applyBodyParts)=="function"
             local bulk=not batched and blocky and bodyChanged and type(entry.avatar.applyBody)=="function"
             if batched then entry.avatar.applyBodyParts(body,snapshot.definition.scales)
             elseif bulk then entry.avatar.applyBody("Blocky")end

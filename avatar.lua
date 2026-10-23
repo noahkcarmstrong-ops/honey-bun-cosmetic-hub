@@ -424,18 +424,28 @@ return function(player,onStatus,readAsset,managedRespawn)
             if old then old:Destroy()end
             if original then original:Clone().Parent=target end
         end
-        -- ApplyMesh copies geometry/TextureID, but not modern heads' face surface.
-        -- Replace visual children too, including when restoring or changing heads.
-        if target.Name=="Head" then
-            for _,item in ipairs(target:GetChildren()) do
-                if item:IsA("SurfaceAppearance") or item:IsA("Decal") or item:IsA("FaceControls") or item:IsA("Bone") then item:Destroy() end
-            end
-            for _,item in ipairs(source:GetChildren()) do
-                if item:IsA("Decal") or (target:IsA("MeshPart") and (item:IsA("SurfaceAppearance") or item:IsA("FaceControls") or item:IsA("Bone"))) then
-                    item:Clone().Parent=target
-                elseif item:IsA("SurfaceAppearance") and target:IsA("Part") then
+        -- ApplyMesh does not copy SurfaceAppearance. Packages can texture any
+        -- limb this way, so replace the surface even when the new body has none.
+        for _,item in ipairs(target:GetChildren()) do
+            if item:IsA("SurfaceAppearance") then item:Destroy() end
+        end
+        for _,item in ipairs(source:GetChildren()) do
+            if item:IsA("SurfaceAppearance") then
+                if target:IsA("MeshPart") then item:Clone().Parent=target
+                else
                     local mesh=target:FindFirstChildOfClass("SpecialMesh")
                     if mesh then mesh.TextureId=tostring(item.ColorMap) end
+                end
+            end
+        end
+        -- Replace modern heads' face children too when changing or restoring.
+        if target.Name=="Head" then
+            for _,item in ipairs(target:GetChildren()) do
+                if item:IsA("Decal") or item:IsA("FaceControls") or item:IsA("Bone") then item:Destroy() end
+            end
+            for _,item in ipairs(source:GetChildren()) do
+                if item:IsA("Decal") or (target:IsA("MeshPart") and (item:IsA("FaceControls") or item:IsA("Bone"))) then
+                    item:Clone().Parent=target
                 end
             end
         end

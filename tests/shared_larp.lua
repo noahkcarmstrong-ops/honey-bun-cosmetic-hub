@@ -4,7 +4,15 @@ local self={UserId=1,Name='Self',DisplayName='Self'}
 function self:FindFirstChildOfClass()return nil end
 local peer={UserId=2,Name='Other',DisplayName='Other',Character={}}
 local function signal()return {Connect=function()return {Disconnect=function()end}end}end
-local humanoid={Health=100,RigType='R15',FindFirstChild=function()end}
+local scaleValues={
+ BodyHeightScale={Name='BodyHeightScale',Value=1,Parent=true,IsA=function(_,kind)return kind=='NumberValue'end},
+ BodyWidthScale={Name='BodyWidthScale',Value=1,Parent=true,IsA=function(_,kind)return kind=='NumberValue'end},
+ BodyDepthScale={Name='BodyDepthScale',Value=1,Parent=true,IsA=function(_,kind)return kind=='NumberValue'end},
+ HeadScale={Name='HeadScale',Value=1,Parent=true,IsA=function(_,kind)return kind=='NumberValue'end},
+ BodyProportionScale={Name='BodyProportionScale',Value=0,Parent=true,IsA=function(_,kind)return kind=='NumberValue'end},
+ BodyTypeScale={Name='BodyTypeScale',Value=0,Parent=true,IsA=function(_,kind)return kind=='NumberValue'end},
+}
+local humanoid={Health=100,RigType='R15',FindFirstChild=function(_,name)return scaleValues[name]end}
 function humanoid:IsA(kind)return kind=='Humanoid'end
 function peer.Character:FindFirstChildOfClass()return humanoid end
 function peer.Character:FindFirstChild()return {IsA=function(_,kind)return kind=='BasePart'end}end
@@ -20,12 +28,16 @@ request=function()error('Shared appearances must not call a public HTTP endpoint
 task={spawn=function(fn)jobs[#jobs+1]=fn end,defer=function(fn)jobs[#jobs+1]=fn end}
 local function drain()while #jobs>0 do table.remove(jobs,1)()end end
 local destroyed,equipped=0,{}
+local batchedScales
 local function avatar()
  return {destroy=function()destroyed=destroyed+1 end,removeCurrentAccessories=function()calls[#calls+1]='hide' end,
  listAccessories=function()local out={}for id in pairs(equipped)do out[#out+1]={id=id,key=id}end;return out end,
  equipAccessory=function(id)equipped[id]=true;calls[#calls+1]='equip:'..id end,
  removeAccessory=function(id)equipped[id]=nil;calls[#calls+1]='remove:'..id end,
- applyBodyPart=function()calls[#calls+1]='body' end,restoreBodyPart=function()end,
+ applyBodyPart=function()calls[#calls+1]='body' end,applyBodyParts=function(parts,scales)
+  batchedScales=scales
+  calls[#calls+1]='bodyparts'
+ end,restoreBodyPart=function()end,
  setSkin=function()end,applyFace=function()end,restoreFace=function()end,removeGear=function()end}
 end
 local function clothes()return {destroy=function()destroyed=destroyed+1 end,equipShirt=function()calls[#calls+1]='shirt'end,equipPants=function()end,equipTShirt=function()end,removeShirt=function()end,removePants=function()end,removeTShirt=function()end}end
@@ -62,9 +74,17 @@ local before=#calls;receive({type='upsert',record=record});drain();assert(#calls
 local changed={version=1,userId='2',snapshot=snapshot('2',21),name=record.name}
 receive({type='upsert',record=changed});drain()
 assert(equipped[21] and not equipped[20] and destroyed==0,'changed accessories update without teardown')
+local scaleRecord={version=1,userId='2',snapshot=snapshot('2',21),name=record.name}
+scaleRecord.snapshot.definition.scales={height=1.6,width=0.8}
+local bodyCalls=#calls
+receive({type='upsert',record=scaleRecord});drain()
+assert(#calls>bodyCalls and calls[#calls]=='bodyparts','scale-only peer updates use the batched body path')
+assert(batchedScales==scaleRecord.snapshot.definition.scales,'scale-only geometry rebuild receives the new scales')
+assert(scaleValues.BodyHeightScale.Value==1.6 and scaleValues.BodyWidthScale.Value==0.8,'scale-only peer updates reach the humanoid scales')
 setting={enabled=true,username='Valid_Name',displayName='Display'};onSnapshot(snapshot('1',11))
 assert(published.record.snapshot.items[1].id==11 and published.record.name.enabled,'appearance events publish immediately')
 receive({type='remove',userId='2'});drain();assert(destroyed==4,'peer removal cleans the local overlay')
+assert(scaleValues.BodyHeightScale.Value==1 and scaleValues.BodyWidthScale.Value==1,'peer removal restores original humanoid scales')
 assert(hatUpdates[#hatUpdates]==false and hatDestroyed==1,'peer departure clears held tools and effects')
 sync.setEnabled(false);assert(published.enabled==false,'disabling tells desktop to disconnect')
 sync.destroy();assert(receive==nil and onSnapshot==nil,'destroy disconnects event subscriptions')
