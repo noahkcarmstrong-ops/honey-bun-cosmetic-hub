@@ -138,7 +138,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                 local imageGeneration=entry.imageGeneration
                 task.spawn(function()
                     local loaded,reason=pcall(function()
-                        local bytes=game:HttpGet(record.imageUrl,false)
+                        local bytes=transport.downloadImage(record.imageUrl)
                         assert(type(bytes)=="string" and #bytes<=4*1024*1024 and bytes:sub(1,8)=="\137PNG\r\n\26\n","Invalid shared avatar image.")
                         if peers[record.userId]~=entry or entry.imageGeneration~=imageGeneration or not sharing or not isAlive() then return end
                         imageSerial=imageSerial+1
@@ -187,28 +187,42 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                 queued=false
                 if not active or not sharing or not isAlive() or peers[userId]~=entry
                     or entry.player.Character~=character then return end
-                local dirty=false
+                local dirty,accessoryOnly=false,true
                 local reason
-                for object,values in pairs(expected)do
-                    if not object:IsDescendantOf(character)then dirty=true;reason=object.ClassName.." removed";break end
-                    for property,value in pairs(values)do
-                        if object[property]~=value then dirty=true;reason=object.Name.."."..property;break end
-                    end
-                    if dirty then break end
+                local function mark(object,detail)
+                    dirty=true
+                    local accessory=object:IsA("Accessory") or object:IsA("Hat")
+                    if not accessory then accessoryOnly=false end
+                    reason=detail
                 end
-                if not dirty then
+                for object,values in pairs(expected)do
+                    if not object:IsDescendantOf(character)then mark(object,object.ClassName.." "..object.Name.." removed")
+                    else for property,value in pairs(values)do
+                        if object[property]~=value then mark(object,object.Name.."."..property);break end
+                    end
+                    end
+                    if dirty and not accessoryOnly then break end
+                end
+                -- An accessory event can coincide with a body replacement.
+                -- Check both before deciding that only accessories need repair.
+                if accessoryOnly then
                     for _,object in ipairs(character:GetChildren())do
-                        if properties(object) and not expected[object]then dirty=true;reason=object.ClassName.." added";break end
+                        if properties(object) and not expected[object]then mark(object,object.ClassName.." added")end
+                        if dirty and not accessoryOnly then break end
                     end
                     local head=character:FindFirstChild("Head")
-                    if not dirty and head then
+                    if accessoryOnly and head then
                         for _,object in ipairs(head:GetChildren())do
-                            if properties(object) and not expected[object]then dirty=true;reason=object.ClassName.." added";break end
+                            if properties(object) and not expected[object]then mark(object,object.ClassName.." added");break end
                         end
                     end
                 end
                 if dirty then
-                    entry.snapshot=nil;entry.appearanceStarted=nil;entry.accessoriesComplete=nil
+                    if accessoryOnly then
+                        entry.accessoriesComplete=false;entry.refreshAccessories=true
+                    else
+                        entry.snapshot=nil;entry.appearanceStarted=nil;entry.accessoriesComplete=nil
+                    end
                     local record=latestRecords[userId]
                     if record then
                         diagnose(userId,"appearance_changed",reason)
@@ -268,6 +282,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
         entry.snapshot=nil
         entry.appearanceStarted=nil
         entry.accessoriesComplete=nil
+        entry.refreshAccessories=nil
         entry.animationAssets=nil
         entry.originalScales=nil
     end
@@ -343,7 +358,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                 for _,item in ipairs(snapshot.items)do
                     if ACCESSORY_TYPES[tonumber(item.assetType)] and not existing[item.id]then ids[#ids+1]=item.id end
                 end
-                preparationFailures=entry.avatar.prepareAccessories(ids)
+                preparationFailures=entry.avatar.prepareAccessories(ids,current)
                 if not current()then return end
             end
             -- Keep the live overlay and its caches when only part of the outfit changes.
@@ -428,7 +443,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
                     end
                 end
             end
-            if fresh then entry.avatar.removeCurrentAccessories();entry.appearanceStarted=true end
+            if fresh or entry.refreshAccessories then entry.avatar.removeCurrentAccessories();entry.appearanceStarted=true end
             local equipped={}
             for _,item in ipairs(entry.avatar.listAccessories())do equipped[item.id]=item.key end
             local accessoryMetadata={}
@@ -472,6 +487,7 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             -- missing accessories using listAccessories above.
             entry.snapshot=snapshot
             entry.accessoriesComplete=#accessoryFailures==0
+            entry.refreshAccessories=nil
             diagnose(record.userId,#accessoryFailures==0 and "applied" or "partial",table.concat(accessoryFailures,"; "),math.floor((os.clock()-applyStarted)*1000))
             entry.name=record.name;entry.imageUrl=record.imageUrl
             if presentation.createHatScripts then
