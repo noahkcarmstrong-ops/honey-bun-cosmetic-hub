@@ -352,6 +352,11 @@ return function(localPlayer,getSnapshot,getNameSettings,createAvatar,createCloth
             -- Resolve cold catalog assets before any visible body changes.
             -- Cached preparation does not clone or attach an accessory.
             local preparationFailures={}
+            if entry.avatar.prepareAppearance and presentation.describeSnapshot then
+                local prepared,reason=pcall(entry.avatar.prepareAppearance,snapshot,presentation.describeSnapshot,current)
+                if not current()then return end
+                if not prepared then diagnose(record.userId,"native_source_failed",tostring(reason))end
+            end
             if entry.avatar.prepareAccessories then
                 local ids,existing={},{}
                 for _,item in ipairs(entry.avatar.listAccessories())do existing[item.id]=true end

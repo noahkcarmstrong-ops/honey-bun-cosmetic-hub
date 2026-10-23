@@ -301,6 +301,15 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             local before=snapshot()
             for _,item in ipairs(before.items)do if accessoryTypes[item.assetType] then current[item.id]=true end end
             local preparationFailures={}
+            if avatar.prepareAppearance and sharing and sharing.describeSnapshot then
+                local function currentPreparation()
+                    return isAlive() and readyForAppearance() and lastBrowserCommand==value
+                        and (not browserModeKnown or larpEnabled)
+                end
+                local prepared,reason=pcall(avatar.prepareAppearance,value,sharing.describeSnapshot,currentPreparation)
+                if not currentPreparation()then return end
+                if not prepared and sharing.log then sharing.log("local_native_source_failed",{detail=tostring(reason)})end
+            end
             if avatar.prepareAccessories then
                 local ids={}
                 for _,item in ipairs(value.items)do
@@ -517,7 +526,9 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             -- Restore captured originals, without loading assets or replacing the character.
             -- The browser retains the saved Larp outfit for the next enable.
             retryCommand=nil;incoming.browser=nil
-            getAvatar().restore()
+            local avatar=getAvatar()
+            avatar.restore()
+            if avatar.releasePreparedAppearance then avatar.releasePreparedAppearance()end
             getClothes().restore()
             if getAnimations then getAnimations().setAvatarAssets({}) end
             browserBody,originalBody,browserFace={},{},false

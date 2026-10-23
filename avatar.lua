@@ -159,6 +159,16 @@ return function(player,onStatus,readAsset,managedRespawn,diagnostics)
         return callback(...)
     end
     local alive,generation=true,0
+    local nativeSource,nativeContainer,nativeDescription,nativeSourceKey,nativeSourceRig,nativePreparation
+    local nativeAccessories={}
+    local nativeSourceGeneration=0
+    local function clearNativeSource()
+        nativeSourceGeneration=nativeSourceGeneration+1
+        if nativeDescription then nativeDescription:Destroy();nativeDescription=nil end
+        if nativeContainer then nativeContainer:Destroy();nativeContainer=nil
+        elseif nativeSource then nativeSource:Destroy()end
+        nativeSource=nil;nativeSourceKey=nil;nativeSourceRig=nil;nativeAccessories={}
+    end
     local snapshot,added,skin,hidden=nil,{},{},{}
     local gear=nil
     local accountAccessoryNames
@@ -615,6 +625,10 @@ return function(player,onStatus,readAsset,managedRespawn,diagnostics)
     end
     local wearableTemplates,wearableOrder={},{}
     local function wearable(ctx,id,kind,prepareOnly)
+        -- The complete native source already contains Roblox's fitted accessory.
+        -- Keep the bundled visual-effects override on its existing path.
+        local prepared=kind=="Accessory" and id~=azurelightAccessoryId and nativeAccessories[id]
+        if prepared then return prepareOnly and prepared or prepared:Clone()end
         local key=kind..":"..string.format("%.0f",id)
         local cached=wearableTemplates[key]
         if cached then return prepareOnly and cached or cached:Clone() end
@@ -699,6 +713,70 @@ return function(player,onStatus,readAsset,managedRespawn,diagnostics)
     end
     local api={}
     local preparedWearables=setmetatable({}, {__mode="k"})
+    function api.prepareAppearance(outfit,describe,isCurrent)
+        local ctx=context()
+        if isCurrent and not isCurrent()then return end
+        if nativePreparation then
+            nativePreparation.Event:Wait();check(ctx)
+            return api.prepareAppearance(outfit,describe,isCurrent)
+        end
+        local key=Http:JSONEncode({items=outfit.items,definition=outfit.definition})
+        if nativeSourceKey==key and nativeSourceRig==ctx.humanoid.RigType then return end
+        if nativeSource and nativeSourceRig~=ctx.humanoid.RigType then clearNativeSource()end
+        nativeSourceKey=nil;nativeAccessories={}
+        if nativeDescription then nativeDescription:Destroy();nativeDescription=nil end
+        local description=describe(outfit)
+        local sourceGeneration=nativeSourceGeneration
+        local function checkSource()
+            check(ctx)
+            assert(nativeSourceGeneration==sourceGeneration,"Avatar source was released while preparing.")
+        end
+        local completed=Instance.new("BindableEvent");nativePreparation=completed
+        local ok,err=pcall(function()
+            if nativeSource then
+                nativeCall("Humanoid.ApplyDescriptionAsync.source",function()
+                    nativeSource:FindFirstChildOfClass("Humanoid"):ApplyDescriptionAsync(description)
+                end)
+            else
+                nativeSource=nativeCall("Players.CreateHumanoidModelFromDescriptionAsync.source",function()
+                    return Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType)
+                end)
+                if not valid(ctx) or nativeSourceGeneration~=sourceGeneration then
+                    nativeSource:Destroy();nativeSource=nil;checkSource()
+                end
+                -- Native incremental application requires a DataModel ancestor.
+                -- This locally owned source never enters Workspace or PlayerGui.
+                strip(nativeSource)
+                nativeContainer=Instance.new("Folder");nativeContainer.Name="LarpbloxAvatarSource"
+                nativeSource.Parent=nativeContainer
+                nativeContainer.Parent=game:GetService("ReplicatedStorage")
+                nativeSourceRig=ctx.humanoid.RigType
+            end
+            checkSource()
+            strip(nativeSource)
+            nativeCall("ContentProvider.PreloadAsync.source",function()
+                game:GetService("ContentProvider"):PreloadAsync({nativeSource})
+            end)
+            checkSource()
+            if isCurrent and not isCurrent()then clearNativeSource();return end
+            local applied=nativeSource:FindFirstChildOfClass("Humanoid"):FindFirstChildOfClass("HumanoidDescription")
+            if applied then for _,child in ipairs(applied:GetChildren())do
+                if child:IsA("AccessoryDescription")then
+                    local resolved,accessory=pcall(function()return child:GetAppliedInstance()end)
+                    if resolved and accessory and accessory.Parent==nativeSource then
+                        nativeAccessories[child.AssetId]=accessory
+                        preparedWearables[accessory]=true
+                    end
+                end
+            end end
+            nativeDescription=description:Clone();nativeSourceKey=key
+        end)
+        description:Destroy()
+        if not ok then clearNativeSource()end
+        nativePreparation=nil;completed:Fire();task.defer(function()completed:Destroy()end)
+        if not ok then error(err,0)end
+    end
+    function api.releasePreparedAppearance()clearNativeSource()end
     function api.prepareAccessories(ids,isCurrent)
         local ctx=context()
         local failures,preload={},{}
@@ -1088,6 +1166,18 @@ return function(player,onStatus,readAsset,managedRespawn,diagnostics)
     local function prepareBodyParts(ctx,parts,scales)
         assert(type(parts)=="table","Body parts are required.")
         assert(scales==nil or validScales(scales),"Invalid body scales.")
+        if nativeSource and nativeDescription and nativeSourceRig==ctx.humanoid.RigType then
+            local matches=true
+            for region in pairs(groups)do
+                if nativeDescription[region]~=(parts[region] or 0)then matches=false;break end
+            end
+            for key,field in pairs(descriptionScales)do
+                local value=scales and scales[key]
+                if value==nil then value=(key=="bodyType" or key=="proportion") and 0 or 1 end
+                if math.abs(nativeDescription[field]-value)>0.000001 then matches=false;break end
+            end
+            if matches then return nativeSource end
+        end
         local description=Instance.new("HumanoidDescription")
         local key={"shared",tostring(ctx.humanoid.RigType)}
         for _,region in ipairs({"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"})do
@@ -1557,6 +1647,7 @@ return function(player,onStatus,readAsset,managedRespawn,diagnostics)
         cancelReady()
         if not alive then return end
         generation=generation+1
+        if nativePreparation then nativePreparation:Fire()end
         changed:Disconnect()
         for character,record in pairs(retiredAccessories)do
             record.connection:Disconnect()
@@ -1569,6 +1660,7 @@ return function(player,onStatus,readAsset,managedRespawn,diagnostics)
             retiredAccessories[character]=nil
         end
         if snapshot and snapshot.character==player.Character then pcall(restoreAppearance) end
+        clearNativeSource()
         for _,template in pairs(fullBodyTemplates)do template:Destroy()end
         fullBodyTemplates={};fullBodyOrder={}
         for _,entry in pairs(bodyPartTemplates)do entry.model:Destroy()end

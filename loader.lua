@@ -808,7 +808,7 @@ local function sharedLarp()
             if not alive then return end
             statusText=message
             if view then view.setStatus(message) end
-        end,{onAppearanceApplied=function(userId)corpseController().refresh(tonumber(userId))end,log=logDiagnostic,getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews,transport=gameBrowserSync(),
+        end,{describeSnapshot=sharedInspection().description,onAppearanceApplied=function(userId)corpseController().refresh(tonumber(userId))end,log=logDiagnostic,getImageUrl=function()return gameBrowserSync().sharedImageUrl()end,createViews=peerViews,transport=gameBrowserSync(),
             createHatScripts=accessoryRuntime.forPeer,getHatScripts=function()return accessoryRuntime.channel().snapshot()end,
             validHatScripts=function(value)return accessoryRuntime.channel().valid(value)end,
             onHatScriptsChanged=accessoryRuntime.channel().onChanged,
@@ -866,6 +866,8 @@ gameBrowserSync=function()
     gameBrowserSyncAPI=select(1,create(Players.LocalPlayer,function()return api()end,function()return clothes()end,function()return alive end,function(message)
         if alive then trace("Browser: "..message);statusText=message;if view then view.setStatus(message) end end
     end,function()return animations()end,function()return names end,nativeViews,{
+        describeSnapshot=function(snapshot)return sharedInspection().description(snapshot)end,
+        log=logDiagnostic,
         isReady=function()return startupComplete end,
         lookupAvatar=accountAvatar,
         clientRequest=function(method,params)
