@@ -584,9 +584,33 @@ local function api()
             end
             return callback()
         end
+        local function decodeAsset(uri)
+            -- On Volt, HTTP after a native catalog decode in the same thread
+            -- reproduced a hang. Isolate native decoding; wait for completion
+            -- through an event rather than a retry timer or frame listener.
+            local completed=Instance.new("BindableEvent")
+            local result
+            task.defer(function()
+                result=table.pack(pcall(function()
+                    assert(alive,"Menu was closed before asset decoding.")
+                    return assetCall("asset.decode",function()return game:GetObjects(uri)end)
+                end))
+                completed:Fire()
+            end)
+            completed.Event:Wait()
+            completed:Destroy()
+            if not alive then
+                if result[1] and type(result[2])=="table" then
+                    for _,object in ipairs(result[2])do object:Destroy()end
+                end
+                error("Menu was closed during asset decoding.")
+            end
+            if not result[1]then error(result[2],0)end
+            return result[2]
+        end
         local native=function()
             checkpoint("native_decode")
-            local objects=game:GetObjects("rbxassetid://"..string.format("%.0f",path))
+            local objects=decodeAsset("rbxassetid://"..string.format("%.0f",path))
             checkpoint("ready")
             return objects
         end
@@ -603,7 +627,7 @@ local function api()
                 -- with the yielding request API, then let Roblox decode locally.
                 checkpoint("download")
                 local response=assetCall("asset.httpRequest",function()
-                    return requestAsset({Url="https://assetdelivery.roblox.com/v1/asset/?id="..string.format("%.0f",path),Method="GET",Timeout=15})
+                    return requestAsset({Url="https://assetdelivery.roblox.com/v1/asset/?id="..string.format("%.0f",path),Method="GET"})
                 end)
                 logDiagnostic("asset_http_response",{asset=tostring(path),status=response and tonumber(response.StatusCode or response.Status),bytes=response and type(response.Body)=="string" and #response.Body or 0},true)
                 assert(alive,"Menu was closed during asset download.")
@@ -619,7 +643,7 @@ local function api()
                     assetOk,assetUri=pcall(function()return assetCall("asset.registerFile",function()return customAsset(file)end)end)
                     if assetOk and assetUri then
                         checkpoint("local_decode")
-                        loaded,objects=pcall(function()return game:GetObjects(assetUri)end)
+                        loaded,objects=pcall(function()return decodeAsset(assetUri)end)
                     end
                 end
                 if type(delfile)=="function"then pcall(delfile,file)end
@@ -640,7 +664,7 @@ local function api()
         assert(wrote,writeError)
         local assetOk,assetUri=pcall(function()return assetCall("asset.registerFile",function()return customAsset(file)end)end)
         local loaded,objects=false,nil
-        if assetOk and assetUri then loaded,objects=pcall(function()return game:GetObjects(assetUri)end)end
+        if assetOk and assetUri then loaded,objects=pcall(function()return decodeAsset(assetUri)end)end
         if type(delfile)=="function"then pcall(delfile,file)end
         assert(assetOk and assetUri,"This executor could not prepare the avatar asset.")
         assert(loaded and type(objects)=="table" and #objects>0,"This executor could not load the avatar asset.")
@@ -663,7 +687,7 @@ local function api()
         trace("Avatar: "..message)
         busy=working or actionRunning;statusText=message
         if render then render() end
-    end,readAsset,true)
+    end,readAsset,true,diagnostics)
     return avatarAPI
 end
 local function atmosphere()
