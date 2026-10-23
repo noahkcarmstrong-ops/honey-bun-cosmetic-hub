@@ -186,6 +186,11 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         local desc=humanoid:GetAppliedDescription();local settings=getAvatar():getSettings();local clothes=getClothes():getSettings()
         local colors=character:FindFirstChildOfClass("BodyColors")
         local function color(region,name)
+            -- This snapshot edits the saved browser outfit. Native game colors
+            -- (uniforms, morphs, death effects) must not replace a selected Larp
+            -- color just because they changed the live character's presentation.
+            local selected=settings.colors and (settings.colors[region] or settings.colors.All)
+            if selected then return hex(Color3.new(selected[1],selected[2],selected[3]))end
             local c=colors and colors[region.."Color3"]
             if not c then local part=character:FindFirstChild(name) or character:FindFirstChild(region=="Torso" and "Torso" or region:gsub("Arm","UpperArm"):gsub("Leg","UpperLeg"));c=part and part.Color end
             return c and hex(c) or "ffffff"
