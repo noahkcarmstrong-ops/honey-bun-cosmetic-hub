@@ -1148,7 +1148,14 @@ return function(player,onStatus,readAsset,managedRespawn,diagnostics)
             local ok,source=pcall(function() return Players:GetHumanoidDescriptionFromOutfitIdAsync(outfit) end)
             if not valid(ctx) then description:Destroy();if ok and source then source:Destroy() end;check(ctx) end
             if not ok or not source then description:Destroy();error("Roblox could not load this package's body description.") end
-            for _,name in ipairs({"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg","BodyTypeScale","ProportionScale"}) do description[name]=source[name] end
+            for _,name in ipairs({"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"}) do description[name]=source[name] end
+            -- R6 has no live NumberValue scale controls. Keep its native body
+            -- fields intact instead of asking Roblox to normalize R15 scales
+            -- into an R6 description.
+            if ctx.humanoid.RigType==Enum.HumanoidRigType.R15 then
+                description.BodyTypeScale=source.BodyTypeScale
+                description.ProportionScale=source.ProportionScale
+            end
             source:Destroy()
         end
         local ok,template=pcall(function() return nativeCall("Players.CreateHumanoidModelFromDescriptionAsync",function()return Players:CreateHumanoidModelFromDescriptionAsync(description,ctx.humanoid.RigType)end) end)
@@ -1171,10 +1178,12 @@ return function(player,onStatus,readAsset,managedRespawn,diagnostics)
             for region in pairs(groups)do
                 if nativeDescription[region]~=(parts[region] or 0)then matches=false;break end
             end
-            for key,field in pairs(descriptionScales)do
-                local value=scales and scales[key]
-                if value==nil then value=(key=="bodyType" or key=="proportion") and 0 or 1 end
-                if math.abs(nativeDescription[field]-value)>0.000001 then matches=false;break end
+            if ctx.humanoid.RigType==Enum.HumanoidRigType.R15 then
+                for key,field in pairs(descriptionScales)do
+                    local value=scales and scales[key]
+                    if value==nil then value=(key=="bodyType" or key=="proportion") and 0 or 1 end
+                    if math.abs(nativeDescription[field]-value)>0.000001 then matches=false;break end
+                end
             end
             if matches then return nativeSource end
         end
@@ -1185,8 +1194,9 @@ return function(player,onStatus,readAsset,managedRespawn,diagnostics)
             assert(type(id)=="number" and id>=0 and id%1==0 and id<9007199254740992,"Invalid body part.")
             description[region]=id;key[#key+1]=tostring(id)
         end
+        local supportsScales=ctx.humanoid.RigType==Enum.HumanoidRigType.R15
         for _,name in ipairs({"height","width","depth","head","bodyType","proportion"})do
-            local value=scales and scales[name]
+            local value=supportsScales and scales and scales[name] or nil
             if value~=nil then description[descriptionScales[name]]=value end
             key[#key+1]=tostring(value or "")
         end
