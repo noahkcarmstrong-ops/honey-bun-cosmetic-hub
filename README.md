@@ -46,7 +46,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/l
 
 ### Avatar diagnostics
 
-Executor logs are written to `logs/larp/latest.log`; the previous session is archived when a new session starts. Native avatar operations have paired `operation_start` / `operation_finish` records with unique operation IDs, parent IDs for nested calls, player/asset context, elapsed milliseconds, and errors. Starts and finishes are flushed immediately. An unfinished operation identifies a call that was in progress when logging stopped, not proof that it caused a crash. Interface teardown records unfinished operations as cancelled.
+Executor logs are written to `logs/larp/latest.log`; the previous session is archived when a new session starts. Loading and generation operations have paired `operation_start` / `operation_finish` records with unique operation IDs, parent IDs for nested calls, player/asset context, elapsed milliseconds, and errors. Starts and finishes are flushed immediately. Normal mode records individual mesh/accessory mutations only on failure or when they take at least 16 ms; verbose mode includes their paired checkpoints. An unfinished operation identifies a call that was in progress when logging stopped, not proof that it caused a crash. Interface teardown records unfinished operations as cancelled.
 
 For deeper captures, configure the shared options table before loading the interface:
 

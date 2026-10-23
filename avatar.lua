@@ -398,6 +398,16 @@ return function(player,onStatus,readAsset,managedRespawn,diagnostics)
         return item:IsA("ParticleEmitter") or item:IsA("Beam") or item:IsA("Trail")
             or item:IsA("Light") or item:IsA("Fire") or item:IsA("Smoke") or item:IsA("Sparkles")
     end
+    local function syncValueChild(target,source,name)
+        local existing=target:FindFirstChild(name)
+        local incoming=source:FindFirstChild(name)
+        if existing and incoming and existing.ClassName==incoming.ClassName and incoming:IsA("ValueBase") then
+            if existing.Value~=incoming.Value then existing.Value=incoming.Value end
+            return
+        end
+        if existing then existing:Destroy()end
+        if incoming then incoming:Clone().Parent=target end
+    end
     local function applyPartAppearance(target,source)
         if target:IsA("MeshPart") and source:IsA("MeshPart") then
             nativeCall("MeshPart.ApplyMesh",function()target:ApplyMesh(source)end)
@@ -425,10 +435,7 @@ return function(player,onStatus,readAsset,managedRespawn,diagnostics)
         -- Size and its native baseline belong to the same body asset. Leaving
         -- the previous package's baseline makes later native rescaling distort it.
         for _,name in ipairs({"OriginalSize","AvatarPartScaleType"})do
-            local old=target:FindFirstChild(name)
-            local original=source:FindFirstChild(name)
-            if old then old:Destroy()end
-            if original then original:Clone().Parent=target end
+            syncValueChild(target,source,name)
         end
         -- ApplyMesh does not copy SurfaceAppearance. Packages can texture any
         -- limb this way, so replace the surface even when the new body has none.
@@ -469,10 +476,7 @@ return function(player,onStatus,readAsset,managedRespawn,diagnostics)
                 local existing=target:FindFirstChild(attachment.Name)
                 if existing and existing:IsA("Attachment") then
                     existing.CFrame=attachment.CFrame
-                    local old=existing:FindFirstChild("OriginalPosition")
-                    if old then old:Destroy()end
-                    local original=attachment:FindFirstChild("OriginalPosition")
-                    if original then original:Clone().Parent=existing end
+                    syncValueChild(existing,attachment,"OriginalPosition")
                 elseif not existing then
                     -- Generated body parts also carry hat/hair/face attachment
                     -- points. Preserve those when the replicated part is early.

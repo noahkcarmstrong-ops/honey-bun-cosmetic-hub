@@ -98,7 +98,22 @@ return function(context)
         if countOk then record.instanceCount=count end
     end
     local function run(operation,fields,callback,...)
-        if operation=="MeshPart.ApplyMesh" and not verbose() then return callback(...)end
+        if not verbose() and (operation=="MeshPart.ApplyMesh" or operation=="Humanoid.AddAccessory") then
+            -- Keep normal diagnostics off hot per-part/per-accessory paths.
+            -- Slow calls and failures remain useful without two disk flushes
+            -- for every successful sub-millisecond mutation.
+            local started=os.clock()
+            local result=table.pack(pcall(callback,...))
+            local elapsedMs=(os.clock()-started)*1000
+            if not result[1] or elapsedMs>=16 then
+                local record={operation=operation,elapsedMs=elapsedMs,ok=result[1]}
+                for key,value in pairs(fields or {})do record[key]=value end
+                if not result[1]then record.error=tostring(result[2])end
+                log(result[1] and "operation_slow" or "operation_failed",record);flush()
+            end
+            if not result[1]then error(result[2],0)end
+            return table.unpack(result,2,result.n)
+        end
         serial=serial+1
         local id=stamp..":"..serial
         local record={operation=operation,operationId=id}
