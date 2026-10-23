@@ -6,6 +6,14 @@ local accessoryTypes={[8]=true,[41]=true,[42]=true,[43]=true,[44]=true,[45]=true
 local animationTypes={[48]="ClimbAnimation",[50]="FallAnimation",[51]="IdleAnimation",[52]="JumpAnimation",[53]="RunAnimation",[54]="SwimAnimation",[55]="WalkAnimation",[56]="PoseAnimation",[78]="MoodAnimation"}
 local SCALE_PROPERTIES={height="BodyHeightScale",width="BodyWidthScale",depth="BodyDepthScale",head="HeadScale",bodyType="BodyTypeScale",proportion="BodyProportionScale"}
 local function safeId(v)return type(v)=="number" and v==v and v>0 and v%1==0 and v<9007199254740992 end
+local function imageBytes(url)
+    assert(type(url)=="string" and (url:match("^https://tr%.rbxcdn%.com/") or url:match("^https://t%d%.rbxcdn%.com/")),"Invalid avatar image URL.")
+    local fn=request or http_request or (syn and syn.request)
+    assert(type(fn)=="function","This executor does not provide HTTP requests.")
+    local response=fn({Url=url,Method="GET",Timeout=15})
+    assert(response and tonumber(response.StatusCode or response.Status)==200,"Could not download avatar image.")
+    return response.Body
+end
 local function hex(c)
     local function n(v)return math.clamp(math.floor(v*255+0.5),0,255) end
     return string.format("%02x%02x%02x",n(c.R),n(c.G),n(c.B))
@@ -23,6 +31,7 @@ local function call(method,path,token,body)
 end
 return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNames,getViews,sharing)
     local api,token,connected,lastJson,lastRevision={},nil,false,nil,0
+    api.downloadImage=imageBytes
     local generation=0
     local lastNameState=nil
     local lastBrowserCommand
@@ -157,7 +166,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         loadingImageUrl=url
         local mine=generation
         local ok,result=pcall(function()
-            local bytes=game:HttpGet(url,false)
+            local bytes=imageBytes(url)
             assert(type(bytes)=="string" and #bytes<=4*1024*1024 and bytes:sub(1,8)=="\137PNG\r\n\26\n","The avatar image is not a valid PNG.")
             if mine~=generation or not imageValue or imageValue.imageUrl~=url then return end
             imageSerial=imageSerial+1

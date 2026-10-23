@@ -603,6 +603,7 @@ return function(player,onStatus,readAsset,managedRespawn)
                 assert(type(readAsset)=="function","Dominus Azurelight's visual effects need local asset loading support in this executor.")
                 return readAsset("assets/dominus-azurelight.rbxm")
             end
+            if type(readAsset)=="function"then return readAsset(id)end
             return game:GetObjects("rbxassetid://"..string.format("%.0f",id))
         end)
         assert(ok and type(objects)=="table" and #objects>0,"Roblox could not load that "..kind:lower()..". It may be private or unavailable.")
@@ -678,16 +679,18 @@ return function(player,onStatus,readAsset,managedRespawn)
     end
     local api={}
     local preparedWearables=setmetatable({}, {__mode="k"})
-    function api.prepareAccessories(ids)
+    function api.prepareAccessories(ids,isCurrent)
         local ctx=context()
         local failures,preload={},{}
         for _,id in ipairs(ids)do
+            if isCurrent and not isCurrent()then return failures end
             local ok,reason=pcall(wearable,ctx,idFrom(id,"catalog"),"Accessory",true)
             check(ctx)
             if not ok then failures[id]=tostring(reason)
             elseif not preparedWearables[reason]then preload[#preload+1]=reason end
         end
         if #preload>0 then
+            if isCurrent and not isCurrent()then return failures end
             game:GetService("ContentProvider"):PreloadAsync(preload)
             check(ctx)
             for _,template in ipairs(preload)do preparedWearables[template]=true end
@@ -1014,7 +1017,19 @@ return function(player,onStatus,readAsset,managedRespawn)
         end
         return "Skin color applied (visible to you)."
     end
-    local fullBodyTemplates={}
+    local fullBodyTemplates,fullBodyOrder={},{}
+    local function cacheBody(key,template)
+        local existing=fullBodyTemplates[key]
+        if existing then template:Destroy();return existing end
+        fullBodyTemplates[key]=template
+        fullBodyOrder[#fullBodyOrder+1]=key
+        -- Switching back to a recent outfit should not regenerate its rig.
+        if #fullBodyOrder>4 then
+            local oldest=table.remove(fullBodyOrder,1)
+            fullBodyTemplates[oldest]:Destroy();fullBodyTemplates[oldest]=nil
+        end
+        return template
+    end
     local function bodySource(ctx,value)
         local isR6=ctx.humanoid.RigType==Enum.HumanoidRigType.R6
         local cacheKey=tostring(ctx.humanoid.RigType)..":"..tostring(value)
@@ -1045,8 +1060,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         strip(template)
         game:GetService("ContentProvider"):PreloadAsync({template})
         check(ctx)
-        for key,old in pairs(fullBodyTemplates)do old:Destroy();fullBodyTemplates[key]=nil end
-        fullBodyTemplates[cacheKey]=template:Clone()
+        cacheBody(cacheKey,template:Clone())
         return template
     end
     -- Complete shared outfits already include validated region IDs. Generate
@@ -1080,8 +1094,7 @@ return function(player,onStatus,readAsset,managedRespawn)
             if not loaded or not valid(ctx)then template:Destroy();check(ctx);error(reason)end
         end
         if not cached then
-            for oldKey,old in pairs(fullBodyTemplates)do old:Destroy();fullBodyTemplates[oldKey]=nil end
-            fullBodyTemplates[cacheKey]=template
+            template=cacheBody(cacheKey,template)
         end
         return template
     end
@@ -1281,7 +1294,10 @@ return function(player,onStatus,readAsset,managedRespawn)
         local id=idFrom(value,"catalog")
         local texture=faceTemplates[id]
         if not texture then
-            local ok,objects=pcall(function()return game:GetObjects("rbxassetid://"..string.format("%.0f",id))end)
+            local ok,objects=pcall(function()
+                if type(readAsset)=="function"then return readAsset(id)end
+                return game:GetObjects("rbxassetid://"..string.format("%.0f",id))
+            end)
             assert(ok and type(objects)=="table","Roblox could not load that face.")
             if not valid(ctx) then dispose(objects);check(ctx) end
             for _,root in ipairs(objects)do
@@ -1532,7 +1548,7 @@ return function(player,onStatus,readAsset,managedRespawn)
         end
         if snapshot and snapshot.character==player.Character then pcall(restoreAppearance) end
         for _,template in pairs(fullBodyTemplates)do template:Destroy()end
-        fullBodyTemplates={}
+        fullBodyTemplates={};fullBodyOrder={}
         for _,entry in pairs(bodyPartTemplates)do entry.model:Destroy()end
         bodyPartTemplates={};bodyPartOrder={}
         for _,template in pairs(wearableTemplates)do template:Destroy()end
