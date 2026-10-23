@@ -571,22 +571,37 @@ local function api()
     local function readAsset(path)
         local catalog=type(path)=="number"
         assert(catalog and path>0 and path%1==0 and path<9007199254740992 or path=="assets/dominus-azurelight.rbxm","Unsupported avatar asset.")
+        local native=function()return game:GetObjects("rbxassetid://"..string.format("%.0f",path))end
         local requestAsset=request or http_request or (syn and syn.request)
         if catalog and (type(requestAsset)~="function" or type(writefile)~="function" or type(customAsset)~="function")then
-            return game:GetObjects("rbxassetid://"..string.format("%.0f",path))
+            return native()
         end
-        assert(type(writefile)=="function" and type(customAsset)=="function",
-            "This executor cannot load Dominus Azurelight's visual effects locally.")
+        if not catalog then assert(type(writefile)=="function" and type(customAsset)=="function",
+            "This executor cannot load Dominus Azurelight's visual effects locally.") end
         local bytes
         if catalog then
-            -- Remote GetObjects blocks rendering on some executors. Download
-            -- with the yielding request API, then let Roblox decode locally.
-            local ok,response=pcall(requestAsset,{Url="https://assetdelivery.roblox.com/v1/asset/?id="..string.format("%.0f",path),Method="GET",Timeout=15})
-            if not ok or not response or tonumber(response.StatusCode or response.Status)~=200 then
-                return game:GetObjects("rbxassetid://"..string.format("%.0f",path))
-            end
-            bytes=response.Body
-            assert(type(bytes)=="string" and #bytes<=64*1024*1024,"Invalid catalog asset response.")
+            local localOk,localObjects=pcall(function()
+                -- Remote GetObjects blocks rendering on some executors. Download
+                -- with the yielding request API, then let Roblox decode locally.
+                local response=requestAsset({Url="https://assetdelivery.roblox.com/v1/asset/?id="..string.format("%.0f",path),Method="GET",Timeout=15})
+                assert(response and tonumber(response.StatusCode or response.Status)==200,"Catalog asset download failed.")
+                bytes=response.Body
+                assert(type(bytes)=="string" and #bytes<=64*1024*1024,"Invalid catalog asset response.")
+                assetSerial=assetSerial+1
+                local file="larpblox-avatar-asset-"..assetSession.."-"..assetSerial..".rbxm"
+                local wrote,writeError=pcall(writefile,file,bytes)
+                local assetOk,assetUri=false,nil
+                local loaded,objects=false,nil
+                if wrote then
+                    assetOk,assetUri=pcall(customAsset,file)
+                    if assetOk and assetUri then loaded,objects=pcall(function()return game:GetObjects(assetUri)end)end
+                end
+                if type(delfile)=="function"then pcall(delfile,file)end
+                assert(wrote and assetOk and assetUri and loaded and type(objects)=="table" and #objects>0,writeError or "Local catalog asset decoding failed.")
+                return objects
+            end)
+            if localOk then return localObjects end
+            return native()
         else
             bytes=readSource(path,sha)
             assert(bytes:sub(1,8)=="<roblox!","Invalid Dominus Azurelight visual asset.")

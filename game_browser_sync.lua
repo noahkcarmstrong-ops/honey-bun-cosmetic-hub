@@ -43,11 +43,13 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     local socket,socketReady,socketMine=nil,false,0
     local incoming,pumping={},false
     local retryCommand
+    local retryTimerCommand,retryRevision,retryAttempt=nil,nil,0
     local imageValue,imageAsset,imageUrl,imageSerial=nil,nil,nil,0
     local appearanceConnections={}
     local characterConnections={}
     local instanceConnections={}
     local pump
+    local scheduleReconnect
     local snapshotPending=false
     local snapshotScheduleId=0
     local loadingImageUrl
@@ -545,6 +547,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             local ok=pcall(function()socket:Send(HttpService:JSONEncode({type="publish",channel=channel,value=value}))end)
             if ok then return end
             closeSocket()
+            if scheduleReconnect then scheduleReconnect()end
         end
         local path="/v1/"..(channel=="game" and "game" or channel).."/"..player.UserId
         local ok,result=pcall(call,"POST",path,token,value)
@@ -729,7 +732,26 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 if batch.browser and batch.browser.value and batch.browser.value.revision then
                     local command=batch.browser.value
                     applyCommand(command)
-                    if lastRevision~=command.revision then retryCommand=command else retryCommand=nil end
+                    if lastRevision<command.revision then
+                        retryCommand=command
+                        if retryTimerCommand~=command then
+                            if retryRevision~=command.revision then retryAttempt=0;retryRevision=command.revision end
+                            retryTimerCommand=command
+                            local delay=math.min(30,2^math.min(retryAttempt,5))
+                            retryAttempt=retryAttempt+1
+                            task.delay(delay,function()
+                                if retryTimerCommand~=command then return end
+                                retryTimerCommand=nil
+                                if not connected or generation~=mine or not larpEnabled or not isAlive()
+                                    or lastRevision>=command.revision or not lastBrowserCommand
+                                    or lastBrowserCommand.revision~=command.revision then return end
+                                -- A failed download must recover without a new
+                                -- browser event or respawn. Only retry the latest outfit.
+                                if not incoming.browser then incoming.browser={value=command}end
+                                task.spawn(pump)
+                            end)
+                        end
+                    else retryCommand=nil;retryTimerCommand=nil;retryAttempt=0 end
                 end
                 if batch.image then
                     local value=batch.image.value
@@ -740,6 +762,21 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         end)
         pumping=false
         if not ok then status("Browser socket: "..tostring(err))end
+    end
+    local recovery={enabled=true,pending=false,attempt=0,serial=0}
+    scheduleReconnect=function()
+        if not recovery.enabled or recovery.pending or not isAlive()then return end
+        recovery.pending=true
+        local serial=recovery.serial
+        local delay=math.min(30,2^math.min(recovery.attempt,5))
+        recovery.attempt=recovery.attempt+1
+        status("Desktop disconnected. Reconnecting automatically...")
+        task.delay(delay,function()
+            if recovery.serial~=serial then return end
+            recovery.pending=false
+            if not recovery.enabled or not isAlive() or socketReady then return end
+            pcall(api.connect)
+        end)
     end
     local function openSocket()
         local ws=WebSocket or websocket or (syn and syn.websocket)
@@ -753,11 +790,9 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
         socket=candidate
         candidate.OnClose:Connect(function()
             if socket==candidate then
-                local wasReady=socketReady
                 socket=nil;socketReady=false;lastJson=nil;sharingConnected=false
                 connectionState(false)
-                status("Desktop disconnected. Open desktop and reload the interface.")
-                if wasReady then task.defer(function()if connected and generation==mine then pcall(api.connect)end end)end
+                scheduleReconnect()
             end
         end)
         candidate.OnMessage:Connect(function(message)
@@ -766,6 +801,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
             if not read or type(value)~="table" then return end
             if value.type=="ready" then
                 socketReady=true;lastJson=nil
+                recovery.attempt=0
                 connectionState(true)
                 local function keepAlive()
                     task.delay(20,function()
@@ -812,32 +848,39 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
                 notifySharing(value.value)
             elseif value.type=="state" and (value.channel=="browser" or value.channel=="names" or value.channel=="image") then
                 incoming[value.channel]={value=value.value};task.spawn(pump)
-            elseif value.type=="error" then connectionState(false);closeSocket()end
+            elseif value.type=="error" then connectionState(false);closeSocket();scheduleReconnect()end
         end)
         local sent=pcall(function()candidate:Send(HttpService:JSONEncode({version=1,type="auth",token=token,userId=tostring(player.UserId),role="game",avatarLookup=sharing and type(sharing.lookupAvatar)=="function" or false,clientRequests=sharing and type(sharing.clientRequest)=="function" or false}))end)
         if not sent then connectionState(false);closeSocket();return false end
         task.delay(5,function()
             if socket==candidate and generation==mine and not socketReady then
                 connectionState(false)
-                closeSocket();status("Desktop did not complete the connection. Reload the interface to reconnect.")
+                closeSocket();scheduleReconnect()
             end
         end)
         return true
     end
-    function api.connect(code)
+    local function connectOnce(code)
         if not code or code=="" then
             local ok,pair=pcall(call,"GET","/v1/pair","")
             code=ok and pair and pair.code or readSaved()
         end
         assert(validToken(code),"Open the Larpblox app to connect.")
         local relay=call("GET","/v1/status",code);if relay and relay.instanceId and relay.instanceId~=api.instanceId then lastRevision=0;lastNameState=nil;api.instanceId=relay.instanceId end
-        closeSocket();incoming={};retryCommand=nil;generation=generation+1;token=code;connected=true;lastJson=nil;save(code);status("Browser connected.")
+        closeSocket();incoming={};retryCommand=nil;retryTimerCommand=nil;retryAttempt=0;generation=generation+1;token=code;connected=true;lastJson=nil;save(code);status("Browser connected.")
         startAppearanceWatchers()
         local opened=openSocket()
         if not opened then connected=false end
         return opened
     end
-    function api.disconnect()generation=generation+1;stopAppearanceWatchers();closeSocket();incoming={};retryCommand=nil;connected=false;token=nil;lastJson=nil;lastNameState=nil;sharingConnected=false;applyNameState(nil);lastSharingPreference=nil;queueViews({enabled=false});status("Browser disconnected.")end
+    function api.connect(code)
+        recovery.enabled=true
+        local ok,result=pcall(connectOnce,code)
+        if not ok or not result then scheduleReconnect()end
+        if not ok then error(result,0)end
+        return result
+    end
+    function api.disconnect()recovery.enabled=false;recovery.pending=false;recovery.serial=recovery.serial+1;generation=generation+1;stopAppearanceWatchers();closeSocket();incoming={};retryCommand=nil;retryTimerCommand=nil;retryAttempt=0;connected=false;token=nil;lastJson=nil;lastNameState=nil;sharingConnected=false;applyNameState(nil);lastSharingPreference=nil;queueViews({enabled=false});status("Browser disconnected.")end
     function api.isLarpEnabled()return larpEnabled end
     function api.isConnected()return connected end
     function api.status()return connected and (socketReady and "Browser connected via WebSocket." or "Waiting for desktop WebSocket.") or "Browser disconnected."end
@@ -899,7 +942,7 @@ return function(player,getAvatar,getClothes,isAlive,onStatus,getAnimations,getNa
     task.defer(function()
         if not isAlive()then return end
         local ok,err=pcall(api.connect)
-        if not ok then connectionState(false);status("Open Larpblox Desktop, then reload the interface to connect.")end
+        if not ok then connectionState(false);scheduleReconnect()end
     end)
     return api,saved
 end
